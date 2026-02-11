@@ -1,4 +1,10 @@
-# Vesti Development Guide - Coding Agent Standards
+﻿# Vesti Development Guide - Coding Agent Standards
+
+## Skills Index
+
+- `skills/markdown-writing/SKILL.md` — Markdown/README 排版与编码 SOP（保留原文、结构化分段、徽章/表格规范、UTF-8 BOM）
+
+> agent.md 仅保留核心原则，部门法/流程细则统一放在 skills/ 目录。
 
 > This document serves as the development specification for the AI Coding Agent. Please strictly adhere to the following principles before generating any code.
 
