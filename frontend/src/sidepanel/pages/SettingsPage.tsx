@@ -1,16 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Archive,
   ArrowRight,
+  Check,
+  Copy,
   Eye,
   EyeOff,
   FolderGit2,
+  Github,
   Loader2,
+  Mail,
+  Megaphone,
   Moon,
   Sparkles,
   ShieldCheck,
   Sun,
+  Languages,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import type {
   ActiveCaptureStatus,
   AsyncStatus,
@@ -69,6 +76,99 @@ const CAPTURE_MODE_OPTIONS: Array<{ value: CaptureMode; label: string; descripti
     description: "Hold captures until you archive the active thread manually.",
   },
 ];
+
+const DOCS_HELP_URL = "https://github.com/abraxas914/VESTI#readme";
+const FEEDBACK_ISSUE_URL = "https://github.com/abraxas914/VESTI/issues/new/choose";
+const WHATS_NEW_URL = "https://github.com/abraxas914/VESTI/releases";
+const FEEDBACK_EMAIL = "suyc23@gmail.com";
+const FEEDBACK_COPY_RESET_MS = 1600;
+
+function openExternalUrl(url: string): void {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+async function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "absolute";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error("COPY_FAILED");
+  }
+}
+
+function SettingsGroupLabel({ label }: { label: string }) {
+  return (
+    <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-text-tertiary">
+      {label}
+    </p>
+  );
+}
+
+function SettingsIconTile({ children }: { children: ReactNode }) {
+  return (
+    <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-bg-secondary text-text-secondary transition-colors duration-150 group-open:text-text-primary">
+      {children}
+    </span>
+  );
+}
+
+function LanguageSoonRow() {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border-subtle bg-bg-surface px-4 py-3">
+      <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-bg-secondary text-text-secondary">
+        <Languages className="h-4 w-4" strokeWidth={1.5} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium text-text-primary">Language</p>
+        <p className="mt-0.5 text-[11px] text-text-tertiary">Interface language</p>
+      </div>
+      <span className="rounded-full border border-border-subtle bg-bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-tertiary">
+        Soon
+      </span>
+    </div>
+  );
+}
+
+interface SupportRowProps {
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+  expanded?: boolean;
+}
+
+function SupportRow({ label, icon, onClick, expanded = false }: SupportRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center justify-between gap-3 rounded-xl border border-transparent bg-bg-surface px-4 py-3 text-left transition-colors duration-150 hover:border-border-subtle hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+    >
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-bg-secondary text-text-secondary">
+          {icon}
+        </span>
+        <span className="text-[13px] font-medium text-text-primary">{label}</span>
+      </span>
+      <ArrowRight
+        className={`h-4 w-4 shrink-0 text-text-tertiary transition-transform duration-150 ${
+          expanded ? "rotate-90" : ""
+        }`}
+        strokeWidth={1.5}
+      />
+    </button>
+  );
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -204,6 +304,11 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
   const [themeMode, setThemeMode] = useState<UiThemeMode>("light");
   const [themeStatus, setThemeStatus] = useState<AsyncStatus>("idle");
   const [themeMessage, setThemeMessage] = useState<string | null>(null);
+  const [feedbackExpanded, setFeedbackExpanded] = useState(false);
+  const [feedbackCopyState, setFeedbackCopyState] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
+  const feedbackCopyTimerRef = useRef<number | null>(null);
 
   const mode = getLlmAccessMode(llmSettings);
   const isCustomMode = mode === "custom_byok";
@@ -440,6 +545,34 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (feedbackCopyTimerRef.current !== null) {
+        window.clearTimeout(feedbackCopyTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleToggleFeedback = () => {
+    setFeedbackExpanded((prev) => !prev);
+  };
+
+  const handleCopyFeedbackEmail = async () => {
+    try {
+      await copyToClipboard(FEEDBACK_EMAIL);
+      setFeedbackCopyState("copied");
+    } catch {
+      setFeedbackCopyState("error");
+    }
+
+    if (feedbackCopyTimerRef.current !== null) {
+      window.clearTimeout(feedbackCopyTimerRef.current);
+    }
+    feedbackCopyTimerRef.current = window.setTimeout(() => {
+      setFeedbackCopyState("idle");
+    }, FEEDBACK_COPY_RESET_MS);
+  };
+
   return (
     <div className="vesti-shell flex h-full flex-col overflow-y-auto vesti-scroll bg-bg-app">
       <header className="flex h-8 shrink-0 items-center px-4">
@@ -447,10 +580,20 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
       </header>
 
       <div className="flex flex-col gap-3 p-4">
+        <SettingsGroupLabel label="Personalisation" />
+
         <DisclosureSection
           title="Appearance"
-          description="Switch between original light and minimalist dark theme presets."
-          icon={themeMode === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          description="Theme and display preferences."
+          icon={
+            <SettingsIconTile>
+              {themeMode === "dark" ? (
+                <Moon className="h-4 w-4" strokeWidth={1.5} />
+              ) : (
+                <Sun className="h-4 w-4" strokeWidth={1.5} />
+              )}
+            </SettingsIconTile>
+          }
         >
           <div className="grid gap-3">
             <div className="flex items-center justify-between gap-4 rounded-md border border-border-subtle bg-bg-surface-hover px-3 py-2">
@@ -458,8 +601,8 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                 <span className="text-[15px] font-medium text-text-primary">
                   Dark Mode
                 </span>
-                <span className="mt-0.5 text-[13px] leading-[1.45] text-text-secondary">
-                  Apply the minimalist dark palette to non-Threads surfaces.
+                <span className="mt-0.5 text-[12px] text-text-secondary">
+                  Use the minimalist dark palette.
                 </span>
               </div>
               <button
@@ -486,10 +629,18 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
           </div>
         </DisclosureSection>
 
+        <LanguageSoonRow />
+
+        <SettingsGroupLabel label="System" />
+
         <DisclosureSection
           title="Model Access"
-          description="Model scope mode and BYOK credentials."
-          icon={<Sparkles className="h-4 w-4" strokeWidth={1.75} />}
+          description="BYOK and proxy configuration."
+          icon={
+            <SettingsIconTile>
+              <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+            </SettingsIconTile>
+          }
         >
           <div className="card-shadow-warm rounded-card border border-border-subtle bg-bg-surface p-4">
             <div className="grid gap-3">
@@ -498,10 +649,8 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                   <span className="text-[15px] font-medium text-text-primary">
                     Use Custom Configuration
                   </span>
-                  <span className="mt-0.5 text-[13px] leading-[1.45] text-text-secondary">
-                    {isCustomMode
-                      ? "Custom BYOK mode: direct request to ModelScope."
-                      : "Demo mode: proxy route with developer credentials."}
+                  <span className="mt-0.5 text-[12px] text-text-secondary">
+                    {isCustomMode ? "Direct BYOK mode." : "Demo proxy mode."}
                   </span>
                 </div>
                 <button
@@ -521,12 +670,13 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                   <div className="inline-flex w-fit items-center rounded-md border border-border-subtle bg-bg-primary/70 px-2 py-0.5 text-[10px] font-semibold text-text-primary">
                     Demo Channel Active
                   </div>
-                  <p className="text-[13px] leading-[1.45] text-text-secondary">
-                    Primary model: {DEFAULT_STABLE_MODEL}
+                  <p className="text-[12px] text-text-secondary">
+                    Primary: {DEFAULT_STABLE_MODEL}
                   </p>
-                  <p className="text-[13px] leading-[1.45] text-text-secondary">
-                    Backup model: {DEFAULT_BACKUP_MODEL} (auto failover on timeout/429/5xx)
+                  <p className="text-[12px] text-text-secondary">
+                    Backup: {DEFAULT_BACKUP_MODEL}
                   </p>
+
                   <div className="grid gap-1">
                     <label className="text-[11px] text-text-tertiary">
                       Proxy Base URL
@@ -568,7 +718,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                   </div>
 
                   <p className="text-[11px] text-text-tertiary">
-                    Gateway locked to modelscope.cn | Chat: {demoProxyChatUrl}
+                    Chat route: {demoProxyChatUrl}
                   </p>
                   <p className="text-[11px] text-text-tertiary">
                     Embeddings route: {demoProxyEmbeddingsUrl}
@@ -653,16 +803,16 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                         aria-label="Toggle visibility"
                       >
                         {showApiKey ? (
-                          <EyeOff className="h-4 w-4" strokeWidth={1.75} />
+                          <EyeOff className="h-4 w-4" strokeWidth={1.5} />
                         ) : (
-                          <Eye className="h-4 w-4" strokeWidth={1.75} />
+                          <Eye className="h-4 w-4" strokeWidth={1.5} />
                         )}
                       </button>
                     </div>
                   </div>
 
                   <p className="text-[11px] text-text-tertiary">
-                    Gateway locked to modelscope.cn | Route: Direct ({MODELSCOPE_BASE_URL})
+                    Direct route: {MODELSCOPE_BASE_URL}
                   </p>
 
                   <div className="mt-1 flex flex-wrap items-center justify-end gap-3">
@@ -704,8 +854,12 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
 
         <DisclosureSection
           title="Capture Engine"
-          description="Mode controls, active thread status, and archive operations."
-          icon={<ShieldCheck className="h-4 w-4" strokeWidth={1.75} />}
+          description="Mode and archive controls."
+          icon={
+            <SettingsIconTile>
+              <ShieldCheck className="h-4 w-4" strokeWidth={1.5} />
+            </SettingsIconTile>
+          }
         >
           <div className="card-shadow-warm rounded-card border border-border-subtle bg-bg-surface p-4">
             <div className="grid gap-3">
@@ -772,27 +926,25 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
               )}
 
               {isManualMode && (
-                <p className="rounded-md border border-border-subtle bg-bg-surface-hover px-3 py-2 text-[12px] leading-[1.45] text-text-secondary">
-                  Manual mode blocks automatic capture writes. Use the archive action
-                  below to persist the active thread snapshot.
+                <p className="rounded-md border border-border-subtle bg-bg-surface-hover px-3 py-2 text-[12px] text-text-secondary">
+                  Manual mode blocks automatic writes until you archive.
                 </p>
               )}
 
               <p className="text-[11px] text-text-tertiary">
-                Capture now waits for a stable conversation URL ID before writing to
-                local storage.
+                Capture writes only after a stable conversation URL ID is available.
               </p>
 
               <div className="grid gap-1 rounded-md border border-border-subtle bg-bg-surface-hover px-3 py-2 text-[11px] text-text-secondary">
                 <p>
-                  Active thread status: {formatCaptureStatusReason(activeCaptureStatus?.reason)}
+                  Active thread: {formatCaptureStatusReason(activeCaptureStatus?.reason)}
                 </p>
                 <p>
                   Snapshot:{" "}
                   {activeCaptureStatus?.available
-                    ? `${activeCaptureStatus.messageCount ?? 0} messages \u00b7 ${
+                    ? `${activeCaptureStatus.messageCount ?? 0} messages - ${
                         activeCaptureStatus.turnCount ?? 0
-                      } turns (AI replies)`
+                      } turns`
                     : "Unavailable"}
                 </p>
                 <p>
@@ -800,7 +952,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                 </p>
                 {activeCaptureStatus?.lastDecision && (
                   <p>
-                    Last decision: {activeCaptureStatus.lastDecision.reason} {"\u00b7"}{" "}
+                    Last decision: {activeCaptureStatus.lastDecision.reason} -{" "}
                     {activeCaptureStatus.lastDecision.messageCount} messages
                   </p>
                 )}
@@ -809,11 +961,10 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border-subtle bg-bg-surface-hover p-3">
                 <div>
                   <p className="text-[12px] font-medium text-text-primary">
-                    Archive Active Thread Now
+                    Archive Active Thread
                   </p>
                   <p className="mt-0.5 text-[11px] text-text-tertiary">
-                    Manual archive is available in Smart/Manual mode with active
-                    thread snapshot.
+                    Available in Smart/Manual mode with an active snapshot.
                   </p>
                 </div>
                 <button
@@ -830,11 +981,9 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                   {archiveStatus === "loading" ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Archive className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    <Archive className="h-3.5 w-3.5" strokeWidth={1.5} />
                   )}
-                  {archiveStatus === "loading"
-                    ? "Archiving..."
-                    : "Archive Active Thread Now"}
+                  {archiveStatus === "loading" ? "Archiving..." : "Archive"}
                 </button>
               </div>
 
@@ -851,8 +1000,8 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                   )}
                   {archiveSummary && (
                     <p className="mt-0.5 text-text-tertiary">
-                      Saved at {formatStatusTimestamp(archiveSummary.time)} {"\u00b7"}{" "}
-                      {archiveSummary.reason} {"\u00b7"} {archiveSummary.messageCount} messages
+                      Saved at {formatStatusTimestamp(archiveSummary.time)} -{" "}
+                      {archiveSummary.reason} - {archiveSummary.messageCount} messages
                     </p>
                   )}
                 </div>
@@ -888,17 +1037,20 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
 
         <DisclosureSection
           title="Data Management"
-          description="Navigate to storage tools, exports, and cleanup controls."
-          icon={<FolderGit2 className="h-4 w-4" strokeWidth={1.75} />}
+          description="Storage, export, and cleanup."
+          icon={
+            <SettingsIconTile>
+              <FolderGit2 className="h-4 w-4" strokeWidth={1.5} />
+            </SettingsIconTile>
+          }
         >
           <div className="card-shadow-warm rounded-card border border-border-subtle bg-bg-surface p-4">
             <div className="rounded-md border border-border-subtle bg-bg-surface-hover p-3">
               <p className="text-[13px] font-medium text-text-primary">
-                Data tools now live in a dedicated Data tab.
+                Data tools are available in the Data tab.
               </p>
-              <p className="mt-1 text-[12px] leading-[1.45] text-text-secondary">
-                Manage storage usage, export JSON/TXT/MD, and clear local data
-                from the Dock Data button.
+              <p className="mt-1 text-[12px] text-text-secondary">
+                Use it for storage overview, exports, and cleanup.
               </p>
               <button
                 type="button"
@@ -911,11 +1063,71 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                 }`}
               >
                 Open Data Management
-                <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />
               </button>
             </div>
           </div>
         </DisclosureSection>
+
+        <SettingsGroupLabel label="Support" />
+
+        <div className="grid gap-2">
+          <SupportRow
+            label="Docs & Help"
+            icon={<Github className="h-4 w-4" strokeWidth={1.5} />}
+            onClick={() => openExternalUrl(DOCS_HELP_URL)}
+          />
+
+          <SupportRow
+            label="Send Feedback"
+            icon={<Mail className="h-4 w-4" strokeWidth={1.5} />}
+            onClick={handleToggleFeedback}
+            expanded={feedbackExpanded}
+          />
+
+          {feedbackExpanded ? (
+            <div className="mx-1 rounded-xl border border-border-subtle bg-bg-surface px-3 py-3">
+              <p className="text-[11px] text-text-tertiary">
+                Contact us directly or open an issue on GitHub.
+              </p>
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-border-subtle bg-bg-surface-hover px-3 py-2">
+                <span className="text-[12px] font-mono text-text-secondary">
+                  {FEEDBACK_EMAIL}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyFeedbackEmail}
+                  className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-[11px] font-medium text-text-primary transition-colors duration-150 hover:bg-bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                >
+                  {feedbackCopyState === "copied" ? (
+                    <Check className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  )}
+                  {feedbackCopyState === "copied"
+                    ? "Copied"
+                    : feedbackCopyState === "error"
+                    ? "Retry"
+                    : "Copy"}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => openExternalUrl(FEEDBACK_ISSUE_URL)}
+                className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-text-secondary underline underline-offset-2 transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+              >
+                Open a GitHub Issue
+                <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </button>
+            </div>
+          ) : null}
+
+          <SupportRow
+            label="What's New"
+            icon={<Megaphone className="h-4 w-4" strokeWidth={1.5} />}
+            onClick={() => openExternalUrl(WHATS_NEW_URL)}
+          />
+        </div>
       </div>
     </div>
   );
