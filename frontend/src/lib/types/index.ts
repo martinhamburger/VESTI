@@ -133,6 +133,12 @@ export interface ForceArchiveTransientResult {
 }
 
 export type PageId = "timeline" | "insights" | "data" | "settings";
+export type UiThemeMode = "light" | "dark";
+
+export interface UiSettings {
+  themeMode: UiThemeMode;
+}
+
 export type UiSemanticLayer = "app_shell" | "artifact_content";
 export type TypographySemantic = "ui_sans" | "reading_serif";
 export type VisualDensityMode = "guardrail_v1_1" | "target_v1_2";
@@ -153,7 +159,9 @@ export interface LlmConfig {
   maxTokens: number;
   updatedAt: number;
   mode?: LlmAccessMode;
+  proxyBaseUrl?: string;
   proxyUrl?: string;
+  proxyServiceToken?: string;
   gatewayLock?: "modelscope";
   customModelId?: string;
   streamMode?: StreamMode;

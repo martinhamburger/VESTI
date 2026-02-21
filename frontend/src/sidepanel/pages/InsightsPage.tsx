@@ -17,6 +17,7 @@ import {
   toChatSummaryData,
   toWeeklySummaryData,
 } from "~lib/services/insightAdapter";
+import { DisclosureSection } from "../components/DisclosureSection";
 import { PlatformTag } from "../components/PlatformTag";
 import { StructuredSummaryCard } from "../components/StructuredSummaryCard";
 import { StructuredWeeklyCard } from "../components/StructuredWeeklyCard";
@@ -151,121 +152,59 @@ export function InsightsPage({ conversation, refreshToken }: InsightsPageProps) 
         <h1 className="vesti-page-title text-text-primary">Insights</h1>
       </header>
 
-      <div className="flex flex-col gap-5 p-4">
-        <section>
-          <h2 className="mb-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary">
-            Conversation Summary
-          </h2>
+      <div className="flex flex-col gap-3 p-4">
+        <DisclosureSection
+          title="Conversation Summary"
+          description="Generate and review structured summaries for the active thread."
+        >
+          {!conversation && (
+            <p className="text-[13px] text-text-tertiary">
+              Select a conversation from Threads to generate a summary.
+            </p>
+          )}
 
-          <div className="rounded-[12px] border border-border-subtle bg-surface-card p-4">
-            {!conversation && (
-              <p className="text-[13px] text-text-tertiary">
-                Select a conversation from Timeline to generate a summary.
-              </p>
-            )}
-
-            {conversation && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-[15px] font-medium text-text-primary">
-                      {conversation.title}
-                    </p>
-                    <p className="text-[13px] text-text-tertiary">
-                      {conversation.message_count} messages · {turnCount} turns
-                    </p>
-                  </div>
-                  <PlatformTag platform={conversation.platform} />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleGenerateSummary}
-                  disabled={summaryStatus === "loading"}
-                  className="flex w-fit items-center gap-1 rounded-md border border-border-default bg-bg-primary px-3 py-1.5 text-[13px] font-medium text-text-primary transition-colors duration-200 hover:bg-surface-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {summaryStatus === "loading" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  )}
-                  {summary ? "Regenerate" : "Generate"}
-                </button>
-
-                <div className="min-h-[160px] rounded-md bg-bg-surface p-3">
-                  {summaryStatus === "loading" && !summaryData && (
-                    <div className="flex items-center gap-2 text-[13px] text-text-tertiary">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Analyzing conversation context...
-                    </div>
-                  )}
-
-                  {summaryStatus === "error" && (
-                    <div className="flex items-center gap-2 text-[13px] text-danger">
-                      <span>Failed to summarize. {summaryError}</span>
-                      <button
-                        type="button"
-                        onClick={handleGenerateSummary}
-                        className="text-[13px] text-text-secondary underline underline-offset-2"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  )}
-
-                  {!summaryData && summaryStatus !== "loading" && summaryStatus !== "error" && (
-                    <p className="text-[13px] text-text-tertiary">No summary yet.</p>
-                  )}
-
-                  {summaryData && <StructuredSummaryCard data={summaryData} />}
-                </div>
-
-                {summary && (
-                  <div className="text-[12px] text-text-tertiary">
-                    Model: {summary.modelId} · Generated: {formatDateTime(summary.createdAt)}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-2 flex items-center gap-1.5 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary">
-            <CalendarDays className="h-4 w-4" strokeWidth={1.75} />
-            Weekly Summary
-          </h2>
-
-          <div className="rounded-[12px] border border-border-subtle bg-surface-card p-4">
+          {conversation && (
             <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[15px] font-medium text-text-primary">
+                    {conversation.title}
+                  </p>
+                  <p className="text-[13px] text-text-tertiary">
+                    {conversation.message_count} messages · {turnCount} turns
+                  </p>
+                </div>
+                <PlatformTag platform={conversation.platform} />
+              </div>
+
               <button
                 type="button"
-                onClick={handleGenerateWeekly}
-                disabled={weeklyStatus === "loading"}
+                onClick={handleGenerateSummary}
+                disabled={summaryStatus === "loading"}
                 className="flex w-fit items-center gap-1 rounded-md border border-border-default bg-bg-primary px-3 py-1.5 text-[13px] font-medium text-text-primary transition-colors duration-200 hover:bg-surface-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {weeklyStatus === "loading" ? (
+                {summaryStatus === "loading" ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
                 )}
-                {weeklyReport ? "Regenerate" : "Generate"}
+                {summary ? "Regenerate" : "Generate"}
               </button>
 
               <div className="min-h-[160px] rounded-md bg-bg-surface p-3">
-                {weeklyStatus === "loading" && !weeklyData && (
+                {summaryStatus === "loading" && !summaryData && (
                   <div className="flex items-center gap-2 text-[13px] text-text-tertiary">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Analyzing weekly conversation context...
+                    Analyzing conversation context...
                   </div>
                 )}
 
-                {weeklyStatus === "error" && (
+                {summaryStatus === "error" && (
                   <div className="flex items-center gap-2 text-[13px] text-danger">
-                    <span>Failed to summarize. {weeklyError}</span>
+                    <span>Failed to summarize. {summaryError}</span>
                     <button
                       type="button"
-                      onClick={handleGenerateWeekly}
+                      onClick={handleGenerateSummary}
                       className="text-[13px] text-text-secondary underline underline-offset-2"
                     >
                       Retry
@@ -273,21 +212,87 @@ export function InsightsPage({ conversation, refreshToken }: InsightsPageProps) 
                   </div>
                 )}
 
-                {!weeklyData && weeklyStatus !== "loading" && weeklyStatus !== "error" && (
-                  <p className="text-[13px] text-text-tertiary">No weekly summary yet.</p>
-                )}
+                {!summaryData &&
+                  summaryStatus !== "loading" &&
+                  summaryStatus !== "error" && (
+                    <p className="text-[13px] text-text-tertiary">
+                      No summary yet.
+                    </p>
+                  )}
 
-                {weeklyData && <StructuredWeeklyCard data={weeklyData} />}
+                {summaryData && <StructuredSummaryCard data={summaryData} />}
               </div>
 
-              {weeklyReport && (
+              {summary && (
                 <div className="text-[12px] text-text-tertiary">
-                  Model: {weeklyReport.modelId} · Generated: {formatDateTime(weeklyReport.createdAt)}
+                  Model: {summary.modelId} · Generated:{" "}
+                  {formatDateTime(summary.createdAt)}
                 </div>
               )}
             </div>
+          )}
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Weekly Summary"
+          description="Review weekly highlights generated from the last seven days."
+          icon={<CalendarDays className="h-4 w-4" strokeWidth={1.75} />}
+        >
+          <div className="flex flex-col gap-4">
+            <button
+              type="button"
+              onClick={handleGenerateWeekly}
+              disabled={weeklyStatus === "loading"}
+              className="flex w-fit items-center gap-1 rounded-md border border-border-default bg-bg-primary px-3 py-1.5 text-[13px] font-medium text-text-primary transition-colors duration-200 hover:bg-surface-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {weeklyStatus === "loading" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+              )}
+              {weeklyReport ? "Regenerate" : "Generate"}
+            </button>
+
+            <div className="min-h-[160px] rounded-md bg-bg-surface p-3">
+              {weeklyStatus === "loading" && !weeklyData && (
+                <div className="flex items-center gap-2 text-[13px] text-text-tertiary">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Analyzing weekly conversation context...
+                </div>
+              )}
+
+              {weeklyStatus === "error" && (
+                <div className="flex items-center gap-2 text-[13px] text-danger">
+                  <span>Failed to summarize. {weeklyError}</span>
+                  <button
+                    type="button"
+                    onClick={handleGenerateWeekly}
+                    className="text-[13px] text-text-secondary underline underline-offset-2"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {!weeklyData &&
+                weeklyStatus !== "loading" &&
+                weeklyStatus !== "error" && (
+                  <p className="text-[13px] text-text-tertiary">
+                    No weekly summary yet.
+                  </p>
+                )}
+
+              {weeklyData && <StructuredWeeklyCard data={weeklyData} />}
+            </div>
+
+            {weeklyReport && (
+              <div className="text-[12px] text-text-tertiary">
+                Model: {weeklyReport.modelId} · Generated:{" "}
+                {formatDateTime(weeklyReport.createdAt)}
+              </div>
+            )}
           </div>
-        </section>
+        </DisclosureSection>
       </div>
     </div>
   );

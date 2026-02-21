@@ -1,5 +1,9 @@
 import type { LlmConfig } from "../types";
-import { buildDefaultLlmSettings, normalizeLlmSettings } from "./llmConfig";
+import {
+  buildDefaultLlmSettings,
+  needsProxySettingsBackfill,
+  normalizeLlmSettings,
+} from "./llmConfig";
 
 const STORAGE_KEY = "vesti_llm_settings";
 
@@ -26,7 +30,13 @@ export async function getLlmSettings(): Promise<LlmConfig | null> {
         return;
       }
 
-      resolve(normalizeLlmSettings(raw));
+      const normalized = normalizeLlmSettings(raw);
+      if (needsProxySettingsBackfill(raw)) {
+        storage.set({ [STORAGE_KEY]: normalized }, () => {
+          void chrome.runtime?.lastError;
+        });
+      }
+      resolve(normalized);
     });
   });
 }

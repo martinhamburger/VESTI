@@ -6,8 +6,10 @@ import {
   EyeOff,
   FolderGit2,
   Loader2,
-  ShieldCheck,
+  Moon,
   Sparkles,
+  ShieldCheck,
+  Sun,
 } from "lucide-react";
 import type {
   ActiveCaptureStatus,
@@ -15,6 +17,7 @@ import type {
   CaptureMode,
   CaptureSettings,
   LlmConfig,
+  UiThemeMode,
 } from "~lib/types";
 import {
   DEFAULT_CAPTURE_SETTINGS,
@@ -23,13 +26,20 @@ import {
 } from "~lib/services/captureSettingsService";
 import {
   DEFAULT_BACKUP_MODEL,
+  DEFAULT_PROXY_BASE_URL,
   DEFAULT_PROXY_URL,
   DEFAULT_STABLE_MODEL,
   MODELSCOPE_BASE_URL,
   buildDefaultLlmSettings,
+  getProxyRouteUrl,
   getLlmAccessMode,
   normalizeLlmSettings,
 } from "~lib/services/llmConfig";
+import {
+  applyUiTheme,
+  getUiSettings,
+  setUiThemeMode,
+} from "~lib/services/uiSettingsService";
 import {
   forceArchiveTransient,
   getActiveCaptureStatus,
@@ -37,6 +47,7 @@ import {
   setLlmSettings,
   testLlmConnection,
 } from "~lib/services/storageService";
+import { DisclosureSection } from "../components/DisclosureSection";
 
 const MODEL_OPTIONS = [DEFAULT_STABLE_MODEL, DEFAULT_BACKUP_MODEL];
 const MIN_TURNS_DEFAULT = DEFAULT_CAPTURE_SETTINGS.smartConfig.minTurns;
@@ -144,7 +155,10 @@ function resolveSettingsForMode(settings: LlmConfig): LlmConfig {
       ...next,
       mode,
       modelId: DEFAULT_STABLE_MODEL,
+      proxyBaseUrl:
+        (next.proxyBaseUrl || next.proxyUrl || "").trim() || DEFAULT_PROXY_BASE_URL,
       proxyUrl: DEFAULT_PROXY_URL,
+      proxyServiceToken: (next.proxyServiceToken || "").trim(),
       thinkHandlingPolicy: next.thinkHandlingPolicy ?? "strip",
     });
   }
@@ -187,11 +201,16 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
     messageCount: number;
     time: number;
   } | null>(null);
+  const [themeMode, setThemeMode] = useState<UiThemeMode>("light");
+  const [themeStatus, setThemeStatus] = useState<AsyncStatus>("idle");
+  const [themeMessage, setThemeMessage] = useState<string | null>(null);
 
   const mode = getLlmAccessMode(llmSettings);
   const isCustomMode = mode === "custom_byok";
   const isSmartMode = captureSettings.mode === "smart";
   const isManualMode = captureSettings.mode === "manual";
+  const demoProxyChatUrl = getProxyRouteUrl(llmSettings, "chat");
+  const demoProxyEmbeddingsUrl = getProxyRouteUrl(llmSettings, "embeddings");
   const archiveMode = activeCaptureStatus?.mode;
   const canArchiveByMode = archiveMode === "smart" || archiveMode === "manual";
   const canArchiveNow =
@@ -237,6 +256,18 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
       .catch((error) => {
         setCaptureStatus("error");
         setCaptureMessage(getErrorMessage(error));
+      });
+  }, []);
+
+  useEffect(() => {
+    getUiSettings()
+      .then((settings) => {
+        setThemeMode(settings.themeMode);
+        applyUiTheme(settings.themeMode);
+      })
+      .catch((error) => {
+        setThemeStatus("error");
+        setThemeMessage(getErrorMessage(error));
       });
   }, []);
 
@@ -382,19 +413,84 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
     }
   };
 
+  const handleToggleThemeMode = async () => {
+    const previous = themeMode;
+    const next: UiThemeMode = previous === "dark" ? "light" : "dark";
+
+    setThemeMode(next);
+    applyUiTheme(next);
+    setThemeStatus("loading");
+    setThemeMessage(null);
+
+    try {
+      const saved = await setUiThemeMode(next);
+      setThemeMode(saved.themeMode);
+      applyUiTheme(saved.themeMode);
+      setThemeStatus("ready");
+      setThemeMessage(
+        saved.themeMode === "dark"
+          ? "Dark mode enabled."
+          : "Light mode enabled."
+      );
+    } catch (error) {
+      setThemeMode(previous);
+      applyUiTheme(previous);
+      setThemeStatus("error");
+      setThemeMessage(getErrorMessage(error));
+    }
+  };
+
   return (
     <div className="vesti-shell flex h-full flex-col overflow-y-auto vesti-scroll bg-bg-app">
       <header className="flex h-8 shrink-0 items-center px-4">
         <h1 className="vesti-page-title text-text-primary">Settings</h1>
       </header>
 
-      <div className="flex flex-col gap-4 p-4">
-        <section>
-          <h2 className="mb-2 flex items-center gap-1.5 text-vesti-sm font-medium text-text-secondary">
-            <Sparkles className="h-4 w-4" strokeWidth={1.75} />
-            Model Access
-          </h2>
+      <div className="flex flex-col gap-3 p-4">
+        <DisclosureSection
+          title="Appearance"
+          description="Switch between original light and minimalist dark theme presets."
+          icon={themeMode === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+        >
+          <div className="grid gap-3">
+            <div className="flex items-center justify-between gap-4 rounded-md border border-border-subtle bg-bg-surface-hover px-3 py-2">
+              <div className="flex min-w-0 flex-col">
+                <span className="text-[15px] font-medium text-text-primary">
+                  Dark Mode
+                </span>
+                <span className="mt-0.5 text-[13px] leading-[1.45] text-text-secondary">
+                  Apply the minimalist dark palette to non-Threads surfaces.
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={themeMode === "dark"}
+                onClick={handleToggleThemeMode}
+                data-state={themeMode === "dark" ? "checked" : "unchecked"}
+                className="settings-switch focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+              >
+                <span className="settings-switch-thumb" />
+              </button>
+            </div>
 
+            {(themeStatus === "loading" || themeMessage) && (
+              <p
+                className={`text-[12px] ${
+                  themeStatus === "error" ? "text-danger" : "text-text-secondary"
+                }`}
+              >
+                {themeStatus === "loading" ? "Applying theme..." : themeMessage}
+              </p>
+            )}
+          </div>
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Model Access"
+          description="Model scope mode and BYOK credentials."
+          icon={<Sparkles className="h-4 w-4" strokeWidth={1.75} />}
+        >
           <div className="card-shadow-warm rounded-card border border-border-subtle bg-bg-surface p-4">
             <div className="grid gap-3">
               <div className="flex items-center justify-between gap-4 rounded-md border border-border-subtle bg-bg-surface-hover px-3 py-2">
@@ -422,7 +518,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
 
               {!isCustomMode ? (
                 <div className="grid gap-3 rounded-md border border-border-subtle bg-bg-surface-hover p-3">
-                  <div className="inline-flex w-fit items-center rounded-md border border-border-subtle bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-text-primary">
+                  <div className="inline-flex w-fit items-center rounded-md border border-border-subtle bg-bg-primary/70 px-2 py-0.5 text-[10px] font-semibold text-text-primary">
                     Demo Channel Active
                   </div>
                   <p className="text-[13px] leading-[1.45] text-text-secondary">
@@ -431,11 +527,61 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                   <p className="text-[13px] leading-[1.45] text-text-secondary">
                     Backup model: {DEFAULT_BACKUP_MODEL} (auto failover on timeout/429/5xx)
                   </p>
+                  <div className="grid gap-1">
+                    <label className="text-[11px] text-text-tertiary">
+                      Proxy Base URL
+                    </label>
+                    <input
+                      type="text"
+                      value={llmSettings.proxyBaseUrl ?? DEFAULT_PROXY_BASE_URL}
+                      onChange={(event) =>
+                        setLlmSettingsState((prev) =>
+                          normalizeLlmSettings({
+                            ...prev,
+                            proxyBaseUrl: event.target.value,
+                          })
+                        )
+                      }
+                      className="settings-input"
+                      placeholder="http://127.0.0.1:3000/api"
+                    />
+                  </div>
+
+                  <div className="grid gap-1">
+                    <label className="text-[11px] text-text-tertiary">
+                      Proxy Service Token (optional)
+                    </label>
+                    <input
+                      type="password"
+                      value={llmSettings.proxyServiceToken ?? ""}
+                      onChange={(event) =>
+                        setLlmSettingsState((prev) =>
+                          normalizeLlmSettings({
+                            ...prev,
+                            proxyServiceToken: event.target.value,
+                          })
+                        )
+                      }
+                      className="settings-input"
+                      placeholder="local-proxy-token"
+                    />
+                  </div>
+
                   <p className="text-[11px] text-text-tertiary">
-                    Gateway locked to modelscope.cn | Route: Proxy ({DEFAULT_PROXY_URL})
+                    Gateway locked to modelscope.cn | Chat: {demoProxyChatUrl}
+                  </p>
+                  <p className="text-[11px] text-text-tertiary">
+                    Embeddings route: {demoProxyEmbeddingsUrl}
                   </p>
 
-                  <div className="flex items-center gap-2">
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      className="rounded-md border border-text-primary bg-text-primary px-4 py-2 text-[13px] font-medium text-text-inverse transition-colors duration-200 hover:bg-accent-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                    >
+                      Save
+                    </button>
                     <button
                       type="button"
                       onClick={handleTest}
@@ -503,7 +649,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                       <button
                         type="button"
                         onClick={() => setShowApiKey((prev) => !prev)}
-                        className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-text-tertiary transition-colors duration-200 hover:bg-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                        className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-text-tertiary transition-colors duration-200 hover:bg-bg-primary/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                         aria-label="Toggle visibility"
                       >
                         {showApiKey ? (
@@ -530,7 +676,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                     <button
                       type="button"
                       onClick={handleSave}
-                      className="rounded-md border border-text-primary bg-text-primary px-4 py-2 text-[13px] font-medium text-white transition-colors duration-200 hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                      className="rounded-md border border-text-primary bg-text-primary px-4 py-2 text-[13px] font-medium text-text-inverse transition-colors duration-200 hover:bg-accent-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                     >
                       Save
                     </button>
@@ -554,14 +700,13 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
               )}
             </div>
           </div>
-        </section>
+        </DisclosureSection>
 
-        <section>
-          <h2 className="mb-2 flex items-center gap-1.5 text-vesti-sm font-medium text-text-secondary">
-            <ShieldCheck className="h-4 w-4" strokeWidth={1.75} />
-            Capture Engine
-          </h2>
-
+        <DisclosureSection
+          title="Capture Engine"
+          description="Mode controls, active thread status, and archive operations."
+          icon={<ShieldCheck className="h-4 w-4" strokeWidth={1.75} />}
+        >
           <div className="card-shadow-warm rounded-card border border-border-subtle bg-bg-surface p-4">
             <div className="grid gap-3">
               <div className="grid gap-2" role="radiogroup" aria-label="Capture Mode">
@@ -570,8 +715,8 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                     key={option.value}
                     className={`cursor-pointer rounded-md border px-3 py-2 transition-colors duration-200 ${
                       captureSettings.mode === option.value
-                        ? "border-text-primary bg-white/70"
-                        : "border-border-subtle bg-bg-surface-hover hover:bg-white/60"
+                        ? "border-text-primary bg-bg-primary/70"
+                        : "border-border-subtle bg-bg-surface-hover hover:bg-bg-primary/65"
                     }`}
                   >
                     <span className="flex items-start gap-2">
@@ -717,7 +862,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                 <button
                   type="button"
                   onClick={handleSaveCaptureSettings}
-                  className="rounded-md border border-text-primary bg-text-primary px-4 py-2 text-[13px] font-medium text-white transition-colors duration-200 hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                  className="rounded-md border border-text-primary bg-text-primary px-4 py-2 text-[13px] font-medium text-text-inverse transition-colors duration-200 hover:bg-accent-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                 >
                   Save Capture Settings
                 </button>
@@ -739,14 +884,13 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
               </div>
             </div>
           </div>
-        </section>
+        </DisclosureSection>
 
-        <section>
-          <h2 className="mb-2 flex items-center gap-1.5 text-vesti-sm font-medium text-text-secondary">
-            <FolderGit2 className="h-4 w-4" strokeWidth={1.75} />
-            Data Management
-          </h2>
-
+        <DisclosureSection
+          title="Data Management"
+          description="Navigate to storage tools, exports, and cleanup controls."
+          icon={<FolderGit2 className="h-4 w-4" strokeWidth={1.75} />}
+        >
           <div className="card-shadow-warm rounded-card border border-border-subtle bg-bg-surface p-4">
             <div className="rounded-md border border-border-subtle bg-bg-surface-hover p-3">
               <p className="text-[13px] font-medium text-text-primary">
@@ -759,14 +903,19 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
               <button
                 type="button"
                 onClick={onNavigateToData}
-                className="mt-3 inline-flex items-center gap-1 rounded-md border border-text-primary bg-text-primary px-3 py-1.5 text-[12px] font-medium text-white transition-colors duration-200 hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                disabled={!onNavigateToData}
+                className={`mt-3 inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
+                  onNavigateToData
+                    ? "border-text-primary bg-text-primary text-text-inverse hover:bg-accent-primary-hover"
+                    : "border-border-default bg-bg-surface text-text-tertiary"
+                }`}
               >
                 Open Data Management
                 <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.75} />
               </button>
             </div>
           </div>
-        </section>
+        </DisclosureSection>
       </div>
     </div>
   );

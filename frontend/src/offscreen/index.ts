@@ -31,7 +31,7 @@ function requireSettings(settings: LlmConfig | null): LlmConfig {
   const normalized = normalizeLlmSettings(settings);
   const mode = getLlmAccessMode(normalized);
   if (mode === "demo_proxy") {
-    if (!normalized.proxyUrl || !normalized.modelId) {
+    if ((!normalized.proxyBaseUrl && !normalized.proxyUrl) || !normalized.modelId) {
       throw new Error("LLM_CONFIG_MISSING");
     }
     return normalized;

@@ -23,3 +23,4 @@ Owner: Frontend + UI Design + QA
 - v1.5 is reserved for floating capsule upgrade (`documents/floating_capsule/*`).
 - Cross-version dependencies must reference `documents/capture_engine/*`.
 - IA decisions in v1.4 must use `v1_4_information_architecture_contract.md` as source of truth.
+- Extension sans fonts are local-only (`frontend/public/fonts/*`), built via `scripts/build-ui-fonts.ps1`.

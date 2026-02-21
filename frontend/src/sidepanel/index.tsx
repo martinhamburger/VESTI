@@ -1,5 +1,6 @@
 import "~style.css";
 import { VestiSidepanel } from "./VestiSidepanel";
+import { initializeUiTheme } from "~lib/services/uiSettingsService";
 
 const FONT_ASSETS = [
   {
@@ -89,5 +90,8 @@ function initializeVestiFontAssets(): void {
 }
 
 initializeVestiFontAssets();
+void initializeUiTheme().catch(() => {
+  // Ignore theme initialization failures and keep default light tokens.
+});
 
 export default VestiSidepanel;

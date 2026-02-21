@@ -51,6 +51,7 @@ Rules:
    - body text
    - metadata text
 4. Platform tag colors must keep six-platform mapping unchanged.
+5. Sans UI font must load from local bundle (`Vesti Sans UI`) with unicode split (Lexend for Latin, Source Han Sans SC for CJK), not external CDN.
 
 ---
 

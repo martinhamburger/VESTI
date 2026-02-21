@@ -6,9 +6,9 @@ import type {
 } from "../types";
 import { logger } from "../utils/logger";
 import {
-  DEFAULT_PROXY_URL,
   getEffectiveModelId,
   getLlmAccessMode,
+  getProxyRouteUrl,
 } from "./llmConfig";
 
 const SYSTEM_PROMPT = "You are a careful technical summarization assistant.";
@@ -71,8 +71,8 @@ function ensureModelScopeConfig(config: LlmConfig): void {
 }
 
 function ensureProxyConfig(config: LlmConfig): void {
-  if (!config.proxyUrl?.trim()) {
-    throw new Error("LLM_CONFIG_MISSING:PROXY_URL");
+  if (!config.proxyBaseUrl?.trim() && !config.proxyUrl?.trim()) {
+    throw new Error("LLM_CONFIG_MISSING:PROXY_BASE_URL");
   }
   if (!getEffectiveModelId(config)) {
     throw new Error("LLM_CONFIG_MISSING:MODEL_ID");
@@ -202,14 +202,21 @@ async function requestProxyService(
     reason: "not_requested",
   }
 ): Promise<Response> {
-  const url = (config.proxyUrl || DEFAULT_PROXY_URL).trim();
+  const url = getProxyRouteUrl(config, "chat");
+  const serviceToken = (config.proxyServiceToken || "").trim();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (serviceToken) {
+    headers["x-vesti-service-token"] = serviceToken;
+  }
+
   const payload = buildPayload(config, messages, responseFormat, streamDecision);
 
   return fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 }

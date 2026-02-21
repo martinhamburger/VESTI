@@ -17,6 +17,7 @@
 5. Settings toggle/input/button are refined to match warm shell semantics and interaction quality.
 6. Data Management is promoted to an independent Dock entry (`Data`), while Settings keeps only an entry card.
 7. Toggle geometry is corrected with Y-axis center-lock to remove thumb downward drift/jitter.
+8. v2.0 proxy contract adds embeddings route (`POST /api/embeddings`) and `proxyBaseUrl` config.
 
 ---
 
@@ -204,14 +205,15 @@ Assignment:
 ### 9.2 Demo proxy linkage
 
 1. Endpoint: `POST /api/chat` (Node runtime).
-2. Model path: `DS14 -> Qwen3-14B` with at most one retry.
-3. Retry trigger only on network/timeout/429/5xx.
-4. Diagnostics: `x-request-id`, `x-proxy-model-used`, `x-proxy-attempt`.
+2. Embedding endpoint: `POST /api/embeddings` (DashScope OpenAI-compatible upstream).
+3. Model path: `DS14 -> Qwen3-14B` with at most one retry.
+4. Retry trigger only on network/timeout/429/5xx.
+5. Diagnostics: `x-request-id`, `x-proxy-model-used`, `x-proxy-attempt`.
 
 ### 9.3 Frontend route constraints
 
 1. Demo defaults to DS14; legacy demo model IDs lazily normalize.
-2. Settings must show primary/backup route and gateway lock (`modelscope.cn`).
+2. Settings must show primary/backup route, `proxyBaseUrl`, and gateway lock (`modelscope.cn`).
 3. BYOK remains direct-to-ModelScope.
 
 ---

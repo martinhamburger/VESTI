@@ -18,6 +18,8 @@
 5. App fallback chain remains `json_mode -> prompt_json -> fallback_text`, and empty `json_mode` content degrades to `prompt_json`.
 6. Weekly scope remains `Weekly Lite` (7-day recap only, no long-horizon claims).
 7. Settings remains `app_shell` semantics and must stay sans-first even under Warm Paper theme.
+8. Proxy contract adds `POST /api/embeddings` (DashScope OpenAI-compatible upstream).
+9. Frontend proxy config upgrades to `proxyBaseUrl` with legacy `proxyUrl` auto-migration.
 
 ---
 
@@ -60,6 +62,7 @@
 ### 1.3 Endpoint standardization
 
 - Standard proxy endpoint: `POST /api/chat`
+- Embedding proxy endpoint: `POST /api/embeddings`
 - Deprecated path `/api/vesti/chat` is out of RFC scope.
 
 ---
@@ -130,6 +133,17 @@ Non-retryable:
    - `x-proxy-attempt`
 3. Successful HTTP exchange returns upstream status/body transparently.
 
+### 3.5 Embedding route contract (`/api/embeddings`)
+
+1. Upstream endpoint: `https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings`.
+2. Request format: OpenAI-compatible (`model`, `input`, optional `encoding_format`).
+3. Validate input before upstream call:
+   - empty input => 400
+   - batch overflow => 413
+   - single text too long => 422
+4. Return structured error payload with `requestId` and `upstreamStatus` on upstream failure.
+5. Apply the same CORS/security policy as `/api/chat` (origin allowlist + service token).
+
 ---
 
 ## 4. Frontend Binding Contract
@@ -138,7 +152,10 @@ Non-retryable:
 
 - `DEFAULT_STABLE_MODEL = deepseek-ai/DeepSeek-R1-Distill-Qwen-14B`
 - `DEFAULT_BACKUP_MODEL = Qwen/Qwen3-14B`
-- `DEFAULT_PROXY_URL = https://vesti-proxy.vercel.app/api/chat`
+- `DEFAULT_PROXY_BASE_URL = https://vesti-proxy.vercel.app/api`
+- `chat route = ${proxyBaseUrl}/chat`
+- `embeddings route = ${proxyBaseUrl}/embeddings`
+- Legacy `proxyUrl` is read-only compatibility field and auto-migrates to `proxyBaseUrl`.
 
 ### 4.2 Demo normalize behavior
 

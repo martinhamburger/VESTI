@@ -15,7 +15,7 @@ const DOCK_ITEMS_TOP: DockItem[] = [
   {
     id: "timeline",
     icon: <Home className="h-5 w-5" strokeWidth={1.75} />,
-    label: "Timeline",
+    label: "Threads",
   },
   {
     id: "insights",
@@ -46,11 +46,11 @@ export function Dock({ currentPage, onNavigate }: DockProps) {
   return (
     <nav
       aria-label="Vesti navigation"
-      className="flex w-12 flex-col items-center justify-between border-l border-border-subtle bg-bg-sidebar py-3"
+      className="flex w-16 flex-col items-center justify-between border-l border-border-subtle bg-bg-sidebar px-2 py-4"
     >
-      <div className="flex flex-col items-center gap-1">
-        <div className="mb-2 flex items-center justify-center">
-          <img src={LOGO_BASE64} alt="Vesti" width={24} height={24} />
+      <div className="flex flex-col items-center gap-2">
+        <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg border border-border-subtle bg-bg-primary/70">
+          <img src={LOGO_BASE64} alt="Vesti" width={20} height={20} />
         </div>
         {DOCK_ITEMS_TOP.map((item) => (
           <DockButton
@@ -62,7 +62,7 @@ export function Dock({ currentPage, onNavigate }: DockProps) {
         ))}
       </div>
 
-      <div className="flex flex-col items-center gap-1">
+      <div className="flex flex-col items-center gap-2">
         {DOCK_ITEMS_BOTTOM.map((item) => (
           <DockButton
             key={item.id}
@@ -91,10 +91,10 @@ function DockButton({
       aria-label={item.label}
       aria-current={isActive ? "page" : undefined}
       onClick={onClick}
-      className={`flex h-9 w-9 items-center justify-center rounded-sm transition-colors [transition-duration:120ms] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
+      className={`flex h-10 w-10 items-center justify-center rounded-lg border transition-colors [transition-duration:140ms] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
         isActive
-          ? "bg-accent-primary-light text-accent-primary"
-          : "text-text-secondary hover:bg-accent-primary-light hover:text-accent-primary"
+          ? "border-border-default bg-accent-primary-light text-accent-primary"
+          : "border-transparent text-text-secondary hover:border-border-subtle hover:bg-accent-primary-light hover:text-accent-primary"
       }`}
     >
       {item.icon}

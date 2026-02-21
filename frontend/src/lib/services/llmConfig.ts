@@ -5,9 +5,13 @@ import type {
 } from "../types";
 
 export const MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1/";
-export const DEFAULT_PROXY_URL = "https://vesti-proxy.vercel.app/api/chat";
+export const DEFAULT_PROXY_BASE_URL = "https://vesti-proxy.vercel.app/api";
+export const DEFAULT_PROXY_URL = `${DEFAULT_PROXY_BASE_URL}/chat`;
+export const DEFAULT_PROXY_EMBEDDINGS_URL = `${DEFAULT_PROXY_BASE_URL}/embeddings`;
 export const DEFAULT_STABLE_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B";
 export const DEFAULT_BACKUP_MODEL = "Qwen/Qwen3-14B";
+
+export type ProxyRoute = "chat" | "embeddings";
 
 function normalizeMode(mode: LlmAccessMode | undefined): LlmAccessMode {
   return mode === "custom_byok" ? "custom_byok" : "demo_proxy";
@@ -22,6 +26,66 @@ function normalizeThinkPolicy(
   return "strip";
 }
 
+function trimSlashes(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function normalizeProxyBaseCandidate(value: string | undefined): string {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw);
+    parsed.search = "";
+    parsed.hash = "";
+    parsed.pathname = parsed.pathname
+      .replace(/\/+$/, "")
+      .replace(/\/(chat|embeddings)$/i, "");
+    return trimSlashes(`${parsed.origin}${parsed.pathname}`);
+  } catch {
+    return trimSlashes(raw).replace(/\/(chat|embeddings)$/i, "");
+  }
+}
+
+function resolveProxyBaseUrl(
+  settings: Pick<LlmConfig, "proxyBaseUrl" | "proxyUrl">
+): string {
+  const explicit = normalizeProxyBaseCandidate(settings.proxyBaseUrl);
+  if (explicit) return explicit;
+
+  const legacy = normalizeProxyBaseCandidate(settings.proxyUrl);
+  if (legacy) return legacy;
+
+  return DEFAULT_PROXY_BASE_URL;
+}
+
+function buildProxyRouteUrl(baseUrl: string, route: ProxyRoute): string {
+  return `${trimSlashes(baseUrl)}/${route}`;
+}
+
+export function getProxyBaseUrl(settings: Pick<LlmConfig, "proxyBaseUrl" | "proxyUrl">): string {
+  return resolveProxyBaseUrl(settings);
+}
+
+export function getProxyRouteUrl(
+  settings: Pick<LlmConfig, "proxyBaseUrl" | "proxyUrl">,
+  route: ProxyRoute
+): string {
+  const baseUrl = getProxyBaseUrl(settings);
+  return buildProxyRouteUrl(baseUrl, route);
+}
+
+export function needsProxySettingsBackfill(
+  settings: Pick<LlmConfig, "proxyBaseUrl" | "proxyUrl">
+): boolean {
+  const normalizedBase = getProxyBaseUrl(settings);
+  const normalizedChat = getProxyRouteUrl(settings, "chat");
+  const rawBase = (settings.proxyBaseUrl || "").trim();
+  const rawChat = (settings.proxyUrl || "").trim();
+
+  return rawBase !== normalizedBase || rawChat !== normalizedChat;
+}
+
 export function buildDefaultLlmSettings(now = Date.now()): LlmConfig {
   return {
     provider: "modelscope",
@@ -32,7 +96,9 @@ export function buildDefaultLlmSettings(now = Date.now()): LlmConfig {
     maxTokens: 800,
     updatedAt: now,
     mode: "demo_proxy",
+    proxyBaseUrl: DEFAULT_PROXY_BASE_URL,
     proxyUrl: DEFAULT_PROXY_URL,
+    proxyServiceToken: "",
     gatewayLock: "modelscope",
     customModelId: DEFAULT_STABLE_MODEL,
     streamMode: "off",
@@ -54,6 +120,9 @@ export function normalizeLlmSettings(
   const modelId = (settings.modelId || "").trim() || DEFAULT_STABLE_MODEL;
   const customModelId =
     (settings.customModelId || "").trim() || modelId || DEFAULT_STABLE_MODEL;
+  const proxyBaseUrl = getProxyBaseUrl(settings);
+  const proxyUrl = getProxyRouteUrl({ proxyBaseUrl, proxyUrl: settings.proxyUrl }, "chat");
+  const proxyServiceToken = (settings.proxyServiceToken || "").trim();
 
   if (mode === "demo_proxy") {
     return {
@@ -63,7 +132,9 @@ export function normalizeLlmSettings(
       baseUrl: MODELSCOPE_BASE_URL,
       modelId: DEFAULT_STABLE_MODEL,
       mode,
-      proxyUrl: (settings.proxyUrl || "").trim() || DEFAULT_PROXY_URL,
+      proxyBaseUrl,
+      proxyUrl,
+      proxyServiceToken,
       gatewayLock: "modelscope",
       customModelId: DEFAULT_STABLE_MODEL,
       streamMode: settings.streamMode === "on" ? "on" : "off",
@@ -86,7 +157,9 @@ export function normalizeLlmSettings(
     baseUrl: MODELSCOPE_BASE_URL,
     modelId,
     mode,
-    proxyUrl: (settings.proxyUrl || "").trim() || DEFAULT_PROXY_URL,
+    proxyBaseUrl,
+    proxyUrl,
+    proxyServiceToken,
     gatewayLock: "modelscope",
     customModelId,
     streamMode: settings.streamMode === "on" ? "on" : "off",

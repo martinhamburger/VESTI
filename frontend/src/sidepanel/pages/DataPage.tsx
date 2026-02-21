@@ -1,4 +1,5 @@
 import { DataManagementPanel } from "../components/DataManagementPanel";
+import { DisclosureSection } from "../components/DisclosureSection";
 
 export function DataPage() {
   return (
@@ -7,8 +8,13 @@ export function DataPage() {
         <h1 className="vesti-page-title text-text-primary">Data</h1>
       </header>
 
-      <div className="p-4">
-        <DataManagementPanel />
+      <div className="flex flex-col gap-3 p-4">
+        <DisclosureSection
+          title="Data Operations"
+          description="Storage usage, exports, and local cleanup controls."
+        >
+          <DataManagementPanel />
+        </DisclosureSection>
       </div>
     </div>
   );
