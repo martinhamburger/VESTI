@@ -6,6 +6,8 @@
 
 - `skills/markdown-writing/SKILL.md` — Markdown/README 排版与编码 SOP（保留原文、结构化分段、徽章/表格规范、UTF-8 BOM）
 
+- `skills/ui-prototype-sidepanel/SKILL.md` — Prototype-driven sidepanel UI refactor SOP（state machine first、可复用设计单元架构、质量门禁）
+
 > agent.md 仅保留核心原则，部门法/流程细则统一放在 skills/ 目录。
 > Constitutional boundary: `agent.md` defines stable architecture/quality constraints, while `skills/` hosts fast-iterating task SOPs. If conflicts appear, `agent.md` takes precedence.
 
