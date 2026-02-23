@@ -1,6 +1,8 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Copy, Check, ChevronDown } from "lucide-react";
 import type { Message, Platform } from "~lib/types";
+import type { AstRoot } from "~lib/types/ast";
+import { AstMessageRenderer } from "./AstMessageRenderer";
 
 const COLLAPSE_THRESHOLD = 500;
 
@@ -16,6 +18,11 @@ export function MessageBubble({ message, platform }: MessageBubbleProps) {
   const isLong = message.content_text.length > COLLAPSE_THRESHOLD;
   const shouldCollapse = isLong && !isExpanded;
   const isAi = message.role === "ai";
+  const hasAst =
+    message.content_ast_version === "ast_v1" &&
+    !!message.content_ast &&
+    message.content_ast.type === "root" &&
+    message.content_ast.children.length > 0;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content_text).catch(() => {});
@@ -38,7 +45,7 @@ export function MessageBubble({ message, platform }: MessageBubbleProps) {
           type="button"
           aria-label="Copy message"
           onClick={handleCopy}
-              className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-sm text-text-tertiary opacity-0 pointer-events-none transition-[opacity,colors] [transition-duration:120ms] hover:bg-accent-primary-light hover:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-sm text-text-tertiary opacity-0 pointer-events-none transition-[opacity,colors] [transition-duration:120ms] hover:bg-accent-primary-light hover:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
         >
           {copied ? (
             <Check className="h-3.5 w-3.5 text-success" strokeWidth={1.75} />
@@ -52,8 +59,12 @@ export function MessageBubble({ message, platform }: MessageBubbleProps) {
             shouldCollapse ? "max-h-[200px]" : "max-h-[100000px]"
           }`}
         >
-          <div className="whitespace-pre-wrap text-vesti-lg leading-[1.7] text-text-primary font-serif">
-            {renderContent(message.content_text)}
+          <div className="text-vesti-lg leading-[1.7] text-text-primary font-serif">
+            {hasAst ? (
+              <AstMessageRenderer root={message.content_ast as AstRoot} />
+            ) : (
+              <div className="whitespace-pre-wrap">{renderContent(message.content_text)}</div>
+            )}
           </div>
 
           {shouldCollapse && (
@@ -65,7 +76,7 @@ export function MessageBubble({ message, platform }: MessageBubbleProps) {
           <button
             type="button"
             onClick={() => setIsExpanded(true)}
-          className="mt-1 flex items-center gap-1 text-vesti-sm font-medium text-accent-primary transition-colors [transition-duration:120ms] hover:text-accent-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+            className="mt-1 flex items-center gap-1 text-vesti-sm font-medium text-accent-primary transition-colors [transition-duration:120ms] hover:text-accent-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
           >
             Expand
             <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.75} />

@@ -2273,3 +2273,208 @@
 .heatmap-l4 {
   background-color: hsl(var(--heatmap-4, 120 40% 30%));
 }
+
+.reader-ast-content {
+  color: hsl(var(--text-primary));
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.reader-ast-content p {
+  margin-bottom: 10px;
+}
+
+.reader-ast-content p:last-child {
+  margin-bottom: 0;
+}
+
+.reader-ast-content h1,
+.reader-ast-content h2,
+.reader-ast-content h3 {
+  margin: 14px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid hsl(var(--border-subtle));
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.reader-ast-content h1 {
+  font-size: 15px;
+}
+
+.reader-ast-content h2 {
+  font-size: 14px;
+}
+
+.reader-ast-content h3 {
+  font-size: 13px;
+}
+
+.reader-ast-content strong {
+  font-weight: 700;
+}
+
+.reader-ast-content em {
+  color: hsl(var(--text-secondary));
+  font-style: italic;
+}
+
+.reader-ast-inline-code {
+  margin: 0 2px;
+  border-radius: 4px;
+  background-color: hsl(var(--bg-secondary));
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--text-primary));
+}
+
+.reader-ast-code-block {
+  margin: 10px 0;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border-subtle));
+  background-color: hsl(var(--bg-secondary));
+}
+
+.reader-ast-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid hsl(var(--border-subtle));
+  padding: 6px 10px;
+}
+
+.reader-ast-code-lang {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--text-tertiary));
+}
+
+.reader-ast-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  color: hsl(var(--text-secondary));
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.reader-ast-code-copy:hover {
+  background-color: hsl(var(--accent-primary-light));
+  color: hsl(var(--accent-primary));
+}
+
+.reader-ast-code-copy:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--accent-primary-light));
+}
+
+.reader-ast-code-pre {
+  overflow-x: auto;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: hsl(var(--text-primary));
+  white-space: pre;
+}
+
+.reader-ast-list {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
+
+.reader-ast-list li {
+  margin-bottom: 4px;
+}
+
+.reader-ast-list-ul li {
+  list-style: disc;
+}
+
+.reader-ast-list-ol li {
+  list-style: decimal;
+}
+
+.reader-ast-blockquote {
+  margin: 8px 0;
+  border-left: 3px solid hsl(var(--accent-primary-muted));
+  padding-left: 10px;
+  color: hsl(var(--text-secondary));
+  font-style: italic;
+}
+
+.reader-ast-table-wrap {
+  margin: 10px 0;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border-subtle));
+}
+
+.reader-ast-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.reader-ast-table th {
+  border-bottom: 1px solid hsl(var(--border-subtle));
+  background-color: hsl(var(--bg-secondary));
+  padding: 7px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: hsl(var(--text-primary));
+}
+
+.reader-ast-table td {
+  border-bottom: 1px solid hsl(var(--border-subtle));
+  padding: 6px 10px;
+  color: hsl(var(--text-secondary));
+}
+
+.reader-ast-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.reader-ast-math-inline {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 2px;
+  color: hsl(var(--text-primary));
+}
+
+.reader-ast-math-block {
+  display: block;
+  margin: 10px 0;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border-subtle));
+  background-color: hsl(var(--bg-secondary));
+  padding: 10px 12px;
+  text-align: center;
+  color: hsl(var(--text-primary));
+}
+
+.reader-ast-math-fallback {
+  color: hsl(var(--text-secondary));
+  font-family: var(--font-mono);
+}
+
+.reader-ast-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 4px 4px 0;
+  border-radius: 7px;
+  border: 1px solid hsl(var(--border-subtle));
+  background-color: hsl(var(--bg-secondary));
+  padding: 4px 9px;
+  font-size: 11.5px;
+  color: hsl(var(--text-secondary));
+}
