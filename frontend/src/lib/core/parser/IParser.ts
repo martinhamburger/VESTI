@@ -1,8 +1,12 @@
-﻿import type { Platform } from "../../types";
+import type { Platform } from "../../types";
+import type { AstRoot, AstVersion } from "../../types/ast";
 
 export interface ParsedMessage {
   role: "user" | "ai";
   textContent: string;
+  contentAst?: AstRoot | null;
+  contentAstVersion?: AstVersion | null;
+  degradedNodesCount?: number;
   htmlContent?: string;
   timestamp?: number;
 }

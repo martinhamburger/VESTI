@@ -3,6 +3,8 @@
 // All interface definitions for Vesti (kept in sync with frontend)
 // ============================================================
 
+import type { AstRoot, AstVersion } from "./ast";
+
 export type Platform =
   | "ChatGPT"
   | "Claude"
@@ -33,6 +35,9 @@ export interface Message {
   conversation_id: number;
   role: "user" | "ai";
   content_text: string;
+  content_ast?: AstRoot | null;
+  content_ast_version?: AstVersion | null;
+  degraded_nodes_count?: number;
   created_at: number;
 }
 

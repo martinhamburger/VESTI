@@ -13,6 +13,7 @@ import type {
   SummaryRecord,
   WeeklyReportRecord,
 } from "../types";
+import type { AstRoot, AstVersion } from "../types/ast";
 
 export interface DateRange {
   start: number;
@@ -44,6 +45,9 @@ export interface ConversationDraft {
 export interface ParsedMessage {
   role: "user" | "ai";
   textContent: string;
+  contentAst?: AstRoot | null;
+  contentAstVersion?: AstVersion | null;
+  degradedNodesCount?: number;
   htmlContent?: string;
   timestamp?: number;
 }
