@@ -183,6 +183,27 @@ export interface ConversationSummaryV1 {
 
 export interface ConversationSummaryV2 {
   core_question: string;
+  thinking_journey: Array<{
+    step: number;
+    speaker: "User" | "AI";
+    assertion: string;
+    real_world_anchor: string | null;
+  }>;
+  key_insights: Array<{
+    term: string;
+    definition: string;
+  }>;
+  unresolved_threads: string[];
+  meta_observations: {
+    thinking_style: string;
+    emotional_tone: string;
+    depth_level: "superficial" | "moderate" | "deep";
+  };
+  actionable_next_steps: string[];
+}
+
+export interface ConversationSummaryV2Legacy {
+  core_question: string;
   thinking_journey: {
     initial_state: string;
     key_turns: string[];
@@ -227,7 +248,11 @@ export interface SummaryRecord {
   id: number;
   conversationId: number;
   content: string;
-  structured?: ConversationSummaryV1 | ConversationSummaryV2 | null;
+  structured?:
+    | ConversationSummaryV1
+    | ConversationSummaryV2
+    | ConversationSummaryV2Legacy
+    | null;
   format?: InsightFormat;
   status?: InsightStatus;
   schemaVersion?: "conversation_summary.v1" | "conversation_summary.v2";

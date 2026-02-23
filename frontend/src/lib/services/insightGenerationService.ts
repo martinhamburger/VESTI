@@ -109,15 +109,26 @@ function renderSummaryTextV1(summary: ConversationSummaryV1): string {
 }
 
 function renderSummaryTextV2(summary: ConversationSummaryV2): string {
-  const lines = [
-    `核心问题：${summary.core_question}`,
-    `起点：${summary.thinking_journey.initial_state}`,
-    "关键转折：",
-    ...summary.thinking_journey.key_turns.map((item, index) => `${index + 1}. ${item}`),
-    `阶段理解：${summary.thinking_journey.final_understanding}`,
-    "关键洞察：",
-    ...summary.key_insights.map((item, index) => `${index + 1}. ${item}`),
-  ];
+  const depthLabel =
+    summary.meta_observations.depth_level === "deep"
+      ? "深度拆解"
+      : summary.meta_observations.depth_level === "moderate"
+        ? "逐步深挖"
+        : "轻量梳理";
+
+  const lines = [`核心问题：${summary.core_question}`, "思考轨迹："];
+
+  for (const step of summary.thinking_journey) {
+    lines.push(`${step.step}. [${step.speaker}] ${step.assertion}`);
+    if (step.real_world_anchor) {
+      lines.push(`   实证案例：${step.real_world_anchor}`);
+    }
+  }
+
+  lines.push("关键洞察：");
+  for (const [index, insight] of summary.key_insights.entries()) {
+    lines.push(`${index + 1}. ${insight.term}：${insight.definition}`);
+  }
 
   if (summary.unresolved_threads.length) {
     lines.push("未决线索：", ...summary.unresolved_threads.map((item, index) => `${index + 1}. ${item}`));
@@ -133,7 +144,7 @@ function renderSummaryTextV2(summary: ConversationSummaryV2): string {
   lines.push(
     `思维风格：${summary.meta_observations.thinking_style}`,
     `情绪基调：${summary.meta_observations.emotional_tone}`,
-    `深度等级：${summary.meta_observations.depth_level}`
+    `深度等级：${depthLabel}`
   );
 
   return sanitizeSummaryText(lines.join("\n"));

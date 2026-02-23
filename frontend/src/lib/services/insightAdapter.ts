@@ -1,6 +1,7 @@
 ﻿import type {
   ConversationSummaryV1,
   ConversationSummaryV2,
+  ConversationSummaryV2Legacy,
   SummaryRecord,
   WeeklyLiteReportV1,
   WeeklyReportRecord,
@@ -10,6 +11,14 @@ import type {
   ChatSummaryData,
   WeeklySummaryData,
 } from "../types/insightsPresentation";
+import { normalizeConversationSummaryV2Legacy } from "./insightSchemas";
+
+interface WeeklyCrossDomainEcho {
+  domain_a: string;
+  domain_b: string;
+  shared_logic: string;
+  evidence_ids: number[];
+}
 
 const TECH_KEYWORDS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\breact\b/i, label: "React" },
@@ -37,6 +46,44 @@ function dedupe(items: string[]): string[] {
     seen.add(key);
     output.push(normalized);
   }
+  return output;
+}
+
+function dedupeJourney(
+  steps: ChatSummaryData["thinking_journey"]
+): ChatSummaryData["thinking_journey"] {
+  const seen = new Set<string>();
+  const output: ChatSummaryData["thinking_journey"] = [];
+
+  for (const step of steps) {
+    const key = `${step.speaker}:${step.assertion.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(step);
+  }
+
+  return output.map((step, index) => ({
+    ...step,
+    step: index + 1,
+  }));
+}
+
+function dedupeInsights(
+  items: ChatSummaryData["key_insights"]
+): ChatSummaryData["key_insights"] {
+  const seen = new Set<string>();
+  const output: ChatSummaryData["key_insights"] = [];
+
+  for (const item of items) {
+    const term = normalizeText(item.term);
+    const definition = normalizeText(item.definition);
+    if (!term || !definition) continue;
+    const key = `${term.toLowerCase()}::${definition.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push({ term, definition });
+  }
+
   return output;
 }
 
@@ -89,9 +136,25 @@ function toRangeLabel(rangeStart: number, rangeEnd: number): string {
   return `${start} - ${end}`;
 }
 
-function isConversationSummaryV2(value: unknown): value is ConversationSummaryV2 {
+function isConversationSummaryV2Current(value: unknown): value is ConversationSummaryV2 {
   if (!value || typeof value !== "object") return false;
-  return "core_question" in value && "thinking_journey" in value;
+  const row = value as { core_question?: unknown; thinking_journey?: unknown };
+  return typeof row.core_question === "string" && Array.isArray(row.thinking_journey);
+}
+
+function isConversationSummaryV2Legacy(value: unknown): value is ConversationSummaryV2Legacy {
+  if (!value || typeof value !== "object") return false;
+  const row = value as {
+    core_question?: unknown;
+    thinking_journey?: unknown;
+    key_insights?: unknown;
+  };
+  return (
+    typeof row.core_question === "string" &&
+    !Array.isArray(row.thinking_journey) &&
+    !!row.thinking_journey &&
+    Array.isArray(row.key_insights)
+  );
 }
 
 function isConversationSummaryV1(value: unknown): value is ConversationSummaryV1 {
@@ -111,8 +174,134 @@ function isWeeklyReportV1(value: unknown): value is WeeklyReportV1 {
 
 function inferUnresolved(lines: string[]): string[] {
   return lines
-    .filter((line) => /未决|未解决|待确认|pending|risk|风险|疑问/i.test(line))
+    .filter((line) => /unresolved|open|pending|risk|unknown|todo|block/i.test(line))
     .slice(0, 4);
+}
+
+function normalizeCrossDomainEchoes(value: unknown): WeeklyCrossDomainEcho[] {
+  if (!Array.isArray(value)) return [];
+
+  const output: WeeklyCrossDomainEcho[] = [];
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as {
+      domain_a?: unknown;
+      domain_b?: unknown;
+      shared_logic?: unknown;
+      evidence_ids?: unknown;
+    };
+
+    const domainA = normalizeText(String(row.domain_a ?? ""));
+    const domainB = normalizeText(String(row.domain_b ?? ""));
+    const sharedLogic = normalizeText(String(row.shared_logic ?? ""));
+    if (!domainA || !domainB || !sharedLogic) continue;
+
+    const evidenceIds = Array.isArray(row.evidence_ids)
+      ? row.evidence_ids
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0)
+          .slice(0, 8)
+      : [];
+
+    output.push({
+      domain_a: domainA,
+      domain_b: domainB,
+      shared_logic: sharedLogic,
+      evidence_ids: evidenceIds,
+    });
+  }
+
+  return output.slice(0, 4);
+}
+
+function toJourneyFromV2(
+  steps: ConversationSummaryV2["thinking_journey"]
+): ChatSummaryData["thinking_journey"] {
+  const normalized = steps
+    .map((step, index) => ({
+      step: Number.isFinite(step.step) ? Math.max(1, Math.floor(step.step)) : index + 1,
+      speaker: step.speaker === "AI" ? "AI" : "User",
+      assertion: normalizeText(step.assertion),
+      real_world_anchor: step.real_world_anchor ? normalizeText(step.real_world_anchor) : null,
+    }))
+    .filter((step) => step.assertion.length > 0)
+    .sort((left, right) => left.step - right.step);
+
+  return dedupeJourney(normalized).slice(0, 10);
+}
+
+function normalizeDepthLevel(value: unknown): "superficial" | "moderate" | "deep" {
+  if (value === "deep" || value === "moderate" || value === "superficial") {
+    return value;
+  }
+  return "moderate";
+}
+
+function toInsightObjects(
+  insights: ConversationSummaryV2["key_insights"]
+): ChatSummaryData["key_insights"] {
+  return dedupeInsights(
+    insights.map((item) => ({
+      term: normalizeText(item.term),
+      definition: normalizeText(item.definition),
+    }))
+  ).slice(0, 8);
+}
+
+function toChatSummaryDataFromV2(
+  summary: SummaryRecord,
+  structured: ConversationSummaryV2,
+  options?: { conversationTitle?: string }
+): ChatSummaryData {
+  const safeJourney = Array.isArray(structured.thinking_journey)
+    ? structured.thinking_journey
+    : [];
+  const safeInsights = Array.isArray(structured.key_insights)
+    ? structured.key_insights
+    : [];
+  const safeUnresolved = Array.isArray(structured.unresolved_threads)
+    ? structured.unresolved_threads
+    : [];
+  const safeNextSteps = Array.isArray(structured.actionable_next_steps)
+    ? structured.actionable_next_steps
+    : [];
+  const safeMeta =
+    structured.meta_observations && typeof structured.meta_observations === "object"
+      ? structured.meta_observations
+      : {
+          thinking_style: "",
+          emotional_tone: "",
+          depth_level: "moderate" as const,
+        };
+
+  const insightText = safeInsights
+    .map((item) => `${item.term}\n${item.definition}`)
+    .join("\n");
+
+  return {
+    meta: {
+      title: options?.conversationTitle ?? structured.core_question,
+      generated_at: toIsoTime(summary.createdAt),
+      tags: inferTags([], `${structured.core_question}\n${insightText}`),
+      fallback: summary.status === "fallback",
+    },
+    core_question: normalizeText(structured.core_question),
+    thinking_journey: toJourneyFromV2(safeJourney),
+    key_insights: toInsightObjects(safeInsights),
+    unresolved_threads: dedupe(safeUnresolved).slice(0, 6),
+    meta_observations: {
+      thinking_style:
+        normalizeText(String(safeMeta.thinking_style ?? "")) ||
+        "逐步深挖，每一问都在收紧范围。",
+      emotional_tone:
+        normalizeText(String(safeMeta.emotional_tone ?? "")) ||
+        "谨慎而带着好奇，持续验证关键假设。",
+      depth_level: normalizeDepthLevel(safeMeta.depth_level),
+    },
+    actionable_next_steps: dedupe(safeNextSteps).slice(0, 6),
+    plain_text: summary.content,
+  };
 }
 
 export function toChatSummaryData(
@@ -122,32 +311,38 @@ export function toChatSummaryData(
   const fallbackLines = toLines(summary.content);
   const structured = summary.structured;
 
-  if (isConversationSummaryV2(structured)) {
-    return {
-      meta: {
-        title: options?.conversationTitle ?? structured.core_question,
-        generated_at: toIsoTime(summary.createdAt),
-        tags: inferTags([], `${structured.core_question}\n${structured.key_insights.join("\n")}`),
-        fallback: summary.status === "fallback",
-      },
-      core_question: structured.core_question,
-      thinking_journey: {
-        initial_state: structured.thinking_journey.initial_state,
-        key_turns: dedupe(structured.thinking_journey.key_turns).slice(0, 5),
-        final_understanding: structured.thinking_journey.final_understanding,
-      },
-      key_insights: dedupe(structured.key_insights).slice(0, 6),
-      unresolved_threads: dedupe(structured.unresolved_threads).slice(0, 5),
-      meta_observations: structured.meta_observations,
-      actionable_next_steps: dedupe(structured.actionable_next_steps).slice(0, 6),
-      plain_text: summary.content,
-    };
+  if (isConversationSummaryV2Current(structured)) {
+    return toChatSummaryDataFromV2(summary, structured, options);
+  }
+
+  if (isConversationSummaryV2Legacy(structured)) {
+    return toChatSummaryDataFromV2(
+      summary,
+      normalizeConversationSummaryV2Legacy(structured),
+      options
+    );
   }
 
   if (isConversationSummaryV1(structured)) {
     const keyInsights = dedupe(structured.key_takeaways).slice(0, 6);
     const actionItems = dedupe(structured.action_items ?? []).slice(0, 6);
     const linesSource = [...keyInsights, ...actionItems];
+
+    const thinkingJourney = dedupeJourney([
+      {
+        step: 1,
+        speaker: "User",
+        assertion:
+          "You open with a problem that needs to be clarified before deciding on direction.",
+        real_world_anchor: null,
+      },
+      ...linesSource.slice(0, 5).map((line, index) => ({
+        step: index + 2,
+        speaker: index % 2 === 0 ? "AI" : "User",
+        assertion: line,
+        real_world_anchor: null,
+      })),
+    ]).slice(0, 8);
 
     return {
       meta: {
@@ -160,16 +355,15 @@ export function toChatSummaryData(
         fallback: summary.status === "fallback",
       },
       core_question: options?.conversationTitle ?? structured.topic_title,
-      thinking_journey: {
-        initial_state: "你从一个需要澄清的问题出发，逐步展开讨论。",
-        key_turns: linesSource.slice(0, 4),
-        final_understanding: keyInsights[0] ?? "你获得了阶段性结论。",
-      },
-      key_insights: keyInsights,
+      thinking_journey: thinkingJourney,
+      key_insights: keyInsights.map((item, index) => ({
+        term: `洞察${index + 1}`,
+        definition: item,
+      })),
       unresolved_threads: inferUnresolved(linesSource),
       meta_observations: {
-        thinking_style: "你倾向通过分点拆解来推进理解。",
-        emotional_tone: "整体语气偏理性探索。",
+        thinking_style: "You break problems down and tighten scope iteratively.",
+        emotional_tone: "The tone is rational, careful, and continuously validating assumptions.",
         depth_level: "moderate",
       },
       actionable_next_steps: actionItems,
@@ -178,7 +372,7 @@ export function toChatSummaryData(
   }
 
   const firstLine = fallbackLines[0] ?? options?.conversationTitle ?? "Conversation Summary";
-  const secondLine = fallbackLines[1] ?? fallbackLines[0] ?? "暂无可提取结论";
+  const secondLine = fallbackLines[1] ?? fallbackLines[0] ?? "No stable conclusion yet.";
 
   return {
     meta: {
@@ -188,22 +382,34 @@ export function toChatSummaryData(
       fallback: true,
     },
     core_question: options?.conversationTitle
-      ? `你在这次对话中想解决的问题：${options.conversationTitle}`
+      ? `Core question in this conversation: ${options.conversationTitle}`
       : firstLine,
-    thinking_journey: {
-      initial_state: firstLine,
-      key_turns: fallbackLines.slice(0, 4),
-      final_understanding: secondLine,
-    },
-    key_insights: fallbackLines.slice(0, 5),
+    thinking_journey: [
+      {
+        step: 1,
+        speaker: "User",
+        assertion: firstLine,
+        real_world_anchor: null,
+      },
+      {
+        step: 2,
+        speaker: "AI",
+        assertion: secondLine,
+        real_world_anchor: null,
+      },
+    ],
+    key_insights: fallbackLines.slice(0, 5).map((line, index) => ({
+      term: `洞察${index + 1}`,
+      definition: line,
+    })),
     unresolved_threads: inferUnresolved(fallbackLines),
     meta_observations: {
-      thinking_style: "样本不足，无法稳定识别思维风格。",
-      emotional_tone: "样本不足，默认中性。",
+      thinking_style: "Sample is sparse; stable thinking-style inference is unavailable.",
+      emotional_tone: "Sample is sparse; tone is treated as neutral.",
       depth_level: "superficial",
     },
     actionable_next_steps: fallbackLines
-      .filter((line) => /下一步|TODO|行动|待办|next/i.test(line))
+      .filter((line) => /next|todo|action|follow-up/i.test(line))
       .slice(0, 4),
     plain_text: summary.content,
   };
@@ -215,6 +421,10 @@ export function toWeeklySummaryData(report: WeeklyReportRecord): WeeklySummaryDa
   const structured = report.structured;
 
   if (isWeeklyLiteReportV1(structured)) {
+    const crossDomainEchoes = normalizeCrossDomainEchoes(
+      (structured as unknown as { cross_domain_echoes?: unknown }).cross_domain_echoes
+    );
+
     return {
       meta: {
         title: `Weekly Lite ${rangeLabel}`,
@@ -225,6 +435,9 @@ export function toWeeklySummaryData(report: WeeklyReportRecord): WeeklySummaryDa
       },
       highlights: dedupe(structured.highlights).slice(0, 6),
       recurring_questions: dedupe(structured.recurring_questions).slice(0, 4),
+      ...(crossDomainEchoes.length > 0
+        ? { cross_domain_echoes: crossDomainEchoes }
+        : {}),
       unresolved_threads: dedupe(structured.unresolved_threads).slice(0, 6),
       suggested_focus: dedupe(structured.suggested_focus).slice(0, 6),
       evidence: (structured.evidence || []).slice(0, 8),
@@ -271,11 +484,11 @@ export function toWeeklySummaryData(report: WeeklyReportRecord): WeeklySummaryDa
     },
     highlights,
     recurring_questions: fallbackLines
-      .filter((line) => /反复|重复|question|why|如何/i.test(line))
+      .filter((line) => /repeat|recurr|question|why|how/i.test(line))
       .slice(0, 3),
     unresolved_threads: inferUnresolved(fallbackLines),
     suggested_focus: fallbackLines
-      .filter((line) => /下一步|建议|focus|priority|行动/i.test(line))
+      .filter((line) => /next|action|focus|priority|todo|follow-up/i.test(line))
       .slice(0, 4),
     evidence: [],
     insufficient_data: true,

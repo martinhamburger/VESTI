@@ -2,6 +2,7 @@
 import type {
   ConversationSummaryV1,
   ConversationSummaryV2,
+  ConversationSummaryV2Legacy,
   WeeklyLiteReportV1,
   WeeklyReportV1,
 } from "../types";
@@ -11,6 +12,10 @@ const MAX_PERIOD_LENGTH = 120;
 const MAX_LIST_ITEM_LENGTH = 280;
 const MAX_LIST_ITEMS = 8;
 const MAX_META_LENGTH = 180;
+const MAX_ASSERTION_LENGTH = 520;
+const MAX_ANCHOR_LENGTH = 320;
+const MAX_TERM_LENGTH = 120;
+const MAX_DEFINITION_LENGTH = 320;
 
 const summarySchema = z.object({
   topic_title: z.string().min(1).max(MAX_TITLE_LENGTH),
@@ -28,7 +33,37 @@ const weeklySchema = z.object({
   tech_stack_detected: z.array(z.string().min(1)),
 });
 
-const summaryV2Schema = z.object({
+const summaryV2SchemaNew = z.object({
+  core_question: z.string().min(1).max(MAX_META_LENGTH),
+  thinking_journey: z
+    .array(
+      z.object({
+        step: z.number().int().min(1),
+        speaker: z.enum(["User", "AI"]),
+        assertion: z.string().min(1).max(MAX_ASSERTION_LENGTH),
+        real_world_anchor: z.string().min(1).max(MAX_ANCHOR_LENGTH).nullable(),
+      })
+    )
+    .min(1)
+    .max(12),
+  key_insights: z
+    .array(
+      z.object({
+        term: z.string().min(1).max(MAX_TERM_LENGTH),
+        definition: z.string().min(1).max(MAX_DEFINITION_LENGTH),
+      })
+    )
+    .max(8),
+  unresolved_threads: z.array(z.string().min(1)).max(8),
+  meta_observations: z.object({
+    thinking_style: z.string().min(1).max(MAX_META_LENGTH),
+    emotional_tone: z.string().min(1).max(MAX_META_LENGTH),
+    depth_level: z.enum(["superficial", "moderate", "deep"]),
+  }),
+  actionable_next_steps: z.array(z.string().min(1)).max(8),
+});
+
+const summaryV2SchemaLegacy = z.object({
   core_question: z.string().min(1).max(MAX_META_LENGTH),
   thinking_journey: z.object({
     initial_state: z.string().min(1).max(MAX_LIST_ITEM_LENGTH),
@@ -64,7 +99,7 @@ const weeklyLiteSchema = z.object({
   insufficient_data: z.boolean(),
 });
 
-function cleanItem(value: string): string {
+function cleanItem(value: string, maxLength = MAX_LIST_ITEM_LENGTH): string {
   return value
     .replace(/^\s*[-*+•]+\s*/g, "")
     .replace(/^\s*\d+[.)]\s*/g, "")
@@ -72,7 +107,7 @@ function cleanItem(value: string): string {
     .replace(/`([^`]+)`/g, "$1")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, MAX_LIST_ITEM_LENGTH);
+    .slice(0, maxLength);
 }
 
 function cleanMeta(value: string): string {
@@ -153,14 +188,155 @@ export function normalizeWeeklyReport(input: {
   return weekly;
 }
 
+type ConversationSummaryStep = ConversationSummaryV2["thinking_journey"][number];
+type ConversationSummaryInsight = ConversationSummaryV2["key_insights"][number];
+
+function normalizeSpeaker(value: string): "User" | "AI" {
+  return value === "AI" ? "AI" : "User";
+}
+
+function dedupeJourneySteps(steps: ConversationSummaryStep[]): ConversationSummaryStep[] {
+  const seen = new Set<string>();
+  const output: ConversationSummaryStep[] = [];
+
+  for (const step of steps) {
+    const key = `${step.speaker}:${step.assertion.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(step);
+  }
+
+  return output;
+}
+
+function dedupeInsightItems(items: ConversationSummaryInsight[]): ConversationSummaryInsight[] {
+  const seen = new Set<string>();
+  const output: ConversationSummaryInsight[] = [];
+
+  for (const item of items) {
+    const key = `${item.term.toLowerCase()}::${item.definition.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(item);
+  }
+
+  return output;
+}
+
+function toInsightItemFromLine(line: string, index: number): ConversationSummaryInsight {
+  const cleaned = cleanItem(line, MAX_DEFINITION_LENGTH);
+  const split = cleaned.match(/^(.*?)\s*[:：]\s*(.+)$/);
+
+  if (split) {
+    const term = cleanItem(split[1], MAX_TERM_LENGTH);
+    const definition = cleanItem(split[2], MAX_DEFINITION_LENGTH);
+    if (term && definition) {
+      return { term, definition };
+    }
+  }
+
+  return {
+    term: `洞察${index + 1}`,
+    definition: cleaned,
+  };
+}
+
+export function normalizeConversationSummaryV2Legacy(
+  input: ConversationSummaryV2Legacy
+): ConversationSummaryV2 {
+  const unresolvedThreads = normalizeList(input.unresolved_threads, 6);
+  const nextSteps = normalizeList(input.actionable_next_steps, 6);
+
+  const steps: ConversationSummaryStep[] = [];
+  const initialState = cleanItem(input.thinking_journey.initial_state, MAX_ASSERTION_LENGTH);
+  if (initialState) {
+    steps.push({
+      step: 1,
+      speaker: "User",
+      assertion: initialState,
+      real_world_anchor: null,
+    });
+  }
+
+  const keyTurns = normalizeList(input.thinking_journey.key_turns, 6);
+  keyTurns.forEach((turn, index) => {
+    steps.push({
+      step: steps.length + 1,
+      speaker: index % 2 === 0 ? "AI" : "User",
+      assertion: cleanItem(turn, MAX_ASSERTION_LENGTH),
+      real_world_anchor: null,
+    });
+  });
+
+  const finalUnderstanding = cleanItem(
+    input.thinking_journey.final_understanding,
+    MAX_ASSERTION_LENGTH
+  );
+  if (finalUnderstanding) {
+    steps.push({
+      step: steps.length + 1,
+      speaker: "AI",
+      assertion: finalUnderstanding,
+      real_world_anchor: null,
+    });
+  }
+
+  const normalizedSteps = dedupeJourneySteps(steps)
+    .slice(0, 10)
+    .map((step, index) => ({
+      ...step,
+      step: index + 1,
+    }));
+
+  const keyInsights = normalizeList(input.key_insights, 8)
+    .map((line, index) => toInsightItemFromLine(line, index))
+    .map((item) => ({
+      term: cleanItem(item.term, MAX_TERM_LENGTH),
+      definition: cleanItem(item.definition, MAX_DEFINITION_LENGTH),
+    }))
+    .filter((item) => item.term.length > 0 && item.definition.length > 0);
+
+  return {
+    core_question:
+      cleanMeta(input.core_question) || "What is the core question you are trying to answer?",
+    thinking_journey:
+      normalizedSteps.length > 0
+        ? normalizedSteps
+        : [
+            {
+              step: 1,
+              speaker: "User",
+              assertion: "You raise a central question that needs deeper clarification.",
+              real_world_anchor: null,
+            },
+          ],
+    key_insights: dedupeInsightItems(keyInsights).slice(0, 8),
+    unresolved_threads: unresolvedThreads,
+    meta_observations: {
+      thinking_style:
+        cleanMeta(input.meta_observations.thinking_style) ||
+        "You narrow the scope step by step.",
+      emotional_tone:
+        cleanMeta(input.meta_observations.emotional_tone) ||
+        "The tone stays cautious and curious.",
+      depth_level: input.meta_observations.depth_level,
+    },
+    actionable_next_steps: nextSteps,
+  };
+}
+
 export function normalizeConversationSummaryV2(input: {
   core_question: string;
-  thinking_journey: {
-    initial_state: string;
-    key_turns: string[];
-    final_understanding: string;
-  };
-  key_insights: string[];
+  thinking_journey: Array<{
+    step: number;
+    speaker: "User" | "AI";
+    assertion: string;
+    real_world_anchor: string | null;
+  }>;
+  key_insights: Array<{
+    term: string;
+    definition: string;
+  }>;
   unresolved_threads: string[];
   meta_observations: {
     thinking_style: string;
@@ -169,32 +345,69 @@ export function normalizeConversationSummaryV2(input: {
   };
   actionable_next_steps: string[];
 }): ConversationSummaryV2 {
-  const keyTurns = normalizeList(input.thinking_journey.key_turns, 5);
-  const keyInsights = normalizeList(input.key_insights, 6);
   const unresolvedThreads = normalizeList(input.unresolved_threads, 6);
   const nextSteps = normalizeList(input.actionable_next_steps, 6);
 
+  const normalizedJourney = dedupeJourneySteps(
+    (input.thinking_journey || [])
+      .map((item, index) => ({
+        step: Number.isFinite(item.step) ? Math.max(1, Math.floor(item.step)) : index + 1,
+        speaker: normalizeSpeaker(item.speaker),
+        assertion: cleanItem(item.assertion, MAX_ASSERTION_LENGTH),
+        real_world_anchor: item.real_world_anchor
+          ? cleanItem(item.real_world_anchor, MAX_ANCHOR_LENGTH)
+          : null,
+      }))
+      .filter((item) => item.assertion.length > 0)
+  )
+    .slice(0, 10)
+    .map((item, index) => ({
+      ...item,
+      step: index + 1,
+      real_world_anchor:
+        item.real_world_anchor && item.real_world_anchor.length > 0
+          ? item.real_world_anchor
+          : null,
+    }));
+
+  const normalizedInsights = dedupeInsightItems(
+    (input.key_insights || [])
+      .map((item) => ({
+        term: cleanItem(item.term, MAX_TERM_LENGTH),
+        definition: cleanItem(item.definition, MAX_DEFINITION_LENGTH),
+      }))
+      .filter((item) => item.term.length > 0 && item.definition.length > 0)
+  ).slice(0, 8);
+
   return {
-    core_question: cleanMeta(input.core_question) || "你这次对话想解决的核心问题是什么？",
-    thinking_journey: {
-      initial_state:
-        cleanItem(input.thinking_journey.initial_state) || "你在问题起点存在一些不确定性。",
-      key_turns: keyTurns.length > 0 ? keyTurns : ["你通过追问不断澄清关键假设。"],
-      final_understanding:
-        cleanItem(input.thinking_journey.final_understanding) || "你对问题形成了阶段性理解。",
-    },
-    key_insights: keyInsights.length > 0 ? keyInsights : ["你获得了可执行的阶段性洞察。"],
+    core_question:
+      cleanMeta(input.core_question) || "What is the core question you are trying to answer?",
+    thinking_journey:
+      normalizedJourney.length > 0
+        ? normalizedJourney
+        : [
+            {
+              step: 1,
+              speaker: "User",
+              assertion: "You raise a central question that needs deeper clarification.",
+              real_world_anchor: null,
+            },
+          ],
+    key_insights: normalizedInsights,
     unresolved_threads: unresolvedThreads,
     meta_observations: {
       thinking_style:
-        cleanMeta(input.meta_observations.thinking_style) || "你倾向先拆解问题再收敛结论。",
+        cleanMeta(input.meta_observations.thinking_style) ||
+        "You narrow the scope step by step.",
       emotional_tone:
-        cleanMeta(input.meta_observations.emotional_tone) || "整体语气以探索和澄清为主。",
+        cleanMeta(input.meta_observations.emotional_tone) ||
+        "The tone stays cautious and curious.",
       depth_level: input.meta_observations.depth_level,
     },
     actionable_next_steps: nextSteps,
   };
 }
+
 
 export function normalizeWeeklyLiteReport(input: {
   time_range: {
@@ -273,19 +486,32 @@ export function parseConversationSummaryV2Object(value: unknown): {
   success: false;
   errors: string[];
 } {
-  const parsed = summaryV2Schema.safeParse(value);
-  if (!parsed.success) {
+  const parsedNew = summaryV2SchemaNew.safeParse(value);
+  if (parsedNew.success) {
     return {
-      success: false,
-      errors: parsed.error.issues.map(
-        (issue) => `${issue.path.join(".") || "root"}: ${issue.message}`
-      ),
+      success: true,
+      data: normalizeConversationSummaryV2(parsedNew.data),
+    };
+  }
+
+  const parsedLegacy = summaryV2SchemaLegacy.safeParse(value);
+  if (parsedLegacy.success) {
+    return {
+      success: true,
+      data: normalizeConversationSummaryV2Legacy(parsedLegacy.data),
     };
   }
 
   return {
-    success: true,
-    data: normalizeConversationSummaryV2(parsed.data),
+    success: false,
+    errors: [
+      ...parsedNew.error.issues.map(
+        (issue) => `${issue.path.join(".") || "root"}: ${issue.message}`
+      ),
+      ...parsedLegacy.error.issues.map(
+        (issue) => `${issue.path.join(".") || "root"}: ${issue.message}`
+      ),
+    ],
   };
 }
 
@@ -524,16 +750,24 @@ export const insightSchemaHints = {
   },
   summary_v2: {
     core_question: "string",
-    thinking_journey: {
-      initial_state: "string",
-      key_turns: ["string"],
-      final_understanding: "string",
-    },
-    key_insights: ["string"],
+    thinking_journey: [
+      {
+        step: "number",
+        speaker: "User | AI",
+        assertion: "string (2-3 sentences, includes why-now + what-it-opens-next)",
+        real_world_anchor: "string | null (plain-language real-world anchor)",
+      },
+    ],
+    key_insights: [
+      {
+        term: "string",
+        definition: "string",
+      },
+    ],
     unresolved_threads: ["string"],
     meta_observations: {
-      thinking_style: "string",
-      emotional_tone: "string",
+      thinking_style: "string (natural user-facing phrase)",
+      emotional_tone: "string (natural user-facing phrase)",
       depth_level: "superficial | moderate | deep",
     },
     actionable_next_steps: ["string"],

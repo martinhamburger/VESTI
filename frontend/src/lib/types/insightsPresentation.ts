@@ -9,12 +9,16 @@ export interface ArtifactMetaData {
 export interface ChatSummaryData {
   meta: ArtifactMetaData;
   core_question: string;
-  thinking_journey: {
-    initial_state: string;
-    key_turns: string[];
-    final_understanding: string;
-  };
-  key_insights: string[];
+  thinking_journey: Array<{
+    step: number;
+    speaker: "User" | "AI";
+    assertion: string;
+    real_world_anchor: string | null;
+  }>;
+  key_insights: Array<{
+    term: string;
+    definition: string;
+  }>;
   unresolved_threads: string[];
   meta_observations: {
     thinking_style: string;
@@ -29,6 +33,12 @@ export interface WeeklySummaryData {
   meta: ArtifactMetaData;
   highlights: string[];
   recurring_questions: string[];
+  cross_domain_echoes?: Array<{
+    domain_a: string;
+    domain_b: string;
+    shared_logic: string;
+    evidence_ids: number[];
+  }>;
   unresolved_threads: string[];
   suggested_focus: string[];
   evidence: Array<{

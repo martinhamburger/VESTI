@@ -47,27 +47,31 @@ export function StructuredSummaryCard({ data }: StructuredSummaryCardProps) {
 
       <section className="mb-6">
         <SectionEyebrow>Thinking Journey</SectionEyebrow>
-        <p className="mb-3 text-text-primary">
-          <span className="font-medium">Initial state:</span> {data.thinking_journey.initial_state}
-        </p>
-        <ol className="list-decimal space-y-2 pl-6 text-text-primary">
-          {data.thinking_journey.key_turns.map((item, index) => (
-            <li key={`${item}-${index}`} className="pl-1">
-              {item}
+        <ol className="space-y-3 text-text-primary">
+          {data.thinking_journey.map((item) => (
+            <li key={`${item.step}-${item.speaker}-${item.assertion}`} className="rounded-md border border-border-subtle p-3">
+              <p className="mb-1 text-[11px] font-medium text-text-secondary font-sans">
+                Step {item.step} · {item.speaker}
+              </p>
+              <p className="text-reading-lg text-text-primary">{item.assertion}</p>
+              {item.real_world_anchor && (
+                <p className="mt-2 text-[13px] text-text-secondary">
+                  <span className="font-medium">实证案例：</span>
+                  {item.real_world_anchor}
+                </p>
+              )}
             </li>
           ))}
         </ol>
-        <p className="mt-3 text-text-primary">
-          <span className="font-medium">Final understanding:</span> {data.thinking_journey.final_understanding}
-        </p>
       </section>
 
       <section className="mb-6">
         <SectionEyebrow>Key Insights</SectionEyebrow>
-        <ul className="list-disc space-y-3 pl-6 text-text-primary">
+        <ul className="space-y-3 text-text-primary">
           {data.key_insights.map((item, index) => (
-            <li key={`${item}-${index}`} className="pl-1">
-              {item}
+            <li key={`${item.term}-${index}`} className="rounded-md border border-border-subtle p-3">
+              <p className="font-medium">{item.term}</p>
+              <p className="mt-1 text-text-secondary">{item.definition}</p>
             </li>
           ))}
         </ul>
