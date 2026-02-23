@@ -110,6 +110,34 @@ export class MemoryHubDB extends Dexie {
               typeof aiTurns === "number" ? aiTurns : fallbackTurnCount;
           });
       });
+    this.version(5)
+      .stores({
+        conversations:
+          "++id, platform, title, created_at, updated_at, uuid, source_created_at, turn_count, [platform+created_at], [platform+uuid]",
+        messages:
+          "++id, conversation_id, role, created_at, [conversation_id+created_at]",
+        summaries: "++id, conversationId, createdAt",
+        weekly_reports: "++id, rangeStart, rangeEnd, createdAt",
+      })
+      .upgrade((tx) => {
+        return tx
+          .table("messages")
+          .toCollection()
+          .modify((record: Partial<MessageRecord>) => {
+            if (record.content_ast === undefined) {
+              record.content_ast = null;
+            }
+            if (record.content_ast_version === undefined) {
+              record.content_ast_version = null;
+            }
+            if (
+              typeof record.degraded_nodes_count !== "number" ||
+              !Number.isFinite(record.degraded_nodes_count)
+            ) {
+              record.degraded_nodes_count = 0;
+            }
+          });
+      });
   }
 }
 

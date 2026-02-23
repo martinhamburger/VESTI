@@ -32,6 +32,13 @@ function sanitizeIncomingMessages(messages: ParsedMessage[]): ParsedMessage[] {
   return messages.filter((message) => normalizeText(message.textContent).length > 0);
 }
 
+function normalizeDegradedNodesCount(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
+}
+
 function resolveSourceCreatedAt(
   existingSourceCreatedAt: number | null,
   incomingSourceCreatedAt: number | null
@@ -80,6 +87,9 @@ export async function deduplicateAndSave(
         conversation_id: existing.id!,
         role: message.role,
         content_text: message.textContent,
+        content_ast: message.contentAst ?? null,
+        content_ast_version: message.contentAstVersion ?? null,
+        degraded_nodes_count: normalizeDegradedNodesCount(message.degradedNodesCount),
         created_at: message.timestamp ?? baseTimestamp + index,
       }));
 
@@ -120,6 +130,9 @@ export async function deduplicateAndSave(
       conversation_id: conversationId,
       role: message.role,
       content_text: message.textContent,
+      content_ast: message.contentAst ?? null,
+      content_ast_version: message.contentAstVersion ?? null,
+      degraded_nodes_count: normalizeDegradedNodesCount(message.degradedNodesCount),
       created_at: message.timestamp ?? baseTimestamp + index,
     }));
 
