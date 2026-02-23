@@ -11,6 +11,8 @@ import {
   safeTextContent,
   uniqueNodesInDocumentOrder,
 } from "../shared/selectorUtils";
+import { extractAstFromElement } from "../shared/astExtractor";
+import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
 import { logger } from "../../../utils/logger";
 
 const SELECTORS = {
@@ -49,9 +51,15 @@ const SELECTORS = {
     "[data-testid='user-message']",
     ".markdown",
     ".prose",
+    "[class*='font-claude-response-body']",
     "div[class*='whitespace-pre-wrap']",
     "div[class*='font-claude-message']",
     "div[class*='font-user-message']",
+  ],
+  aiContentLeaves: [
+    "[class*='font-claude-response-body']",
+    "[data-testid*='assistant-message'] .markdown",
+    "[data-testid*='assistant-message'] .prose",
   ],
   title: ["nav h1", "h1", "title"],
   generating: [
@@ -97,6 +105,13 @@ interface ParserStats {
   roleDistribution: Record<MessageRole, number>;
   droppedUnknownRole: number;
   droppedNoise: number;
+  parse_duration_ms: number;
+  perf_mode: AstPerfMode;
+  next_perf_mode: AstPerfMode;
+  degraded_nodes_count: number;
+  ast_node_count: number;
+  message_count: number;
+  platform: Platform;
 }
 
 interface ExtractionResult {
@@ -105,6 +120,14 @@ interface ExtractionResult {
   totalCandidates: number;
   droppedUnknownRole: number;
   droppedNoise: number;
+  degradedNodesCount: number;
+  astNodeCount: number;
+}
+
+interface ParsedNodeResult {
+  message: ParsedMessage;
+  degradedNodesCount: number;
+  astNodeCount: number;
 }
 
 export class ClaudeParser implements IParser {
@@ -128,11 +151,15 @@ export class ClaudeParser implements IParser {
   }
 
   getMessages(): ParsedMessage[] {
-    const anchorExtraction = this.extractUsingAnchorStrategy();
-    const selectorExtraction = this.extractUsingSelectorStrategy();
+    const startedAt = performance.now();
+    const perfMode = astPerfModeController.getMode("Claude");
+    const anchorExtraction = this.extractUsingAnchorStrategy(perfMode);
+    const selectorExtraction = this.extractUsingSelectorStrategy(perfMode);
     const chosen = this.chooseBestExtraction(anchorExtraction, selectorExtraction);
 
     const dedupedMessages = this.dedupeNearDuplicates(chosen.messages);
+    const parseDurationMs = Math.round(performance.now() - startedAt);
+    const modeUpdate = astPerfModeController.record("Claude", parseDurationMs);
 
     const stats: ParserStats = {
       source: chosen.source,
@@ -141,7 +168,24 @@ export class ClaudeParser implements IParser {
       roleDistribution: { user: 0, ai: 0 },
       droppedUnknownRole: chosen.droppedUnknownRole,
       droppedNoise: chosen.droppedNoise + (chosen.messages.length - dedupedMessages.length),
+      parse_duration_ms: parseDurationMs,
+      perf_mode: perfMode,
+      next_perf_mode: modeUpdate.mode,
+      degraded_nodes_count: chosen.degradedNodesCount,
+      ast_node_count: chosen.astNodeCount,
+      message_count: dedupedMessages.length,
+      platform: "Claude",
     };
+
+    if (modeUpdate.switched) {
+      logger.warn("parser", "Claude AST perf mode switched", {
+        platform: "Claude",
+        from: modeUpdate.previousMode,
+        to: modeUpdate.mode,
+        parse_duration_ms: parseDurationMs,
+        message_count: dedupedMessages.length,
+      });
+    }
 
     for (const message of dedupedMessages) {
       stats.roleDistribution[message.role] += 1;
@@ -165,7 +209,7 @@ export class ClaudeParser implements IParser {
     return extractEarliestTimeFromSelectors(SELECTORS.sourceTimes);
   }
 
-  private extractUsingAnchorStrategy(): ExtractionResult {
+  private extractUsingAnchorStrategy(perfMode: AstPerfMode): ExtractionResult {
     const userNodes = queryAllUnique(SELECTORS.userPrimaryNodes);
     if (userNodes.length === 0) {
       return {
@@ -174,6 +218,8 @@ export class ClaudeParser implements IParser {
         totalCandidates: 0,
         droppedUnknownRole: 0,
         droppedNoise: 0,
+        degradedNodesCount: 0,
+        astNodeCount: 0,
       };
     }
 
@@ -185,12 +231,16 @@ export class ClaudeParser implements IParser {
         totalCandidates: userNodes.length,
         droppedUnknownRole: 0,
         droppedNoise: 0,
+        degradedNodesCount: 0,
+        astNodeCount: 0,
       };
     }
 
     const blocks = Array.from(container.children);
     const messages: ParsedMessage[] = [];
     let droppedNoise = 0;
+    let degradedNodesCount = 0;
+    let astNodeCount = 0;
 
     for (const block of blocks) {
       if (!(block instanceof Element)) {
@@ -210,10 +260,19 @@ export class ClaudeParser implements IParser {
         continue;
       }
 
-      messages.push({
+      const contentEl = this.resolveContentElement(block, role);
+
+      const parsed = this.buildParsedNode(
         role,
         textContent,
-      });
+        contentEl,
+        block,
+        perfMode,
+      );
+
+      messages.push(parsed.message);
+      degradedNodesCount += parsed.degradedNodesCount;
+      astNodeCount += parsed.astNodeCount;
     }
 
     return {
@@ -222,6 +281,8 @@ export class ClaudeParser implements IParser {
       totalCandidates: blocks.length,
       droppedUnknownRole: 0,
       droppedNoise,
+      degradedNodesCount,
+      astNodeCount,
     };
   }
 
@@ -307,7 +368,7 @@ export class ClaudeParser implements IParser {
     return node.matches(userSelector) || node.querySelector(userSelector) !== null;
   }
 
-  private extractUsingSelectorStrategy(): ExtractionResult {
+  private extractUsingSelectorStrategy(perfMode: AstPerfMode): ExtractionResult {
     const rawCandidates = this.collectMessageCandidates();
     const normalized = normalizeCandidateNodes(rawCandidates, {
       minTextLength: 2,
@@ -318,19 +379,23 @@ export class ClaudeParser implements IParser {
     const messages: ParsedMessage[] = [];
     let droppedUnknownRole = 0;
     let droppedNoise = normalized.droppedNoise;
+    let degradedNodesCount = 0;
+    let astNodeCount = 0;
 
     for (const node of normalized.nodes) {
-      const parsed = this.parseMessageNode(node);
+      const parsed = this.parseMessageNode(node, perfMode);
       if (!parsed) {
         droppedUnknownRole += 1;
         continue;
       }
-      if (!parsed.textContent.trim()) {
+      if (!parsed.message.textContent.trim()) {
         droppedNoise += 1;
         continue;
       }
 
-      messages.push(parsed);
+      messages.push(parsed.message);
+      degradedNodesCount += parsed.degradedNodesCount;
+      astNodeCount += parsed.astNodeCount;
     }
 
     return {
@@ -339,6 +404,8 @@ export class ClaudeParser implements IParser {
       totalCandidates: rawCandidates.length,
       droppedUnknownRole,
       droppedNoise,
+      degradedNodesCount,
+      astNodeCount,
     };
   }
 
@@ -449,7 +516,7 @@ export class ClaudeParser implements IParser {
     return null;
   }
 
-  private parseMessageNode(node: Element): ParsedMessage | null {
+  private parseMessageNode(node: Element, perfMode: AstPerfMode): ParsedNodeResult | null {
     const role = this.inferRole(node);
     if (!role) return null;
 
@@ -458,20 +525,86 @@ export class ClaudeParser implements IParser {
       return null;
     }
 
-    const contentEl = queryFirstWithin(node, SELECTORS.messageContent);
+    const contentEl = this.resolveContentElement(node, role);
 
-    return {
+    return this.buildParsedNode(
       role,
       textContent,
-      htmlContent: contentEl ? contentEl.innerHTML : undefined,
+      contentEl,
+      node,
+      perfMode,
+    );
+  }
+
+  private buildParsedNode(
+    role: MessageRole,
+    textContent: string,
+    contentEl: Element | null,
+    node: Element,
+    perfMode: AstPerfMode,
+  ): ParsedNodeResult {
+    const ast = extractAstFromElement(contentEl ?? node, {
+      platform: "Claude",
+      perfMode,
+    });
+
+    return {
+      message: {
+        role,
+        textContent,
+        contentAst: ast.root,
+        contentAstVersion: ast.root ? "ast_v1" : null,
+        degradedNodesCount: ast.degradedNodesCount,
+        htmlContent: contentEl ? contentEl.innerHTML : undefined,
+      },
+      degradedNodesCount: ast.degradedNodesCount,
+      astNodeCount: ast.astNodeCount,
     };
   }
 
+  private resolveContentElement(node: Element, role: MessageRole): Element | null {
+    if (role === "user") {
+      return (
+        queryFirstWithin(node, SELECTORS.userPrimaryNodes) ||
+        queryFirstWithin(node, SELECTORS.messageContent)
+      );
+    }
+
+    const aiLeafNodes = queryAllWithinUnique(node, SELECTORS.aiContentLeaves);
+    if (aiLeafNodes.length > 1) {
+      return this.findSharedContentContainer(aiLeafNodes, node) ?? node;
+    }
+    if (aiLeafNodes.length === 1) {
+      return aiLeafNodes[0];
+    }
+
+    return queryFirstWithin(node, SELECTORS.messageContent);
+  }
+
+  private findSharedContentContainer(nodes: Element[], boundary: Element): Element | null {
+    const first = nodes[0];
+    if (!first) return null;
+
+    let current: Element | null = first;
+    while (current && boundary.contains(current)) {
+      const containsAll = nodes.every((node) => current?.contains(node));
+      if (containsAll) {
+        if (!SELECTORS.noiseContainers.some((selector) => current?.matches(selector))) {
+          return current;
+        }
+      }
+
+      if (current === boundary) {
+        break;
+      }
+      current = current.parentElement;
+    }
+
+    return boundary;
+  }
+
   private extractMessageText(node: Element, role: MessageRole): string {
-    const contentNode =
-      role === "user"
-        ? queryFirstWithin(node, SELECTORS.userPrimaryNodes) || queryFirstWithin(node, SELECTORS.messageContent)
-        : queryFirstWithin(node, SELECTORS.messageContent);
+    const contentNode = this.resolveContentElement(node, role);
 
     const rawText = safeTextContent(contentNode ?? node);
     return this.cleanExtractedText(rawText);
@@ -575,7 +708,9 @@ export class ClaudeParser implements IParser {
     text = text.replace(/^Show more\s*Done\s*/i, "");
 
     text = text
-      .replace(/\s+/g, " ")
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t\f\v]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
       .replace(/^(Copy|Edit|Retry)\s+/i, "")
       .trim();
 

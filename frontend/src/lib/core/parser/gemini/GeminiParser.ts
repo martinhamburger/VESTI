@@ -1,5 +1,6 @@
 import type { IParser, ParsedMessage } from "../IParser";
 import type { Platform } from "../../../types";
+import type { AstNode, AstRoot } from "../../../types/ast";
 import {
   extractEarliestTimeFromSelectors,
   normalizeCandidateNodes,
@@ -10,6 +11,8 @@ import {
   safeTextContent,
   uniqueNodesInDocumentOrder,
 } from "../shared/selectorUtils";
+import { extractAstFromElement } from "../shared/astExtractor";
+import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
 import { logger } from "../../../utils/logger";
 
 const SELECTORS = {
@@ -90,6 +93,7 @@ const SESSION_ID_PATTERNS = [
 const INVALID_SESSION_IDS = new Set(["app", "new", "chat", "conversation"]);
 const INVALID_GENERIC_TITLES = new Set(["chats", "gemini", "google gemini"]);
 const MAX_FALLBACK_TITLE_LENGTH = 120;
+const GEMINI_USER_PREFIX_PATTERN = /^[\s\u200B\uFEFF]*you said(?:\s*[:\-])?\s*/i;
 const TITLE_BOUNDARY_CHARS = ["\n", "。", "？", "!", "！", "?"];
 
 type MessageRole = "user" | "ai";
@@ -102,7 +106,13 @@ interface ParserStats {
   roleDistribution: Record<MessageRole, number>;
   droppedNoise: number;
   droppedUnknownRole: number;
-  durationMs: number;
+  parse_duration_ms: number;
+  perf_mode: AstPerfMode;
+  next_perf_mode: AstPerfMode;
+  degraded_nodes_count: number;
+  ast_node_count: number;
+  message_count: number;
+  platform: Platform;
 }
 
 interface ExtractionResult {
@@ -111,6 +121,14 @@ interface ExtractionResult {
   droppedNoise: number;
   droppedUnknownRole: number;
   messages: ParsedMessage[];
+  degradedNodesCount: number;
+  astNodeCount: number;
+}
+
+interface ParsedNodeResult {
+  message: ParsedMessage;
+  degradedNodesCount: number;
+  astNodeCount: number;
 }
 
 export class GeminiParser implements IParser {
@@ -144,10 +162,13 @@ export class GeminiParser implements IParser {
 
   getMessages(): ParsedMessage[] {
     const startedAt = performance.now();
-    const selectorResult = this.extractUsingSelectorStrategy();
-    const anchorResult = this.extractUsingAnchorStrategy();
+    const perfMode = astPerfModeController.getMode("Gemini");
+    const selectorResult = this.extractUsingSelectorStrategy(perfMode);
+    const anchorResult = this.extractUsingAnchorStrategy(perfMode);
     const chosen = this.chooseBestExtraction(selectorResult, anchorResult);
     const deduped = this.dedupeNearDuplicates(chosen.messages);
+    const parseDurationMs = Math.round(performance.now() - startedAt);
+    const modeUpdate = astPerfModeController.record("Gemini", parseDurationMs);
 
     const stats: ParserStats = {
       source: chosen.source,
@@ -156,8 +177,24 @@ export class GeminiParser implements IParser {
       roleDistribution: { user: 0, ai: 0 },
       droppedNoise: chosen.droppedNoise + (chosen.messages.length - deduped.length),
       droppedUnknownRole: chosen.droppedUnknownRole,
-      durationMs: Math.round(performance.now() - startedAt),
+      parse_duration_ms: parseDurationMs,
+      perf_mode: perfMode,
+      next_perf_mode: modeUpdate.mode,
+      degraded_nodes_count: chosen.degradedNodesCount,
+      ast_node_count: chosen.astNodeCount,
+      message_count: deduped.length,
+      platform: "Gemini",
     };
+
+    if (modeUpdate.switched) {
+      logger.warn("parser", "Gemini AST perf mode switched", {
+        platform: "Gemini",
+        from: modeUpdate.previousMode,
+        to: modeUpdate.mode,
+        parse_duration_ms: parseDurationMs,
+        message_count: deduped.length,
+      });
+    }
 
     for (const message of deduped) {
       stats.roleDistribution[message.role] += 1;
@@ -198,7 +235,7 @@ export class GeminiParser implements IParser {
     return extractEarliestTimeFromSelectors(SELECTORS.sourceTimes);
   }
 
-  private extractUsingSelectorStrategy(): ExtractionResult {
+  private extractUsingSelectorStrategy(perfMode: AstPerfMode): ExtractionResult {
     const rawCandidates = this.collectMessageCandidates();
     const normalized = normalizeCandidateNodes(rawCandidates, {
       minTextLength: 2,
@@ -209,19 +246,23 @@ export class GeminiParser implements IParser {
     const messages: ParsedMessage[] = [];
     let droppedUnknownRole = 0;
     let droppedNoise = normalized.droppedNoise;
+    let degradedNodesCount = 0;
+    let astNodeCount = 0;
 
     for (const node of normalized.nodes) {
-      const parsed = this.parseMessageNode(node);
+      const parsed = this.parseMessageNode(node, perfMode);
       if (!parsed) {
         droppedUnknownRole += 1;
         continue;
       }
-      if (!parsed.textContent.trim()) {
+      if (!parsed.message.textContent.trim()) {
         droppedNoise += 1;
         continue;
       }
 
-      messages.push(parsed);
+      messages.push(parsed.message);
+      degradedNodesCount += parsed.degradedNodesCount;
+      astNodeCount += parsed.astNodeCount;
     }
 
     return {
@@ -230,10 +271,12 @@ export class GeminiParser implements IParser {
       droppedNoise,
       droppedUnknownRole,
       messages,
+      degradedNodesCount,
+      astNodeCount,
     };
   }
 
-  private extractUsingAnchorStrategy(): ExtractionResult {
+  private extractUsingAnchorStrategy(perfMode: AstPerfMode): ExtractionResult {
     const anchors = queryAllUnique(SELECTORS.roleAnchors);
     if (anchors.length === 0) {
       return {
@@ -242,6 +285,8 @@ export class GeminiParser implements IParser {
         droppedNoise: 0,
         droppedUnknownRole: 0,
         messages: [],
+        degradedNodesCount: 0,
+        astNodeCount: 0,
       };
     }
 
@@ -252,18 +297,22 @@ export class GeminiParser implements IParser {
     const messages: ParsedMessage[] = [];
     let droppedNoise = 0;
     let droppedUnknownRole = 0;
+    let degradedNodesCount = 0;
+    let astNodeCount = 0;
 
     for (const node of resolved) {
-      const parsed = this.parseMessageNode(node);
+      const parsed = this.parseMessageNode(node, perfMode);
       if (!parsed) {
         droppedUnknownRole += 1;
         continue;
       }
-      if (!parsed.textContent.trim()) {
+      if (!parsed.message.textContent.trim()) {
         droppedNoise += 1;
         continue;
       }
-      messages.push(parsed);
+      messages.push(parsed.message);
+      degradedNodesCount += parsed.degradedNodesCount;
+      astNodeCount += parsed.astNodeCount;
     }
 
     return {
@@ -272,6 +321,8 @@ export class GeminiParser implements IParser {
       droppedNoise,
       droppedUnknownRole,
       messages,
+      degradedNodesCount,
+      astNodeCount,
     };
   }
 
@@ -301,7 +352,7 @@ export class GeminiParser implements IParser {
     return uniqueNodesInDocumentOrder(combinedCandidates);
   }
 
-  private parseMessageNode(node: Element): ParsedMessage | null {
+  private parseMessageNode(node: Element, perfMode: AstPerfMode): ParsedNodeResult | null {
     const role = this.inferRole(node);
     if (!role) return null;
 
@@ -309,11 +360,23 @@ export class GeminiParser implements IParser {
     const rawText = this.cleanExtractedText(safeTextContent(contentEl ?? node));
     const textContent =
       role === "user" ? this.stripUserLabelPrefix(rawText) : rawText;
+    const astResult = extractAstFromElement(contentEl ?? node, {
+      platform: "Gemini",
+      perfMode,
+    });
+    const contentAst = this.sanitizeUserAstPrefix(astResult.root, role);
 
     return {
-      role,
-      textContent,
-      htmlContent: contentEl ? contentEl.innerHTML : undefined,
+      message: {
+        role,
+        textContent,
+        contentAst,
+        contentAstVersion: contentAst ? "ast_v1" : null,
+        degradedNodesCount: astResult.degradedNodesCount,
+        htmlContent: contentEl ? contentEl.innerHTML : undefined,
+      },
+      degradedNodesCount: astResult.degradedNodesCount,
+      astNodeCount: astResult.astNodeCount,
     };
   }
 
@@ -387,7 +450,72 @@ export class GeminiParser implements IParser {
   }
 
   private stripUserLabelPrefix(rawText: string): string {
-    return rawText.replace(/^you said\s+/i, "").trim();
+    return rawText.replace(GEMINI_USER_PREFIX_PATTERN, "").trim();
+  }
+
+  private sanitizeUserAstPrefix(root: AstRoot | null, role: MessageRole): AstRoot | null {
+    if (!root || role !== "user") {
+      return root;
+    }
+
+    this.stripLeadingYouSaid(root.children);
+    return root.children.length > 0 ? root : null;
+  }
+
+  private stripLeadingYouSaid(nodes: AstNode[]): boolean {
+    for (let index = 0; index < nodes.length; index += 1) {
+      const node = nodes[index];
+      if (!node) continue;
+
+      if (node.type === "text") {
+        const stripped = node.text.replace(GEMINI_USER_PREFIX_PATTERN, "");
+        if (stripped !== node.text) {
+          if (stripped.trim().length === 0) {
+            nodes.splice(index, 1);
+          } else {
+            node.text = stripped;
+          }
+          return true;
+        }
+
+        if (node.text.trim().length === 0) {
+          nodes.splice(index, 1);
+          index -= 1;
+          continue;
+        }
+        return false;
+      }
+
+      if (node.type === "br") {
+        continue;
+      }
+
+      if (
+        node.type === "fragment" ||
+        node.type === "p" ||
+        node.type === "h1" ||
+        node.type === "h2" ||
+        node.type === "h3" ||
+        node.type === "ul" ||
+        node.type === "ol" ||
+        node.type === "li" ||
+        node.type === "strong" ||
+        node.type === "em" ||
+        node.type === "blockquote"
+      ) {
+        const changed = this.stripLeadingYouSaid(node.children);
+        if (node.children.length === 0) {
+          nodes.splice(index, 1);
+          index -= 1;
+          continue;
+        }
+        return changed;
+      }
+
+      return false;
+    }
+
+    return false;
   }
 
   private normalizeTitleCandidate(rawTitle: string): string {

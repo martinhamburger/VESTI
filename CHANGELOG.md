@@ -15,6 +15,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - Formal Gemini/DeepSeek parser modules with selector+anchor strategies, noise cleaning, role inference, parse stats logging, strict session ID extraction, and `source_created_at` best-effort extraction.
 - Doubao/Qwen Phase2 capture entrypoints (`frontend/src/contents/doubao.ts`, `frontend/src/contents/qwen.ts`) with transient status + force-archive handlers.
 - Formal Doubao/Qwen parser modules with selector+anchor strategies, role inference fallbacks, strict session ID extraction, and parse stats logging.
+- v1.6 dual-track AST foundation: strict `ast_v1` node contract, shared DOM-to-AST extractor (P0 full coverage, P1 math/table probes for ChatGPT/Claude/Gemini), parser perf fallback controller, and Reader-side AST renderer component with KaTeX support.
 
 ### Changed
 - Extension host permissions now include `https://gemini.google.com/*` and `https://chat.deepseek.com/*`.
@@ -29,6 +30,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - Release-line governance is split into serial tracks: `v1.6` data pipeline, `v1.7` multi-agent/prompt backend, `v1.8` Reader+Insights UI.
 - Insights page now keeps v1.8.1 grouped IA (`On-demand`, `Scheduled`, `Discovery`) and upgrades Weekly Digest to a dynamic state machine (`idle/generating/ready/sparse_week/error`) with phase-track generation feedback, previous-natural-week Mon-Sun range unification, and local idle-list collapse (`N more`/`Collapse`).
 - Thread Summary pipeline is now aligned to the latest skill contract while keeping `conversation_summary.v2` naming: parser and adapter support both legacy v2 shape and upgraded v2 shape (`thinking_journey[]`, `real_world_anchor`, glossary-style `key_insights[]`), and Insights Thread Summary UI now renders the full structured journey view with generation shell + no-flash regeneration behavior.
+- Capture persistence upgraded to schema v5-compatible writes (`content_ast`, `content_ast_version`, `degraded_nodes_count`) with legacy-safe read defaults; Reader now uses hybrid AST-first rendering with plain-text fallback; JSON export now carries AST fields as optional extensions.
 
 ### Fixed
 - Gemini title extraction now prefers `[role='heading']`, removes `You said` prefix for title-only parsing, and falls back safely when generic headings are detected.

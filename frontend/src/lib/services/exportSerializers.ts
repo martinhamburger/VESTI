@@ -210,6 +210,13 @@ export function buildExportJsonV1(dataset: ExportDataset): ExportPayload {
       })),
       messages: dataset.messages.map((item) => ({
         ...item,
+        content_ast: item.content_ast ?? null,
+        content_ast_version: item.content_ast_version ?? null,
+        degraded_nodes_count:
+          typeof item.degraded_nodes_count === "number" &&
+          Number.isFinite(item.degraded_nodes_count)
+            ? Math.max(0, Math.floor(item.degraded_nodes_count))
+            : 0,
         created_at_iso: toIso(item.created_at),
       })),
       summaries: dataset.summaries.map((item) => ({

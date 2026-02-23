@@ -12,6 +12,7 @@ export const config: PlasmoCSConfig = {
     "https://chat.qwen.ai/*",
   ],
   run_at: "document_idle",
+  all_frames: false,
 };
 
 const STYLE_ID = "vesti-floating-style";
@@ -72,6 +73,10 @@ const handleOpen = () => {
 };
 
 const mount = () => {
+  if (window.top !== window.self) {
+    return;
+  }
+
   if (document.getElementById(BUTTON_ID)) {
     return;
   }

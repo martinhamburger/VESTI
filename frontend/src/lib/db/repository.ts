@@ -51,7 +51,18 @@ function toMessage(record: MessageRecord): Message {
   if (record.id === undefined) {
     throw new Error("Message record missing id");
   }
-  return record as Message;
+  const degradedNodesCount =
+    typeof record.degraded_nodes_count === "number" &&
+    Number.isFinite(record.degraded_nodes_count)
+      ? Math.max(0, Math.floor(record.degraded_nodes_count))
+      : 0;
+
+  return {
+    ...(record as Message),
+    content_ast: record.content_ast ?? null,
+    content_ast_version: record.content_ast_version ?? null,
+    degraded_nodes_count: degradedNodesCount,
+  };
 }
 
 function toSummary(record: SummaryRecordRecord): SummaryRecord {
