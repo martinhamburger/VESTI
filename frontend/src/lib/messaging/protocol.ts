@@ -2,6 +2,7 @@ import type {
   ActiveCaptureStatus,
   CaptureDecisionMeta,
   Conversation,
+  DataOverviewSnapshot,
   Message,
   DashboardStats,
   ExportFormat,
@@ -150,6 +151,12 @@ export type RequestMessage =
       requestId?: string;
     }
   | {
+      type: "GET_DATA_OVERVIEW";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+    }
+  | {
       type: "EXPORT_DATA";
       target?: "offscreen";
       via?: "background";
@@ -158,6 +165,12 @@ export type RequestMessage =
     }
   | {
       type: "CLEAR_ALL_DATA";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+    }
+  | {
+      type: "CLEAR_INSIGHTS_CACHE";
       target?: "offscreen";
       via?: "background";
       requestId?: string;
@@ -234,8 +247,10 @@ export type ResponseDataMap = {
   UPDATE_CONVERSATION_TITLE: { updated: boolean; conversation: Conversation };
   GET_DASHBOARD_STATS: DashboardStats;
   GET_STORAGE_USAGE: StorageUsageSnapshot;
+  GET_DATA_OVERVIEW: DataOverviewSnapshot;
   EXPORT_DATA: ExportPayload;
   CLEAR_ALL_DATA: { cleared: boolean };
+  CLEAR_INSIGHTS_CACHE: { cleared: boolean };
   GET_LLM_SETTINGS: { settings: LlmConfig | null };
   SET_LLM_SETTINGS: { saved: boolean };
   TEST_LLM_CONNECTION: { ok: boolean; message?: string };
