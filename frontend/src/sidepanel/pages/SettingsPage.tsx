@@ -177,6 +177,25 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+const MODEL_ACCESS_FEEDBACK_MAX_CHARS = 180;
+
+function normalizeModelAccessFeedback(
+  message: string | null | undefined,
+  fallback: string
+): string {
+  const collapsed = (message || "").replace(/\s+/g, " ").trim();
+  if (!collapsed) return fallback;
+  if (collapsed.length <= MODEL_ACCESS_FEEDBACK_MAX_CHARS) return collapsed;
+  return `${collapsed.slice(0, MODEL_ACCESS_FEEDBACK_MAX_CHARS - 3)}...`;
+}
+
+function formatModelTestResultMessage(result: { ok: boolean; message?: string }): string {
+  if (result.ok) {
+    return "Connection verified.";
+  }
+  return normalizeModelAccessFeedback(result.message, "Connection test failed.");
+}
+
 function parseKeywordsInput(value: string): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
@@ -437,7 +456,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
       setModelMessage("Saved");
     } catch (error) {
       setModelStatus("error");
-      setModelMessage(getErrorMessage(error));
+      setModelMessage(normalizeModelAccessFeedback(getErrorMessage(error), "Save failed."));
     }
   };
 
@@ -457,10 +476,10 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
       setLlmSettingsState(next);
       const result = await testLlmConnection();
       setModelStatus(result.ok ? "ready" : "error");
-      setModelMessage(result.message || (result.ok ? "OK" : "Failed"));
+      setModelMessage(formatModelTestResultMessage(result));
     } catch (error) {
       setModelStatus("error");
-      setModelMessage(getErrorMessage(error));
+      setModelMessage(normalizeModelAccessFeedback(getErrorMessage(error), "Connection test failed."));
     }
   };
 
@@ -865,7 +884,9 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                       className="model-access-input"
                     >
                       {BYOK_MODEL_WHITELIST.map((model) => (
-                        <option key={model} value={model} />
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
                       ))}
                     </select>
                   </div>

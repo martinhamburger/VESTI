@@ -100,11 +100,13 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
       }
       case "TEST_LLM_CONNECTION": {
         const settings = requireSettings(await getLlmSettings());
-        const result = await callInference(settings, "Reply with OK only.");
+        await callInference(settings, "Reply with OK only.", {
+          systemPrompt: "You are a connectivity probe. Reply with OK only.",
+        });
         return {
           ok: true,
           type: messageType,
-          data: { ok: true, message: result.content },
+          data: { ok: true, message: "Connection verified." },
         };
       }
       case "GET_CONVERSATION_SUMMARY": {
