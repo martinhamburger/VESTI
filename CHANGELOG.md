@@ -11,6 +11,52 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 ## [Unreleased]
 
 ### Added
+- _None yet_
+
+### Changed
+- _None yet_
+
+### Fixed
+- _None yet_
+
+### Docs
+- _None yet_
+
+### Chore
+- _None yet_
+
+---
+
+## [1.2.0-rc.2] - 2026-02-25
+
+### Added
+- Added v1.5-lite floating capsule shell baseline with Shadow DOM isolation, collapsed/expanded views, runtime status polling, and in-capsule action wiring (`Archive now`, `Open Dock`).
+- Added host-scoped capsule settings service persisted to `chrome.storage.local` under `vesti_capsule_settings`.
+
+### Changed
+- Expanded capsule primary rollout hosts from partial whitelist to all currently supported chat platforms (ChatGPT, Claude, Gemini, DeepSeek, Qwen, Doubao).
+- Kept draggable hotfix behavior as default: collapsed capsule is directly draggable with 5px anti-misfire threshold and post-drag click suppression.
+- Polished expanded capsule card UI to match the approved prototype skin (spacing, hierarchy, status rows, metric cards, and action buttons) while preserving v1.5-lite state semantics.
+- Synced expanded capsule light/dark rendering to `vesti_ui_settings.themeMode` with runtime storage-change updates and listener cleanup on destroy.
+- Aligned platform badge color tokens to sidepanel light/dark triplets (`bg/text/border`) for ChatGPT, Claude, Gemini, DeepSeek, Qwen, and Doubao.
+- Aligned expanded-card typography with sidepanel stacks (`--font-ui`, `--font-vesti-serif` equivalent), including serif + tabular numerics for `Messages/Turns` large metrics.
+- Rolled back collapsed capsule theming to fixed light appearance (independent from theme mode) while keeping expanded-card theme switching enabled.
+
+### Fixed
+- Fixed capsule drag regression that blocked viewport repositioning on primary hosts.
+- Disabled native image drag on capsule logo to avoid dragging into composer inputs as text/image payload.
+
+### Docs
+- Added engineering handoff `documents/engineering_handoffs/2026-02-25-v1_5_lite_capsule_rollout_and_ui_closeout.md` covering implementation log, release plan, and architecture details.
+
+### Chore
+- _None yet_
+
+---
+
+## [1.2.0-rc.1] - 2026-02-25
+
+### Added
 - Gemini/DeepSeek Phase1 capture entrypoints (`frontend/src/contents/gemini.ts`, `frontend/src/contents/deepseek.ts`) with transient status + force-archive handlers.
 - Formal Gemini/DeepSeek parser modules with selector+anchor strategies, noise cleaning, role inference, parse stats logging, strict session ID extraction, and `source_created_at` best-effort extraction.
 - Doubao/Qwen Phase2 capture entrypoints (`frontend/src/contents/doubao.ts`, `frontend/src/contents/qwen.ts`) with transient status + force-archive handlers.
@@ -31,6 +77,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - Insights page now keeps v1.8.1 grouped IA (`On-demand`, `Scheduled`, `Discovery`) and upgrades Weekly Digest to a dynamic state machine (`idle/generating/ready/sparse_week/error`) with phase-track generation feedback, previous-natural-week Mon-Sun range unification, and local idle-list collapse (`N more`/`Collapse`).
 - Thread Summary pipeline is now aligned to the latest skill contract while keeping `conversation_summary.v2` naming: parser and adapter support both legacy v2 shape and upgraded v2 shape (`thinking_journey[]`, `real_world_anchor`, glossary-style `key_insights[]`), and Insights Thread Summary UI now renders the full structured journey view with generation shell + no-flash regeneration behavior.
 - Capture persistence upgraded to schema v5-compatible writes (`content_ast`, `content_ast_version`, `degraded_nodes_count`) with legacy-safe read defaults; Reader now uses hybrid AST-first rendering with plain-text fallback; JSON export now carries AST fields as optional extensions.
+- Floating capsule now supports in-page drag interaction with a 5px anti-misfire threshold and a 90%-scaled diameter (`43.2px`).
 
 ### Fixed
 - Gemini title extraction now prefers `[role='heading']`, removes `You said` prefix for title-only parsing, and falls back safely when generic headings are detected.
@@ -121,6 +168,8 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ---
 
-[Unreleased]: https://github.com/abraxas914/VESTI/compare/v1.1.0-rc.4...HEAD
+[Unreleased]: https://github.com/abraxas914/VESTI/compare/v1.2.0-rc.2...HEAD
+[1.2.0-rc.2]: https://github.com/abraxas914/VESTI/releases/tag/v1.2.0-rc.2
+[1.2.0-rc.1]: https://github.com/abraxas914/VESTI/releases/tag/v1.2.0-rc.1
 [1.1.0-rc.4]: https://github.com/abraxas914/VESTI/releases/tag/v1.1.0-rc.4
 [1.0.0]: https://github.com/abraxas914/VESTI/releases/tag/v1.0.0

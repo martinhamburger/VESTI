@@ -1,7 +1,7 @@
 {
   "name": "vesti",
   "displayName": "Vesti",
-  "version": "0.0.1",
+  "version": "1.2.0-rc.2",
   "description": "AI Chat Memory - Capture and review your conversations",
   "author": "Vesti",
   "scripts": {
@@ -40,6 +40,8 @@
     "typescript": "5.3.3"
   },
   "manifest": {
+    "version": "1.2.0",
+    "version_name": "1.2.0-rc.2",
     "host_permissions": [
       "https://vesti-proxy.vercel.app/*",
       "https://dashscope.aliyuncs.com/*",

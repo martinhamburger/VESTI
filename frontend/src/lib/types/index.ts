@@ -124,6 +124,16 @@ export interface StorageUsageSnapshot {
   status: StorageUsageStatus;
 }
 
+export interface DataOverviewSnapshot {
+  storage: StorageUsageSnapshot;
+  totalConversations: number;
+  compactedThreads: number;
+  summaryRecordCount: number;
+  weeklyReportCount: number;
+  lastCompactionAt: number | null;
+  indexedDbName: string;
+}
+
 export type CapsuleState = "RECORDING" | "STANDBY" | "PAUSED" | "SAVED";
 
 export type CaptureMode = "mirror" | "smart" | "manual";
