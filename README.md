@@ -256,7 +256,7 @@ pnpm build
 **在心迹中配置：**
 1. 点击心迹设置图标进入设置页面。
 2. 在 ModelScope 配置区域填入 API Key。
-3. Model ID 填写推荐的模型（如 `Qwen/Qwen2.5-Coder-32B-Instruct`）。
+3. Model ID 填写推荐的模型（如 `Qwen/Qwen3-32B`）。
 4. 点击 **Test** 按钮验证连接。
 
 > **💡 提示：** 配置成功后，向量化任务会在后台异步运行，将你的历史对话逐步建立为可检索的语义索引。这个过程不影响正常使用，完成后 Explore 问答与 Network 图谱将自动激活。
