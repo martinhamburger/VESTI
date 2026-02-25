@@ -4,7 +4,6 @@
   useRef,
   useState,
   type ChangeEvent,
-  type CSSProperties,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -12,10 +11,13 @@ import {
   Check,
   Copy,
   ExternalLink,
+  FolderOpen,
   MessageSquare,
   Pencil,
+  Star,
   Trash2,
 } from "lucide-react";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { resolveTurnCount } from "~lib/capture/turn-metrics";
 import type { Conversation } from "~lib/types";
 import { updateConversationAndSync } from "~lib/services/syncActions";
@@ -24,6 +26,10 @@ import { PlatformTag } from "./PlatformTag";
 const TOOLTIP_DELAY_MS = 200;
 const COPY_FEEDBACK_MS = 1500;
 const MAX_TITLE_LENGTH = 120;
+const DropdownMenu = DropdownMenuPrimitive.Root;
+const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
+const DropdownMenuContent = DropdownMenuPrimitive.Content;
+const DropdownMenuItem = DropdownMenuPrimitive.Item;
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -153,28 +159,6 @@ export function ConversationCard({
     conversation.turn_count,
     conversation.message_count
   );
-  const starLabel = conversation.is_starred ? "Unstar" : "Star";
-  const selectedTopicValue =
-    conversation.topic_id === null ? "" : String(conversation.topic_id);
-
-  const buttonStyle: CSSProperties = {
-    fontSize: 11,
-    padding: "2px 6px",
-    borderRadius: 4,
-    border: "1px solid hsl(var(--border-subtle))",
-    background: "transparent",
-    color: "hsl(var(--text-secondary))",
-    cursor: "pointer",
-  };
-
-  const selectStyle: CSSProperties = {
-    fontSize: 11,
-    padding: "2px 6px",
-    borderRadius: 4,
-    border: "1px solid hsl(var(--border-subtle))",
-    background: "transparent",
-    color: "hsl(var(--text-secondary))",
-  };
 
   useEffect(() => {
     return () => {
@@ -343,9 +327,26 @@ export function ConversationCard({
     >
       <div className="flex items-center justify-between">
         <PlatformTag platform={conversation.platform} />
-        <span className="text-vesti-xs text-text-tertiary">
-          {formatRelativeTime(conversation.updated_at)}
-        </span>
+        <div className="flex items-center gap-1">
+          <ActionIconButton
+            label={conversation.is_starred ? "Unstar" : "Star"}
+            onClick={handleToggleStar}
+            icon={
+              <Star
+                className={
+                  conversation.is_starred
+                    ? "h-3.5 w-3.5 text-accent-primary"
+                    : "h-3.5 w-3.5"
+                }
+                strokeWidth={1.75}
+                fill={conversation.is_starred ? "currentColor" : "none"}
+              />
+            }
+          />
+          <span className="text-vesti-xs text-text-tertiary">
+            {formatRelativeTime(conversation.updated_at)}
+          </span>
+        </div>
       </div>
 
       <div className="mt-1.5 flex items-start gap-1">
@@ -390,12 +391,57 @@ export function ConversationCard({
         )}
 
         {!isEditingTitle && (
-          <ActionIconButton
-            label="Rename title"
-            onClick={handleStartTitleEdit}
-            disabled={!onRenameTitle || isSavingTitle}
-            icon={<Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />}
-          />
+          <div className="flex items-center gap-0.5 shrink-0">
+            <ActionIconButton
+              label="Rename title"
+              onClick={handleStartTitleEdit}
+              disabled={!onRenameTitle || isSavingTitle}
+              icon={<Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Assign group"
+                  onClick={(event) => event.stopPropagation()}
+                  className="flex h-6 items-center gap-1 rounded-sm px-1.5 text-[11px] text-text-tertiary opacity-60 transition-all duration-150 hover:bg-accent-primary-light hover:text-accent-primary hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                >
+                  <FolderOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  <span className="max-w-[60px] truncate">
+                    {conversation.topic_id
+                      ? topicOptions.find((topic) => topic.id === conversation.topic_id)
+                          ?.label ?? "Group"
+                      : "Group"}
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleTopicChange({
+                      target: { value: "" },
+                    } as ChangeEvent<HTMLSelectElement>);
+                  }}
+                >
+                  <span className="text-text-tertiary">No group</span>
+                </DropdownMenuItem>
+                {topicOptions.map((topic) => (
+                  <DropdownMenuItem
+                    key={topic.id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleTopicChange({
+                        target: { value: String(topic.id) },
+                      } as ChangeEvent<HTMLSelectElement>);
+                    }}
+                  >
+                    {topic.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         )}
       </div>
 
@@ -452,31 +498,6 @@ export function ConversationCard({
                 icon={<Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />}
               />
             </div>
-          </div>
-
-          {/* TODO FOR UPSTREAM: Temporary UI for ext-web sync testing on branch ui-v1.4-a. Safe to override visually, but MUST keep calling updateConversationAndSync(). */}
-          <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              type="button"
-              onClick={handleToggleStar}
-              aria-pressed={conversation.is_starred}
-              style={buttonStyle}
-            >
-              {starLabel}
-            </button>
-            <select
-              aria-label="Assign topic"
-              value={selectedTopicValue}
-              onChange={handleTopicChange}
-              style={selectStyle}
-            >
-              <option value="">No topic</option>
-              {topicOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
       </div>
