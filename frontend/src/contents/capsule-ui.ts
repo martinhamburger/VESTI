@@ -62,6 +62,10 @@ const PRIMARY_ROLLOUT_HOSTS = new Set([
   "chatgpt.com",
   "chat.openai.com",
   "claude.ai",
+  "gemini.google.com",
+  "chat.deepseek.com",
+  "chat.qwen.ai",
+  "www.doubao.com",
 ]);
 
 const PLATFORM_BY_HOST: Record<string, Platform> = {
