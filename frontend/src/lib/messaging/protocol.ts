@@ -15,6 +15,7 @@ import type {
   SummaryRecord,
   WeeklyReportRecord,
   RelatedConversation,
+  RagResponse,
 } from "../types";
 import type { AstRoot, AstVersion } from "../types/ast";
 
@@ -32,6 +33,7 @@ export interface ConversationFilters {
 export interface ConversationUpdateChanges {
   topic_id?: number | null;
   is_starred?: boolean;
+  tags?: string[];
 }
 
 export interface ConversationDraft {
@@ -50,6 +52,33 @@ export interface ConversationDraft {
   tags: string[];
   topic_id: number | null;
   is_starred: boolean;
+}
+
+export type InsightPipelineScope = "summary" | "weekly";
+export type InsightPipelineRoute = "proxy" | "modelscope";
+export type InsightPipelineStage =
+  | "initiating_pipeline"
+  | "distilling_core_logic"
+  | "curating_summary"
+  | "aggregating_weekly_digest"
+  | "persisting_result"
+  | "degraded_fallback"
+  | "completed";
+export type InsightPipelineStatus = "in_progress" | "completed" | "degraded_fallback";
+
+export interface InsightPipelineProgressPayload {
+  pipelineId: string;
+  scope: InsightPipelineScope;
+  targetId: string;
+  stage: InsightPipelineStage;
+  status: InsightPipelineStatus;
+  attempt: number;
+  startedAt: number;
+  updatedAt: number;
+  route: InsightPipelineRoute;
+  modelId: string;
+  promptVersion: string;
+  seq: number;
 }
 
 export interface ParsedMessage {
@@ -121,6 +150,41 @@ export type RequestMessage =
       via?: "background";
       requestId?: string;
       payload: { conversationId: number; limit?: number };
+    }
+  | {
+      type: "GET_ALL_EDGES";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+      payload?: { threshold?: number };
+    }
+  | {
+      type: "RENAME_FOLDER_TAG";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+      payload: { from: string; to: string };
+    }
+  | {
+      type: "MOVE_FOLDER_TAG";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+      payload: { from: string; to: string };
+    }
+  | {
+      type: "REMOVE_FOLDER_TAG";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+      payload: { tag: string };
+    }
+  | {
+      type: "ASK_KNOWLEDGE_BASE";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+      payload: { query: string; limit?: number };
     }
   | {
       type: "GET_MESSAGES";
@@ -252,6 +316,11 @@ export type ResponseDataMap = {
   UPDATE_CONVERSATION: { updated: boolean; conversation: Conversation };
   RUN_GARDENER: { updated: boolean; conversation: Conversation; result: GardenerResult };
   GET_RELATED_CONVERSATIONS: RelatedConversation[];
+  GET_ALL_EDGES: Array<{ source: number; target: number; weight: number }>;
+  RENAME_FOLDER_TAG: { updated: number };
+  MOVE_FOLDER_TAG: { updated: number };
+  REMOVE_FOLDER_TAG: { updated: number };
+  ASK_KNOWLEDGE_BASE: RagResponse;
   GET_MESSAGES: Message[];
   SEARCH_CONVERSATION_IDS_BY_TEXT: number[];
   DELETE_CONVERSATION: { deleted: boolean };

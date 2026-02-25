@@ -9,6 +9,7 @@ export type {
   Conversation,
   GardenerStep,
   GardenerResult,
+  RagResponse,
   Note,
   StorageApi,
   ConversationFilters,

@@ -8,6 +8,7 @@ import type {
   Message,
   Platform,
   RelatedConversation,
+  RagResponse,
   StorageUsageSnapshot,
   SummaryRecord,
   WeeklyReportRecord,
@@ -113,6 +114,72 @@ export async function getRelatedConversations(
   }, LONG_RUNNING_TIMEOUT_MS) as Promise<RelatedConversation[]>;
 }
 
+export async function getAllEdges(
+  threshold = 0.3
+): Promise<Array<{ source: number; target: number; weight: number }>> {
+  return sendRequest({
+    type: "GET_ALL_EDGES",
+    target: "offscreen",
+    payload: { threshold },
+  }, LONG_RUNNING_TIMEOUT_MS) as Promise<Array<{ source: number; target: number; weight: number }>>;
+}
+
+export async function renameFolderTag(
+  from: string,
+  to: string
+): Promise<{ updated: number }> {
+  const result = (await sendRequest({
+    type: "RENAME_FOLDER_TAG",
+    target: "offscreen",
+    payload: { from, to },
+  }, LONG_RUNNING_TIMEOUT_MS)) as { updated: number };
+
+  if (result.updated > 0) {
+    chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
+  return result;
+}
+
+export async function moveFolderTag(
+  from: string,
+  to: string
+): Promise<{ updated: number }> {
+  const result = (await sendRequest({
+    type: "MOVE_FOLDER_TAG",
+    target: "offscreen",
+    payload: { from, to },
+  }, LONG_RUNNING_TIMEOUT_MS)) as { updated: number };
+
+  if (result.updated > 0) {
+    chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
+  return result;
+}
+
+export async function removeFolderTag(
+  tag: string
+): Promise<{ updated: number }> {
+  const result = (await sendRequest({
+    type: "REMOVE_FOLDER_TAG",
+    target: "offscreen",
+    payload: { tag },
+  }, LONG_RUNNING_TIMEOUT_MS)) as { updated: number };
+
+  if (result.updated > 0) {
+    chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
+  return result;
+}
+
 export async function getMessages(
   conversationId: number
 ): Promise<Message[]> {
@@ -134,6 +201,20 @@ export async function searchConversationIdsByText(
     },
     FULL_TEXT_SEARCH_TIMEOUT_MS
   ) as Promise<number[]>;
+}
+
+export async function askKnowledgeBase(
+  query: string,
+  limit?: number
+): Promise<RagResponse> {
+  return sendRequest(
+    {
+      type: "ASK_KNOWLEDGE_BASE",
+      target: "offscreen",
+      payload: { query, limit },
+    },
+    LONG_RUNNING_TIMEOUT_MS
+  ) as Promise<RagResponse>;
 }
 
 export async function deleteConversation(id: number): Promise<void> {

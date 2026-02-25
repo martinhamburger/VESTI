@@ -54,6 +54,11 @@ export interface RelatedConversation {
   platform: Platform;
 }
 
+export interface RagResponse {
+  answer: string;
+  sources: RelatedConversation[];
+}
+
 export interface Message {
   id: number;
   conversation_id: number;

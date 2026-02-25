@@ -11,6 +11,11 @@
     "eval:prompts": "pnpm exec tsc --project ../scripts/tsconfig.eval.json && node ../.tmp/eval/scripts/eval-prompts.js"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/lora": "^5.2.8",
+    "@fontsource/newsreader": "^5.2.10",
+    "@fontsource/noto-serif-sc": "^5.2.9",
+    "@fontsource/nunito-sans": "^5.2.7",
     "@vesti/ui": "file:../packages/vesti-ui",
     "dexie": "^4.3.0",
     "katex": "^0.16.25",
@@ -22,6 +27,7 @@
   },
   "devDependencies": {
     "@ianvs/prettier-plugin-sort-imports": "4.1.1",
+    "@tailwindcss/typography": "^0.5.19",
     "@types/chrome": "0.0.258",
     "@types/node": "20.11.5",
     "@types/react": "18.2.48",
@@ -35,6 +41,9 @@
   },
   "manifest": {
     "host_permissions": [
+      "https://vesti-proxy.vercel.app/*",
+      "https://dashscope.aliyuncs.com/*",
+      "https://api-inference.modelscope.cn/*",
       "https://chatgpt.com/*",
       "https://chat.openai.com/*",
       "https://claude.ai/*",
@@ -45,7 +54,6 @@
     ],
     "permissions": [
       "storage",
-      "alarms",
       "offscreen",
       "sidePanel",
       "unlimitedStorage"

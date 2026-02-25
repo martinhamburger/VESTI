@@ -19,6 +19,8 @@ const platformColors: Record<Platform, string> = {
   Claude: "#1A1A1A",
   Gemini: "#FFFFFF",
   DeepSeek: "#FFFFFF",
+  Qwen: "#0F2B5B",
+  Doubao: "#7A2E0B",
 };
 
 const platformBackgrounds: Record<Platform, string> = {
@@ -26,6 +28,8 @@ const platformBackgrounds: Record<Platform, string> = {
   Claude: "#F7D8BA",
   Gemini: "#3A62D9",
   DeepSeek: "#172554",
+  Qwen: "#E3F2FF",
+  Doubao: "#FCE7D6",
 };
 
 type ViewMode = "conversations" | "notes";

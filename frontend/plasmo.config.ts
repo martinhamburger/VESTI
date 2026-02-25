@@ -1,7 +1,6 @@
 import * as path from "path";
-import { defineConfig } from "plasmo";
 
-export default defineConfig({
+export default {
   vite: (config) => {
     const repoRoot = path.resolve(__dirname, "..", "..");
     const packagesRoot = path.resolve(repoRoot, "packages");
@@ -31,4 +30,4 @@ export default defineConfig({
 
     return config;
   },
-});
+};

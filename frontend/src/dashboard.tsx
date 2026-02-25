@@ -7,7 +7,15 @@ import {
   getTopics,
   runGardener,
   getRelatedConversations,
+  getAllEdges,
   getMessages,
+  updateConversation,
+  updateConversationTitle,
+  deleteConversation,
+  renameFolderTag,
+  moveFolderTag,
+  removeFolderTag,
+  askKnowledgeBase,
 } from "~lib/services/storageService";
 
 export default function VestiDashboardPage() {
@@ -15,7 +23,21 @@ export default function VestiDashboardPage() {
     <VestiDashboardShell
       logoSrc={LOGO_BASE64}
       rootClassName="vesti-options"
-      storage={{ getConversations, getTopics, runGardener, getRelatedConversations, getMessages }}
+      storage={{
+        getConversations,
+        getTopics,
+        runGardener,
+        getRelatedConversations,
+        getAllEdges,
+        getMessages,
+        updateConversation,
+        updateConversationTitle,
+        deleteConversation,
+        renameFolderTag,
+        moveFolderTag,
+        removeFolderTag,
+        askKnowledgeBase,
+      }}
     />
   );
 }

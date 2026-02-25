@@ -4,6 +4,7 @@ import type {
   ExportFormat,
   ExportPayload,
   Message,
+  Topic,
   DashboardStats,
   Platform,
   InsightFormat,
@@ -12,7 +13,6 @@ import type {
   SummaryRecord,
   WeeklyLiteReportV1,
   WeeklyReportRecord,
-  Topic,
 } from "../types";
 import type { ConversationFilters } from "../messaging/protocol";
 import {
@@ -26,10 +26,9 @@ import type {
   ConversationRecord,
   MessageRecord,
   SummaryRecordRecord,
-  WeeklyReportRecordRecord,
   TopicRecord,
+  WeeklyReportRecordRecord,
 } from "./schema";
-import { dedupeTags } from "../services/tagging";
 
 function toConversation(record: ConversationRecord): Conversation {
   if (record.id === undefined) {
@@ -50,6 +49,16 @@ function toConversation(record: ConversationRecord): Conversation {
   };
 }
 
+function toTopic(record: TopicRecord): Topic {
+  if (record.id === undefined) {
+    throw new Error("Topic record missing id");
+  }
+  return {
+    ...record,
+    id: record.id,
+  };
+}
+
 function toMessage(record: MessageRecord): Message {
   if (record.id === undefined) {
     throw new Error("Message record missing id");
@@ -62,17 +71,10 @@ function toMessage(record: MessageRecord): Message {
 
   return {
     ...(record as Message),
-    content_ast: record.content_ast ?? null,
+    content_ast: (record.content_ast ?? null) as Message["content_ast"],
     content_ast_version: record.content_ast_version ?? null,
     degraded_nodes_count: degradedNodesCount,
   };
-}
-
-function toTopic(record: TopicRecord): Topic {
-  if (record.id === undefined) {
-    throw new Error("Topic record missing id");
-  }
-  return { ...record, id: record.id };
 }
 
 function toSummary(record: SummaryRecordRecord): SummaryRecord {
@@ -135,6 +137,24 @@ function toWeeklyReport(record: WeeklyReportRecordRecord): WeeklyReportRecord {
           ? "weekly_report.v1"
           : undefined),
   };
+}
+
+function normalizeTag(tag: string): string {
+  return tag.replace(/\s+/g, " ").trim();
+}
+
+function dedupeTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const tag of tags) {
+    const normalized = normalizeTag(tag);
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(normalized);
+  }
+  return output;
 }
 
 function dayKey(ts: number): string {
@@ -345,7 +365,7 @@ export async function updateConversationTopic(
 
 export async function updateConversation(
   id: number,
-  changes: { topic_id?: number | null; is_starred?: boolean }
+  changes: { topic_id?: number | null; is_starred?: boolean; tags?: string[] }
 ): Promise<{ updated: boolean; conversation: Conversation }> {
   const existing = await db.conversations.get(id);
   if (!existing) {
@@ -377,6 +397,18 @@ export async function updateConversation(
     updated = true;
   }
 
+  if (changes.tags !== undefined) {
+    const nextTags = dedupeTags(changes.tags).slice(0, 6);
+    const current = existing.tags ?? [];
+    const same =
+      nextTags.length === current.length &&
+      nextTags.every((tag, index) => tag === current[index]);
+    if (!same) {
+      updates.tags = nextTags;
+      updated = true;
+    }
+  }
+
   if (!updated) {
     return { updated: false, conversation: toConversation(existing) };
   }
@@ -388,6 +420,80 @@ export async function updateConversation(
     updated: true,
     conversation: toConversation({ ...existing, ...updates, id: existing.id }),
   };
+}
+
+export async function applyGardenerResult(
+  id: number,
+  changes: { topic_id?: number | null; tags?: string[] }
+): Promise<{ updated: boolean; conversation: Conversation }> {
+  return updateConversation(id, changes);
+}
+
+export async function replaceTagAcrossConversations(
+  from: string,
+  to?: string | null
+): Promise<number> {
+  const normalizedFrom = from.trim();
+  if (!normalizedFrom) {
+    throw new Error("TAG_EMPTY");
+  }
+
+  const normalizedTo =
+    typeof to === "string" ? to.trim() : to === null ? null : undefined;
+  if (to !== undefined && to !== null && !normalizedTo) {
+    throw new Error("TAG_EMPTY");
+  }
+
+  if (normalizedTo && normalizedTo.toLowerCase() === normalizedFrom.toLowerCase()) {
+    return 0;
+  }
+
+  await enforceStorageWriteGuard();
+  const now = Date.now();
+  let updated = 0;
+
+  await db.conversations.toCollection().modify((record: Partial<ConversationRecord>) => {
+    const tags = Array.isArray(record.tags) ? record.tags : [];
+    if (!tags.includes(normalizedFrom)) {
+      return;
+    }
+
+    let nextTags = tags.filter((tag) => tag !== normalizedFrom);
+    if (normalizedTo) {
+      nextTags = dedupeTags([...nextTags, normalizedTo]).slice(0, 6);
+    }
+
+    const same =
+      nextTags.length === tags.length &&
+      nextTags.every((tag, index) => tag === tags[index]);
+    if (same) {
+      return;
+    }
+
+    record.tags = nextTags;
+    record.updated_at = now;
+    updated += 1;
+  });
+
+  return updated;
+}
+
+export async function renameTagAcrossConversations(
+  from: string,
+  to: string
+): Promise<number> {
+  return replaceTagAcrossConversations(from, to);
+}
+
+export async function moveTagAcrossConversations(
+  from: string,
+  to: string
+): Promise<number> {
+  return replaceTagAcrossConversations(from, to);
+}
+
+export async function removeTagFromConversations(tag: string): Promise<number> {
+  return replaceTagAcrossConversations(tag, null);
 }
 
 export async function listConversationsByRange(
@@ -475,53 +581,6 @@ export async function updateConversationTitle(
   return toConversation({ ...existing, title: normalizedTitle, id: existing.id });
 }
 
-export async function applyGardenerResult(
-  conversationId: number,
-  payload: { topic_id?: number | null; tags?: string[] }
-): Promise<{ updated: boolean; conversation: Conversation }> {
-  const existing = await db.conversations.get(conversationId);
-  if (!existing) {
-    throw new Error("CONVERSATION_NOT_FOUND");
-  }
-  if (existing.id === undefined) {
-    throw new Error("Conversation record missing id");
-  }
-
-  const updates: Partial<ConversationRecord> = {};
-  let updated = false;
-
-  if (
-    payload.topic_id !== undefined &&
-    existing.topic_id === null &&
-    payload.topic_id !== null
-  ) {
-    updates.topic_id = payload.topic_id;
-    updated = true;
-  }
-
-  if (payload.tags && payload.tags.length > 0) {
-    const merged = dedupeTags([...(existing.tags ?? []), ...payload.tags]).slice(0, 6);
-    const current = existing.tags ?? [];
-    const same =
-      merged.length === current.length &&
-      merged.every((tag, index) => tag === current[index]);
-    if (!same) {
-      updates.tags = merged;
-      updated = true;
-    }
-  }
-
-  if (updated) {
-    updates.updated_at = Date.now();
-    await db.conversations.update(existing.id, updates);
-  }
-
-  return {
-    updated,
-    conversation: toConversation({ ...existing, ...updates, id: existing.id }),
-  };
-}
-
 export async function clearAllData(): Promise<boolean> {
   await db.transaction(
     "rw",
@@ -529,15 +588,11 @@ export async function clearAllData(): Promise<boolean> {
     db.messages,
     db.summaries,
     db.weekly_reports,
-    db.topics,
-    db.vectors,
     async () => {
       await db.messages.clear();
       await db.conversations.clear();
       await db.summaries.clear();
       await db.weekly_reports.clear();
-      await db.topics.clear();
-      await db.vectors.clear();
     }
   );
   return true;

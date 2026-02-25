@@ -11,7 +11,30 @@ import type {
   ChatSummaryData,
   WeeklySummaryData,
 } from "../types/insightsPresentation";
-import { resolveTechTags } from "./tagging";
+import {
+  isLowSignalNarrativeItem,
+  normalizeConversationSummaryV2Legacy,
+  normalizeWeeklyNarrativeList,
+} from "./insightSchemas";
+
+interface WeeklyCrossDomainEcho {
+  domain_a: string;
+  domain_b: string;
+  shared_logic: string;
+  evidence_ids: number[];
+}
+
+const TECH_KEYWORDS: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /\breact\b/i, label: "React" },
+  { pattern: /typescript|\bts\b/i, label: "TypeScript" },
+  { pattern: /plasmo/i, label: "Plasmo" },
+  { pattern: /tailwind/i, label: "Tailwind CSS" },
+  { pattern: /dexie|indexeddb/i, label: "IndexedDB" },
+  { pattern: /parser|selector/i, label: "Parser" },
+  { pattern: /modelscope|qwen|deepseek/i, label: "Model Inference" },
+  { pattern: /prompt|schema/i, label: "Prompt Engineering" },
+];
+const DEFAULT_WEEKLY_SUGGESTED_FOCUS = "下周优先推进一个高价值问题并记录验证结果。";
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -76,7 +99,27 @@ function dedupeInsights(
 }
 
 function inferTags(explicitTags: string[] | undefined, fallbackText: string): string[] {
-  return resolveTechTags(explicitTags, fallbackText);
+  const fromExplicit = dedupe(explicitTags ?? []).slice(0, 6);
+  if (fromExplicit.length > 0) {
+    return fromExplicit;
+  }
+
+  const inferred: string[] = [];
+  for (const item of TECH_KEYWORDS) {
+    if (item.pattern.test(fallbackText)) {
+      inferred.push(item.label);
+    }
+    if (inferred.length >= 3) {
+      break;
+    }
+  }
+
+  const deduped = dedupe(inferred);
+  if (deduped.length > 0) {
+    return deduped;
+  }
+
+  return ["General"];
 }
 
 function toLines(text: string): string[] {
@@ -187,12 +230,15 @@ function toJourneyFromV2(
   steps: ConversationSummaryV2["thinking_journey"]
 ): ChatSummaryData["thinking_journey"] {
   const normalized = steps
-    .map((step, index) => ({
-      step: Number.isFinite(step.step) ? Math.max(1, Math.floor(step.step)) : index + 1,
-      speaker: step.speaker === "AI" ? "AI" : "User",
-      assertion: normalizeText(step.assertion),
-      real_world_anchor: step.real_world_anchor ? normalizeText(step.real_world_anchor) : null,
-    }))
+    .map((step, index) => {
+      const speaker: "User" | "AI" = step.speaker === "AI" ? "AI" : "User";
+      return {
+        step: Number.isFinite(step.step) ? Math.max(1, Math.floor(step.step)) : index + 1,
+        speaker,
+        assertion: normalizeText(step.assertion),
+        real_world_anchor: step.real_world_anchor ? normalizeText(step.real_world_anchor) : null,
+      };
+    })
     .filter((step) => step.assertion.length > 0)
     .sort((left, right) => left.step - right.step);
 
@@ -304,12 +350,15 @@ export function toChatSummaryData(
           "You open with a problem that needs to be clarified before deciding on direction.",
         real_world_anchor: null,
       },
-      ...linesSource.slice(0, 5).map((line, index) => ({
-        step: index + 2,
-        speaker: index % 2 === 0 ? "AI" : "User",
-        assertion: line,
-        real_world_anchor: null,
-      })),
+      ...linesSource.slice(0, 5).map((line, index) => {
+        const speaker: "User" | "AI" = index % 2 === 0 ? "AI" : "User";
+        return {
+          step: index + 2,
+          speaker,
+          assertion: line,
+          real_world_anchor: null,
+        };
+      }),
     ]).slice(0, 8);
 
     return {

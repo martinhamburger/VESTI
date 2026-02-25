@@ -2,6 +2,7 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Conversation, DashboardStats, Platform } from "~lib/types";
 import { getDashboardStats } from "~lib/services/storageService";
+import { LOGO_BASE64 } from "~lib/ui/logo";
 import { PLATFORM_TONE } from "../components/platformTone";
 import { ConversationList } from "../containers/ConversationList";
 import {
@@ -99,8 +100,8 @@ export function TimelinePage({ onSelectConversation, refreshToken }: TimelinePag
               </button>
             </div>
           </div>
-        </header>
-      )}
+        </div>
+      </header>
 
       {headerMode === "filter" && (
         <div className="shrink-0 border-b border-border-subtle bg-bg-secondary/40 px-4 py-3">

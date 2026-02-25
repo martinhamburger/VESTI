@@ -7,7 +7,8 @@ type LogScope =
   | "background"
   | "content"
   | "service"
-  | "llm";
+  | "llm"
+  | "vectorize";
 
 const DEBUG = true;
 const LOG_PREFIX = "\u{1F680} [Vesti]";

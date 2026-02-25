@@ -7,6 +7,8 @@ const platformColors: Record<Platform, string> = {
   Claude: "#F7D8BA",
   Gemini: "#3A62D9",
   DeepSeek: "#172554",
+  Qwen: "#E3F2FF",
+  Doubao: "#FCE7D6",
 };
 
 interface Node {
@@ -50,7 +52,15 @@ export function NetworkTab() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | "all">("all");
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
-  const platforms: (Platform | "all")[] = ["all", "ChatGPT", "Claude", "Gemini", "DeepSeek"];
+  const platforms: (Platform | "all")[] = [
+    "all",
+    "ChatGPT",
+    "Claude",
+    "Gemini",
+    "DeepSeek",
+    "Qwen",
+    "Doubao",
+  ];
 
   return (
     <div className="h-full flex flex-col">

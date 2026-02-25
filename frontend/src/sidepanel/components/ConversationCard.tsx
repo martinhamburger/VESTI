@@ -125,6 +125,7 @@ interface ConversationCardProps {
   onRenameTitle?: (id: number, title: string) => Promise<boolean>;
   topicOptions?: { id: number; label: string }[];
   onConversationUpdated?: (conversation: Conversation) => void;
+  matchedInMessagesOnly?: boolean;
 }
 
 export function ConversationCard({
@@ -136,6 +137,7 @@ export function ConversationCard({
   onRenameTitle,
   topicOptions = [],
   onConversationUpdated,
+  matchedInMessagesOnly = false,
 }: ConversationCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);

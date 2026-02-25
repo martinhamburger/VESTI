@@ -31,6 +31,7 @@ export function VestiDashboard({
     "idle"
   );
   const [settingsAvailable, setSettingsAvailable] = useState(true);
+  const [openConversationId, setOpenConversationId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!settingsOpen) {
@@ -75,6 +76,11 @@ export function VestiDashboard({
         setTimeout(() => setSettingsStatus("idle"), 1500);
       });
     });
+  };
+
+  const handleOpenConversation = (conversationId: number) => {
+    setActiveTab("library");
+    setOpenConversationId(conversationId);
   };
 
   return (
@@ -206,9 +212,22 @@ export function VestiDashboard({
 
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden">
-          {activeTab === "library" && <LibraryTab storage={storage} />}
-          {activeTab === "explore" && <ExploreTab />}
-          {activeTab === "network" && <NetworkTab />}
+          {activeTab === "library" && (
+            <LibraryTab
+              storage={storage}
+              openConversationId={openConversationId}
+              onConversationOpened={() => setOpenConversationId(null)}
+            />
+          )}
+          {activeTab === "explore" && (
+            <ExploreTab
+              askKnowledgeBase={storage.askKnowledgeBase}
+              onOpenConversation={handleOpenConversation}
+            />
+          )}
+          {activeTab === "network" && (
+            <NetworkTab storage={storage} onSelectConversation={handleOpenConversation} />
+          )}
         </div>
       </div>
     </LibraryDataProvider>

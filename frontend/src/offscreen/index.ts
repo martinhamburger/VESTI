@@ -4,14 +4,17 @@ import type { RequestMessage, ResponseMessage } from "../lib/messaging/protocol"
 import { interceptAndPersistCapture } from "../lib/capture/storage-interceptor";
 import {
   listConversations,
+  listMessages,
   getTopics,
   createTopic,
   updateConversationTopic,
   updateConversation,
-  listMessages,
   searchConversationIdsByText,
   deleteConversation,
   updateConversationTitle,
+  renameTagAcrossConversations,
+  moveTagAcrossConversations,
+  removeTagFromConversations,
   getDashboardStats,
   getStorageUsage,
   exportAllData,
@@ -20,7 +23,11 @@ import {
   getWeeklyReport,
 } from "../lib/db/repository";
 import { runGardener } from "../lib/services/gardenerService";
-import { findRelatedConversations } from "../lib/services/searchService";
+import {
+  findRelatedConversations,
+  findAllEdges,
+  askKnowledgeBase,
+} from "../lib/services/searchService";
 import { getLlmSettings, setLlmSettings } from "../lib/services/llmSettingsService";
 import { callInference } from "../lib/services/llmService";
 import {
@@ -90,6 +97,35 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
       case "GET_RELATED_CONVERSATIONS": {
         const data = await findRelatedConversations(
           message.payload.conversationId,
+          message.payload.limit
+        );
+        return { ok: true, type: messageType, data };
+      }
+      case "GET_ALL_EDGES": {
+        const data = await findAllEdges(message.payload?.threshold ?? 0.3);
+        return { ok: true, type: messageType, data };
+      }
+      case "RENAME_FOLDER_TAG": {
+        const updated = await renameTagAcrossConversations(
+          message.payload.from,
+          message.payload.to
+        );
+        return { ok: true, type: messageType, data: { updated } };
+      }
+      case "MOVE_FOLDER_TAG": {
+        const updated = await moveTagAcrossConversations(
+          message.payload.from,
+          message.payload.to
+        );
+        return { ok: true, type: messageType, data: { updated } };
+      }
+      case "REMOVE_FOLDER_TAG": {
+        const updated = await removeTagFromConversations(message.payload.tag);
+        return { ok: true, type: messageType, data: { updated } };
+      }
+      case "ASK_KNOWLEDGE_BASE": {
+        const data = await askKnowledgeBase(
+          message.payload.query,
           message.payload.limit
         );
         return { ok: true, type: messageType, data };

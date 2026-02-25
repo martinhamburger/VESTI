@@ -699,21 +699,24 @@ function parseSummaryFromRaw(raw: string): ParseResult<SummaryStructured, Summar
         schemaVersion: "conversation_summary.v2",
       };
     }
+    const v2Errors = v2.success === false ? v2.errors : [];
+    const v2ErrorCodes = v2.success === false ? v2.errorCodes : [];
 
     const v1 = parseConversationSummaryObject(parsedJson);
     if (v1.success) {
       return {
         data: v1.data,
         errors: [],
-        parseErrorCodes: v2.errorCodes,
+        parseErrorCodes: v2ErrorCodes,
         schemaVersion: "conversation_summary.v1",
       };
     }
+    const v1Errors = v1.success === false ? v1.errors : [];
 
     return {
       data: null,
-      errors: [...v2.errors, ...v1.errors],
-      parseErrorCodes: [...new Set([...(v2.errorCodes || []), "SUMMARY_V1_SCHEMA_MISMATCH"])],
+      errors: [...v2Errors, ...v1Errors],
+      parseErrorCodes: [...new Set([...v2ErrorCodes, "SUMMARY_V1_SCHEMA_MISMATCH"])],
     };
   } catch (error) {
     return {
@@ -736,6 +739,7 @@ function parseWeeklyFromRaw(raw: string): ParseResult<WeeklyStructured, WeeklySc
         schemaVersion: "weekly_lite.v1",
       };
     }
+    const liteErrors = lite.success === false ? lite.errors : [];
 
     const legacy = parseWeeklyReportObject(parsedJson);
     if (legacy.success) {
@@ -745,10 +749,11 @@ function parseWeeklyFromRaw(raw: string): ParseResult<WeeklyStructured, WeeklySc
         schemaVersion: "weekly_report.v1",
       };
     }
+    const legacyErrors = legacy.success === false ? legacy.errors : [];
 
     return {
       data: null,
-      errors: [...lite.errors, ...legacy.errors],
+      errors: [...liteErrors, ...legacyErrors],
     };
   } catch (error) {
     return {
@@ -1272,10 +1277,13 @@ function buildJourneySeedsFromMessages(messages: Message[]): Array<{
   assertion: string;
 }> {
   return messages
-    .map((message) => ({
-      speaker: message.role === "ai" ? "AI" : "User",
-      assertion: normalizeSynthesisLine(message.content_text, 500),
-    }))
+    .map((message) => {
+      const speaker: "User" | "AI" = message.role === "ai" ? "AI" : "User";
+      return {
+        speaker,
+        assertion: normalizeSynthesisLine(message.content_text, 500),
+      };
+    })
     .filter((item) => item.assertion.length > 0);
 }
 
@@ -2584,5 +2592,3 @@ export async function generateWeeklyReport(
     throw error;
   }
 }
-
-

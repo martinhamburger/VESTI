@@ -1,16 +1,22 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import {
-  ChevronDown,
   BookOpen,
   List,
   Star,
-  ChevronUp,
   Check,
   ArrowRight,
+  Clock,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  X,
 } from "lucide-react";
 import type {
+  Conversation,
   Platform,
   Topic,
   StorageApi,
@@ -19,40 +25,35 @@ import type {
 } from "../types";
 import { MOCK_NOTES } from "../mock-data";
 import { useLibraryData } from "../contexts/library-data";
-
-const platformColors: Record<Platform, string> = {
-  ChatGPT: "#1A1A1A",
-  Claude: "#1A1A1A",
-  Gemini: "#FFFFFF",
-  DeepSeek: "#FFFFFF",
-  Qwen: "#1A1A1A",
-  Doubao: "#1A1A1A",
-};
-
-const platformBackgrounds: Record<Platform, string> = {
-  ChatGPT: "#F3F4F6",
-  Claude: "#F7D8BA",
-  Gemini: "#3A62D9",
-  DeepSeek: "#172554",
-  Qwen: "#F3F4F6",
-  Doubao: "#F3F4F6",
-};
+import { PLATFORM_COLORS, PLATFORM_TEXT_COLORS } from "../constants/platform";
 
 type ViewMode = "conversations" | "notes";
+type FolderItem = { name: string; isCustom: boolean; isTag: boolean };
+type FolderMeta = { customFolders: string[] };
 
 type LibraryTabProps = {
   storage: StorageApi;
+  openConversationId?: number | null;
+  onConversationOpened?: () => void;
 };
 
-export function LibraryTab({ storage }: LibraryTabProps) {
-  const { topics, conversations } = useLibraryData();
+export function LibraryTab({
+  storage,
+  openConversationId,
+  onConversationOpened,
+}: LibraryTabProps) {
+  const { topics, conversations, refresh } = useLibraryData();
   const getRelatedConversations = storage.getRelatedConversations;
   const getMessages = storage.getMessages;
+  const updateConversation = storage.updateConversation;
+  const updateConversationTitle = storage.updateConversationTitle;
+  const deleteConversation = storage.deleteConversation;
+  const renameFolderTag = storage.renameFolderTag;
+  const removeFolderTag = storage.removeFolderTag;
   const [viewMode, setViewMode] = useState<ViewMode>("conversations");
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
-  const [gardenerExpanded, setGardenerExpanded] = useState(false);
-  const [listFilter, setListFilter] = useState<"all" | "starred">("all");
+  const [listFilter, setListFilter] = useState<"all" | "starred" | "recent">("all");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [relatedConversations, setRelatedConversations] = useState<RelatedConversation[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
@@ -61,14 +62,23 @@ export function LibraryTab({ storage }: LibraryTabProps) {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [isConversationExpanded, setIsConversationExpanded] = useState(false);
+  const [analysisData, setAnalysisData] = useState<{
+    summary?: string;
+    keyInsights?: string[];
+  } | null>(null);
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
+  const [openConversationMenuId, setOpenConversationMenuId] = useState<number | null>(null);
+  const [openFolderMenuName, setOpenFolderMenuName] = useState<string | null>(null);
 
   // Note editing state
   const [editingTitle, setEditingTitle] = useState(false);
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
   const [noteSaveStatus, setNoteSaveStatus] = useState<"saved" | "unsaved">("saved");
+  const [isEditingNoteBody, setIsEditingNoteBody] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const FOLDER_META_KEY = "vesti_folder_meta";
 
   // Auto-save note with debounce
   useEffect(() => {
@@ -89,9 +99,42 @@ export function LibraryTab({ storage }: LibraryTabProps) {
       if (note) {
         setNoteTitle(note.title);
         setNoteContent(note.content);
+        setIsEditingNoteBody(false);
       }
     }
   }, [selectedNoteId, viewMode]);
+
+  const persistFolderMeta = (nextCustom: string[]) => {
+    setCustomFolders(nextCustom);
+    if (typeof chrome === "undefined" || !chrome.storage?.local) return;
+    chrome.storage.local.set(
+      { [FOLDER_META_KEY]: { customFolders: nextCustom } },
+      () => {
+        void chrome.runtime?.lastError;
+      }
+    );
+  };
+
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.storage?.local) return;
+    chrome.storage.local.get(FOLDER_META_KEY, (result) => {
+      const meta = result?.[FOLDER_META_KEY] as FolderMeta | undefined;
+      if (!meta) return;
+      if (Array.isArray(meta.customFolders)) {
+        setCustomFolders(meta.customFolders);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!openConversationMenuId && !openFolderMenuName) return;
+    const handleClick = () => {
+      setOpenConversationMenuId(null);
+      setOpenFolderMenuName(null);
+    };
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [openConversationMenuId, openFolderMenuName]);
 
   useEffect(() => {
     if (conversations.length > 0 && selectedConversationId === null) {
@@ -104,6 +147,22 @@ export function LibraryTab({ storage }: LibraryTabProps) {
       }
     }
   }, [conversations, selectedConversationId]);
+
+  useEffect(() => {
+    if (typeof openConversationId !== "number") return;
+    if (openConversationId !== selectedConversationId) {
+      setViewMode("conversations");
+      setSelectedConversationId(openConversationId);
+      setSelectedNoteId(null);
+    }
+    onConversationOpened?.();
+  }, [openConversationId, selectedConversationId, onConversationOpened]);
+
+  // TODO: replace with actual db read when teammate's analysis schema is confirmed
+  // e.g. db.analyses.where('conversation_id').equals(selectedConversationId).first()
+  useEffect(() => {
+    setAnalysisData(null);
+  }, [selectedConversationId]);
 
   useEffect(() => {
     setIsConversationExpanded(false);
@@ -194,6 +253,12 @@ export function LibraryTab({ storage }: LibraryTabProps) {
     }
   }, [noteContent]);
 
+  useEffect(() => {
+    if (isEditingNoteBody && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isEditingNoteBody]);
+
   // Focus title input when editing
   useEffect(() => {
     if (editingTitle && titleInputRef.current) {
@@ -207,21 +272,17 @@ export function LibraryTab({ storage }: LibraryTabProps) {
   const messageCount = messages.length;
   const messageDate =
     messages.length > 0 ? messages[0].created_at : selectedConversation?.updated_at;
-  const previewMessages = useMemo(() => {
-    if (messages.length === 0) return [];
-    const firstUserIndex = messages.findIndex((message) => message.role === "user");
-    const firstAiIndex = messages.findIndex((message) => message.role === "ai");
-    if (firstUserIndex === -1 && firstAiIndex === -1) return [];
-    if (firstUserIndex !== -1 && firstAiIndex !== -1) {
-      return firstUserIndex <= firstAiIndex
-        ? [messages[firstUserIndex], messages[firstAiIndex]]
-        : [messages[firstAiIndex], messages[firstUserIndex]];
-    }
-    const index = firstUserIndex !== -1 ? firstUserIndex : firstAiIndex;
-    return index !== -1 ? [messages[index]] : [];
-  }, [messages]);
-  const visibleMessages = isConversationExpanded ? messages : previewMessages;
-  const canToggleMessages = messageCount > previewMessages.length;
+  const renderedNoteContent = useMemo(() => {
+    if (!noteContent.trim()) return "";
+    const html = marked.parse(noteContent, { gfm: true, breaks: false }) as string;
+    return DOMPurify.sanitize(html);
+  }, [noteContent]);
+  const renderedAnalysisSummary = useMemo(() => {
+    const summary = analysisData?.summary?.trim();
+    if (!summary) return "";
+    const html = marked.parse(summary, { gfm: true, breaks: false }) as string;
+    return DOMPurify.sanitize(html);
+  }, [analysisData?.summary]);
   const normalizeTags = (value: unknown): string[] => {
     if (!Array.isArray(value)) return [];
     return value.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0);
@@ -251,10 +312,47 @@ export function LibraryTab({ storage }: LibraryTabProps) {
     () => conversations.filter((conversation) => conversation.is_starred).length,
     [conversations]
   );
+  const recentConversations = useMemo(() => {
+    const sorted = [...conversations].sort((a, b) => b.updated_at - a.updated_at);
+    return sorted.slice(0, 20);
+  }, [conversations]);
+  const folderItems = useMemo<FolderItem[]>(() => {
+    const normalize = (value: string) => value.trim().toLowerCase();
+    const used = new Set<string>();
+    const items: FolderItem[] = [];
+
+    const customSet = new Set(customFolders.map((name) => normalize(name)));
+
+    for (const { tag } of tagCounts) {
+      const key = normalize(tag);
+      if (used.has(key)) continue;
+      used.add(key);
+      items.push({
+        name: tag,
+        isCustom: customSet.has(key),
+        isTag: true,
+      });
+    }
+
+    for (const name of customFolders) {
+      const key = normalize(name);
+      if (used.has(key)) continue;
+      used.add(key);
+      items.push({
+        name,
+        isCustom: true,
+        isTag: false,
+      });
+    }
+
+    return items;
+  }, [tagCounts, customFolders]);
 
   const baseConversations =
     listFilter === "starred"
       ? conversations.filter((conversation) => conversation.is_starred)
+      : listFilter === "recent"
+        ? recentConversations
       : conversations;
   const tagFilteredConversations = selectedTag
     ? baseConversations.filter((conversation) =>
@@ -264,6 +362,209 @@ export function LibraryTab({ storage }: LibraryTabProps) {
 
   const filteredConversations = tagFilteredConversations;
 
+  const handleCreateFolder = () => {
+    const name = window.prompt("New folder name");
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const normalized = trimmed.toLowerCase();
+    const exists = folderItems.some(
+      (item) => item.name.trim().toLowerCase() === normalized
+    );
+    if (exists) {
+      window.alert("A folder with that name already exists.");
+      return;
+    }
+    const nextCustom = [...customFolders, trimmed];
+    persistFolderMeta(nextCustom);
+    setViewMode("conversations");
+    setListFilter("all");
+    setSelectedTag(trimmed);
+    setSelectedConversationId(null);
+  };
+
+  const handleRenameFolder = async (item: FolderItem) => {
+    const name = window.prompt("Rename folder", item.name);
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === item.name) return;
+    const normalized = trimmed.toLowerCase();
+    const exists = folderItems.some(
+      (folder) =>
+        folder.name.trim().toLowerCase() === normalized &&
+        folder.name.trim().toLowerCase() !== item.name.trim().toLowerCase()
+    );
+    if (exists) {
+      window.alert("A folder with that name already exists.");
+      return;
+    }
+
+    const currentKey = item.name.trim().toLowerCase();
+    const nextCustom = customFolders.map((folder) =>
+      folder.trim().toLowerCase() === currentKey ? trimmed : folder
+    );
+
+    if (item.isTag) {
+      if (!renameFolderTag) {
+        window.alert("Renaming folders is not available yet.");
+        return;
+      }
+      try {
+        await renameFolderTag(item.name, trimmed);
+        await refresh();
+      } catch (error) {
+        window.alert((error as Error)?.message ?? "Failed to rename folder.");
+        return;
+      }
+    }
+
+    persistFolderMeta(nextCustom);
+    if (selectedTag?.trim().toLowerCase() === currentKey) {
+      setSelectedTag(trimmed);
+    }
+  };
+
+  const handleDeleteFolder = async (item: FolderItem) => {
+    const confirmed = window.confirm(`Delete folder "${item.name}"?`);
+    if (!confirmed) return;
+
+    const currentKey = item.name.trim().toLowerCase();
+    let nextCustom = customFolders.filter(
+      (folder) => folder.trim().toLowerCase() !== currentKey
+    );
+
+    if (item.isTag) {
+      if (!removeFolderTag) {
+        window.alert("Deleting folders is not available yet.");
+        return;
+      }
+      try {
+        await removeFolderTag(item.name);
+        await refresh();
+      } catch (error) {
+        window.alert((error as Error)?.message ?? "Failed to delete folder.");
+        return;
+      }
+    }
+
+    persistFolderMeta(nextCustom);
+    if (selectedTag?.trim().toLowerCase() === currentKey) {
+      setSelectedTag(null);
+      setListFilter("all");
+      setSelectedConversationId(null);
+    }
+  };
+
+  const dedupeTagList = (tags: string[]) => {
+    const seen = new Set<string>();
+    const output: string[] = [];
+    for (const tag of tags) {
+      const normalized = tag.trim();
+      if (!normalized) continue;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      output.push(normalized);
+    }
+    return output;
+  };
+
+  const handleConversationStar = async (conversation: Conversation) => {
+    if (!updateConversation) {
+      window.alert("Starring is not available yet.");
+      return;
+    }
+    try {
+      await updateConversation(conversation.id, {
+        is_starred: !conversation.is_starred,
+      });
+      await refresh();
+    } catch (error) {
+      window.alert((error as Error)?.message ?? "Failed to update star.");
+    }
+  };
+
+  const handleConversationRename = async (conversation: Conversation) => {
+    if (!updateConversationTitle) {
+      window.alert("Renaming is not available yet.");
+      return;
+    }
+    const name = window.prompt("Rename conversation", conversation.title);
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === conversation.title) return;
+    try {
+      await updateConversationTitle(conversation.id, trimmed);
+      await refresh();
+    } catch (error) {
+      window.alert((error as Error)?.message ?? "Failed to rename conversation.");
+    }
+  };
+
+  const handleConversationChangeFolder = async (conversation: Conversation) => {
+    if (!updateConversation) {
+      window.alert("Changing folders is not available yet.");
+      return;
+    }
+    const name = window.prompt("Change folder", selectedTag ?? "");
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    const selectedKey = selectedTag?.trim().toLowerCase() ?? null;
+    let nextTags = dedupeTagList(normalizeTags(conversation.tags));
+    if (selectedKey) {
+      nextTags = nextTags.filter(
+        (tag) => tag.trim().toLowerCase() !== selectedKey
+      );
+    }
+    nextTags = dedupeTagList([...nextTags, trimmed]).slice(0, 6);
+
+    try {
+      await updateConversation(conversation.id, { tags: nextTags });
+      if (!customFolders.some((folder) => folder.trim().toLowerCase() === trimmed.toLowerCase())) {
+        persistFolderMeta([...customFolders, trimmed]);
+      }
+      await refresh();
+    } catch (error) {
+      window.alert((error as Error)?.message ?? "Failed to change folder.");
+    }
+  };
+
+  const handleConversationRemoveFromFolder = async (conversation: Conversation) => {
+    if (!updateConversation) {
+      window.alert("Removing from folder is not available yet.");
+      return;
+    }
+    if (!selectedTag) {
+      window.alert("Select a folder first.");
+      return;
+    }
+    const selectedKey = selectedTag.trim().toLowerCase();
+    let nextTags = dedupeTagList(normalizeTags(conversation.tags));
+    nextTags = nextTags.filter((tag) => tag.trim().toLowerCase() !== selectedKey);
+    try {
+      await updateConversation(conversation.id, { tags: nextTags });
+      await refresh();
+    } catch (error) {
+      window.alert((error as Error)?.message ?? "Failed to remove from folder.");
+    }
+  };
+
+  const handleConversationDelete = async (conversation: Conversation) => {
+    if (!deleteConversation) {
+      window.alert("Delete is not available yet.");
+      return;
+    }
+    const confirmed = window.confirm("Delete this conversation?");
+    if (!confirmed) return;
+    try {
+      await deleteConversation(conversation.id);
+      await refresh();
+    } catch (error) {
+      window.alert((error as Error)?.message ?? "Failed to delete conversation.");
+    }
+  };
 
   function formatDate(timestamp?: number): string {
     if (!timestamp) return "Unknown date";
@@ -304,49 +605,20 @@ export function LibraryTab({ storage }: LibraryTabProps) {
     setListFilter("all");
     setSelectedTag(null);
     setSelectedConversationId(conversationId);
-    const conversation = conversations.find((c) => c.id === conversationId);
-    if (conversation) {
-      setSelectedTopicId(conversation.topic_id);
-    }
   };
+
+  const isAllActive =
+    viewMode === "conversations" && !selectedTag && listFilter === "all";
+  const isStarredActive =
+    viewMode === "conversations" && listFilter === "starred";
+  const isRecentActive =
+    viewMode === "conversations" && listFilter === "recent";
 
   return (
     <div className="flex h-full">
       {/* Left Column - Sidebar (200px) */}
       <aside className="w-[200px] bg-bg-secondary flex flex-col">
-        <div className="flex-1 overflow-y-auto pt-4">
-          {tagCounts.length > 0 && (
-            <div className="flex flex-col">
-              {tagCounts.map(({ tag, count }) => {
-                const isSelected = selectedTag === tag;
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => {
-                      setViewMode("conversations");
-                      setListFilter("all");
-                      setSelectedTag(tag);
-                      setSelectedConversationId(null);
-                    }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors duration-200 relative ${
-                      isSelected && viewMode === "conversations"
-                        ? "bg-bg-surface-card-hover"
-                        : "hover:bg-bg-surface-card"
-                    }`}
-                  >
-                    {isSelected && viewMode === "conversations" && (
-                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent-primary" />
-                    )}
-                    <span className="flex-1 text-sm font-sans text-text-primary">{tag}</span>
-                    <span className="text-xs font-sans text-text-tertiary">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-border-subtle">
+        <div className="px-2 pt-3 pb-2">
           <button
             onClick={() => {
               setViewMode("conversations");
@@ -354,21 +626,21 @@ export function LibraryTab({ storage }: LibraryTabProps) {
               setSelectedTag(null);
               setSelectedConversationId(null);
             }}
-            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors relative ${
-              viewMode === "conversations" &&
-              !selectedTag &&
-              listFilter === "all"
-                ? "bg-bg-surface-card-hover"
-                : "hover:bg-bg-surface-card"
+            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors my-1 rounded-lg ${
+              isAllActive ? "bg-accent-primary-light" : "hover:bg-bg-surface-card"
             }`}
           >
-            {viewMode === "conversations" &&
-              !selectedTag &&
-              listFilter === "all" && (
-              <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent-primary" />
-            )}
-            <List strokeWidth={1.5} className="w-4 h-4 text-text-secondary" />
-            <span className="flex-1 text-sm font-sans text-text-primary">All Conversations</span>
+            <List
+              strokeWidth={1.5}
+              className={`w-4 h-4 ${isAllActive ? "text-accent-primary" : "text-text-secondary"}`}
+            />
+            <span
+              className={`flex-1 text-sm font-sans ${
+                isAllActive ? "text-accent-primary" : "text-text-primary"
+              }`}
+            >
+              All Conversations
+            </span>
             <span className="text-xs font-sans text-text-tertiary">{conversations.length}</span>
           </button>
           <button
@@ -378,23 +650,150 @@ export function LibraryTab({ storage }: LibraryTabProps) {
               setSelectedTag(null);
               setSelectedConversationId(null);
             }}
-            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors relative ${
-              viewMode === "conversations" && listFilter === "starred"
-                ? "bg-bg-surface-card-hover"
-                : "hover:bg-bg-surface-card"
+            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors my-1 rounded-lg ${
+              isStarredActive ? "bg-accent-primary-light" : "hover:bg-bg-surface-card"
             }`}
           >
-            {viewMode === "conversations" && listFilter === "starred" && (
-              <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent-primary" />
-            )}
-            <Star strokeWidth={1.5} className="w-4 h-4 text-text-secondary" />
-            <span className="flex-1 text-sm font-sans text-text-primary">Starred</span>
+            <Star
+              strokeWidth={1.5}
+              className={`w-4 h-4 ${isStarredActive ? "text-accent-primary" : "text-text-secondary"}`}
+            />
+            <span
+              className={`flex-1 text-sm font-sans ${
+                isStarredActive ? "text-accent-primary" : "text-text-primary"
+              }`}
+            >
+              Starred
+            </span>
             <span className="text-xs font-sans text-text-tertiary">{starredCount}</span>
+          </button>
+          <button
+            onClick={() => {
+              setViewMode("conversations");
+              setListFilter("recent");
+              setSelectedTag(null);
+              setSelectedConversationId(null);
+            }}
+            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors my-1 rounded-lg ${
+              isRecentActive ? "bg-accent-primary-light" : "hover:bg-bg-surface-card"
+            }`}
+          >
+            <Clock
+              strokeWidth={1.5}
+              className={`w-4 h-4 ${isRecentActive ? "text-accent-primary" : "text-text-secondary"}`}
+            />
+            <span
+              className={`flex-1 text-sm font-sans ${
+                isRecentActive ? "text-accent-primary" : "text-text-primary"
+              }`}
+            >
+              Recent
+            </span>
+            <span className="text-xs font-sans text-text-tertiary">{recentConversations.length}</span>
           </button>
         </div>
 
-        {/* My Notes Entry */}
-        <div className="mt-2">
+        <div className="flex-1 overflow-y-auto px-2">
+          <div className="flex items-center justify-between px-2 py-2">
+            <span className="text-[10px] font-sans font-semibold text-text-tertiary uppercase tracking-wider">
+              Folders
+            </span>
+            <button
+              onClick={handleCreateFolder}
+              className="w-5 h-5 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-secondary hover:bg-bg-surface-card transition-colors"
+              aria-label="Create new folder"
+              title="New folder"
+            >
+              +
+            </button>
+          </div>
+          {folderItems.length > 0 && (
+            <div className="flex flex-col">
+              {folderItems.map((folder) => {
+                const isSelected = selectedTag === folder.name;
+                return (
+                  <div
+                    key={folder.name}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setViewMode("conversations");
+                      setListFilter("all");
+                      setSelectedTag(folder.name);
+                      setSelectedConversationId(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setViewMode("conversations");
+                        setListFilter("all");
+                        setSelectedTag(folder.name);
+                        setSelectedConversationId(null);
+                      }
+                    }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors duration-200 my-1 rounded-lg group cursor-pointer relative ${
+                      isSelected && viewMode === "conversations"
+                        ? "bg-bg-surface-card-active"
+                        : "hover:bg-bg-surface-card"
+                    }`}
+                  >
+                    <span className="flex-1 text-sm font-sans text-text-primary truncate">
+                      {folder.name}
+                    </span>
+                    <div className="ml-2 flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenFolderMenuName((prev) =>
+                            prev === folder.name ? null : folder.name
+                          );
+                        }}
+                        className="w-5 h-5 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-secondary hover:bg-bg-surface-card"
+                        title="Folder actions"
+                        aria-label={`Folder actions for ${folder.name}`}
+                      >
+                        <MoreHorizontal strokeWidth={1.5} className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {openFolderMenuName === folder.name && (
+                      <div
+                        className="absolute right-2 top-9 z-30 w-44 rounded-md border border-border-subtle bg-bg-primary shadow-[0_8px_24px_rgba(0,0,0,0.08)] py-1"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleRenameFolder(folder);
+                            setOpenFolderMenuName(null);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-sans text-text-primary hover:bg-bg-surface-card transition-colors"
+                        >
+                          <Pencil strokeWidth={1.5} className="w-4 h-4" />
+                          <span>Rename</span>
+                        </button>
+                        <div className="my-1 h-px bg-border-subtle" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleDeleteFolder(folder);
+                            setOpenFolderMenuName(null);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-sans text-[#B42318] hover:bg-bg-surface-card transition-colors"
+                        >
+                          <Trash2 strokeWidth={1.5} className="w-4 h-4" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-border-subtle px-2 py-2">
           <button
             onClick={() => {
               setViewMode("notes");
@@ -402,13 +801,10 @@ export function LibraryTab({ storage }: LibraryTabProps) {
                 setSelectedNoteId(MOCK_NOTES[0].id);
               }
             }}
-            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors relative ${
-              viewMode === "notes" ? "bg-bg-surface-card-hover" : "hover:bg-bg-surface-card"
+            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors my-1 rounded-lg ${
+              viewMode === "notes" ? "bg-bg-surface-card-active" : "hover:bg-bg-surface-card"
             }`}
           >
-            {viewMode === "notes" && (
-              <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent-primary" />
-            )}
             <BookOpen strokeWidth={1.5} className="w-4 h-4 text-text-secondary" />
             <span className="flex-1 text-sm font-sans text-text-primary">My Notes</span>
             <span className="text-xs font-sans text-text-tertiary">{MOCK_NOTES.length}</span>
@@ -420,7 +816,7 @@ export function LibraryTab({ storage }: LibraryTabProps) {
       <div className="w-[320px] bg-bg-tertiary flex flex-col">
         {viewMode === "conversations" ? (
           <>
-            <div className="px-4 py-3 border-b border-border-subtle">
+            <div className="px-4 py-3">
               <div className="flex items-baseline justify-between">
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg font-serif font-normal text-text-primary">
@@ -428,6 +824,8 @@ export function LibraryTab({ storage }: LibraryTabProps) {
                         ? selectedTag
                       : listFilter === "starred"
                         ? "Starred"
+                        : listFilter === "recent"
+                          ? "Recent"
                         : "All Conversations"}
                   </h2>
                   <span className="text-xs font-sans text-text-tertiary">
@@ -437,29 +835,109 @@ export function LibraryTab({ storage }: LibraryTabProps) {
               </div>
             </div>
 
-            {/* New Folder Button */}
-            <div className="px-4 py-2 border-b border-[#EEECE5]">
-              <button
-                onClick={() => console.log("[dashboard] Create new folder")}
-                className="text-[12px] font-sans text-text-tertiary hover:text-text-secondary transition-colors"
-              >
-                + New Folder
-              </button>
-            </div>
-
             <div className="flex-1 overflow-y-auto p-3 space-y-1.5 mt-2">
               {filteredConversations.map((conv) => {
                 const isSelected = conv.id === selectedConversationId;
                 return (
-                  <button
+                  <div
                     key={conv.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedConversationId(conv.id)}
-                    className={`w-full text-left p-3 rounded-lg transition-all duration-200 relative group ${
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedConversationId(conv.id);
+                      }
+                    }}
+                    className={`w-full text-left p-3 rounded-lg transition-all duration-200 relative group cursor-pointer ${
                       isSelected
                         ? "bg-bg-surface-card-active shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
                         : "bg-bg-surface-card hover:bg-bg-surface-card-hover hover:shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
                     }`}
                   >
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedConversationId(conv.id);
+                        setOpenConversationMenuId((prev) =>
+                          prev === conv.id ? null : conv.id
+                        );
+                      }}
+                      className="absolute right-2 top-2 w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-secondary hover:bg-bg-surface-card transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label="Conversation actions"
+                    >
+                      <MoreHorizontal strokeWidth={1.5} className="w-4 h-4" />
+                    </button>
+                    {openConversationMenuId === conv.id && (
+                      <div
+                        className="absolute right-2 top-10 z-30 w-52 rounded-md border border-border-subtle bg-bg-primary shadow-[0_8px_24px_rgba(0,0,0,0.08)] py-1"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleConversationStar(conv);
+                            setOpenConversationMenuId(null);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-sans text-text-primary hover:bg-bg-surface-card transition-colors"
+                        >
+                          <Star strokeWidth={1.5} className="w-4 h-4" />
+                          <span>{conv.is_starred ? "Unstar" : "Star"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleConversationRename(conv);
+                            setOpenConversationMenuId(null);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-sans text-text-primary hover:bg-bg-surface-card transition-colors"
+                        >
+                          <Pencil strokeWidth={1.5} className="w-4 h-4" />
+                          <span>Rename</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleConversationChangeFolder(conv);
+                            setOpenConversationMenuId(null);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-sans text-text-primary hover:bg-bg-surface-card transition-colors"
+                        >
+                          <ArrowRight strokeWidth={1.5} className="w-4 h-4" />
+                          <span>Change folder</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleConversationRemoveFromFolder(conv);
+                            setOpenConversationMenuId(null);
+                          }}
+                          disabled={!selectedTag}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-[13px] font-sans transition-colors ${
+                            selectedTag
+                              ? "text-text-primary hover:bg-bg-surface-card"
+                              : "text-text-tertiary cursor-not-allowed"
+                          }`}
+                        >
+                          <X strokeWidth={1.5} className="w-4 h-4" />
+                          <span>Remove from folder</span>
+                        </button>
+                        <div className="my-1 h-px bg-border-subtle" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleConversationDelete(conv);
+                            setOpenConversationMenuId(null);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-sans text-[#B42318] hover:bg-bg-surface-card transition-colors"
+                        >
+                          <Trash2 strokeWidth={1.5} className="w-4 h-4" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    )}
                     <h3 className="text-sm font-sans font-medium text-text-primary mb-1.5 leading-snug line-clamp-1">
                       {conv.title}
                     </h3>
@@ -476,8 +954,8 @@ export function LibraryTab({ storage }: LibraryTabProps) {
                           <span
                             className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none"
                             style={{
-                              backgroundColor: platformBackgrounds[conv.platform],
-                              color: platformColors[conv.platform],
+                              backgroundColor: PLATFORM_COLORS[conv.platform],
+                              color: PLATFORM_TEXT_COLORS[conv.platform],
                             }}
                           >
                             {conv.platform}
@@ -509,7 +987,7 @@ export function LibraryTab({ storage }: LibraryTabProps) {
                         </div>
                       </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -545,42 +1023,49 @@ export function LibraryTab({ storage }: LibraryTabProps) {
                         : "bg-bg-surface-card hover:bg-bg-surface-card-hover hover:shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
                     }`}
                   >
-                    {isSelected && (
-                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent-primary rounded-r" />
-                    )}
                     <h3 className="text-sm font-sans font-medium text-text-primary mb-1.5 leading-snug">
                       {note.title}
                     </h3>
-                    <p className="text-[13px] font-sans text-text-secondary leading-relaxed mb-2 line-clamp-2">
-                      {preview}
-                    </p>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {note.tags.slice(0, 2).map((tag) => (
-                        <span
-                          key={tag}
-                          className="px-2 py-0.5 rounded-full text-[11px] font-sans text-text-secondary bg-bg-secondary"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                      <span className="ml-auto text-[11px] font-sans text-text-tertiary">
-                        {formatTimeAgo(note.updated_at)}
-                      </span>
-                      {note.linked_conversation_ids.length > 0 && (
-                        <span
-                          title={`Linked to ${note.linked_conversation_ids.length} conversation${
-                            note.linked_conversation_ids.length > 1 ? "s" : ""
-                          }`}
-                          style={{
-                            display: "inline-block",
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            backgroundColor: "#3266AD",
-                            flexShrink: 0,
-                          }}
-                        />
-                      )}
+                    <div
+                      className={`grid transition-[grid-template-rows,opacity] duration-150 ease-in-out ${
+                        isSelected
+                          ? "grid-rows-[1fr] opacity-100"
+                          : "grid-rows-[0fr] opacity-0 group-hover:opacity-100 group-hover:grid-rows-[1fr]"
+                      }`}
+                    >
+                      <div className="overflow-hidden">
+                        <p className="text-[13px] font-sans text-text-secondary leading-relaxed mb-2 line-clamp-2">
+                          {preview}
+                        </p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {note.tags.slice(0, 2).map((tag) => (
+                            <span
+                              key={tag}
+                              className="px-2 py-0.5 rounded-full text-[11px] font-sans text-text-secondary bg-bg-secondary"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          <span className="ml-auto text-[11px] font-sans text-text-tertiary">
+                            {formatTimeAgo(note.updated_at)}
+                          </span>
+                          {note.linked_conversation_ids.length > 0 && (
+                            <span
+                              title={`Linked to ${note.linked_conversation_ids.length} conversation${
+                                note.linked_conversation_ids.length > 1 ? "s" : ""
+                              }`}
+                              style={{
+                                display: "inline-block",
+                                width: 6,
+                                height: 6,
+                                borderRadius: "50%",
+                                backgroundColor: "#3266AD",
+                                flexShrink: 0,
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </button>
                 );
@@ -603,8 +1088,8 @@ export function LibraryTab({ storage }: LibraryTabProps) {
                 <span
                   className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none"
                   style={{
-                    backgroundColor: platformBackgrounds[selectedConversation.platform],
-                    color: platformColors[selectedConversation.platform],
+                    backgroundColor: PLATFORM_COLORS[selectedConversation.platform],
+                    color: PLATFORM_TEXT_COLORS[selectedConversation.platform],
                   }}
                 >
                   {selectedConversation.platform}
@@ -628,114 +1113,192 @@ export function LibraryTab({ storage }: LibraryTabProps) {
 
             {/* Block B - Gardener Summary Card */}
             <div className="mb-6">
-              <button
-                onClick={() => setGardenerExpanded(!gardenerExpanded)}
-                className="w-full p-3 rounded-lg bg-bg-surface-card hover:bg-bg-surface-card-hover transition-colors flex items-center justify-between"
-              >
-                <div className="flex items-center gap-2 text-sm font-sans">
-                  {hasAnalysis ? (
-                    <>
-                      <Check strokeWidth={1.5} className="w-4 h-4 text-accent-primary" />
-                      <span className="text-text-primary">Analyzed</span>
-                      {activeTopicName && (
-                        <>
-                          <span className="text-text-tertiary">·</span>
-                          <span className="text-text-tertiary">{activeTopicName}</span>
-                        </>
-                      )}
-                      {activeTags.length > 0 && (
-                        <>
-                          <span className="text-text-tertiary">·</span>
-                          <span className="text-text-tertiary">
-                            {activeTags.join(", ")}
-                          </span>
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-text-tertiary">Not analyzed yet</span>
-                    </>
-                  )}
-                </div>
-                {gardenerExpanded ? (
-                  <ChevronUp strokeWidth={1.5} className="w-4 h-4 text-text-tertiary" />
-                ) : (
-                  <ChevronDown strokeWidth={1.5} className="w-4 h-4 text-text-tertiary" />
-                )}
-              </button>
-
-              {gardenerExpanded && (
-                <div className="mt-3 p-4 rounded-lg bg-bg-surface-card text-sm font-sans text-text-tertiary">
-                  Analysis runs automatically after capture. Step details are not stored yet.
-                </div>
-              )}
-            </div>
-
-            {/* Block C - Conversation Content */}
-            <div className="prose prose-slate max-w-none">
-              {messagesLoading && (
-                <div className="text-[13px] font-sans text-text-tertiary">
-                  Loading messages...
-                </div>
-              )}
-              {!messagesLoading && messagesError && (
-                <div className="text-[13px] font-sans text-text-tertiary">
-                  Unable to load messages.
-                </div>
-              )}
-              {!messagesLoading && !messagesError && messages.length === 0 && (
-                <div className="text-[13px] font-sans text-text-tertiary">
-                  No messages captured yet.
-                </div>
-              )}
-              {visibleMessages.map((message) => {
-                const isUser = message.role === "user";
-                return (
-                  <div key={message.id} className="mb-6">
-                    {isUser ? (
-                      <div className="text-[11px] font-sans text-text-tertiary uppercase tracking-wide mb-2">
-                        You
-                      </div>
+              <div className="rounded-lg bg-bg-surface-card overflow-hidden">
+                <div className="w-full p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-sans">
+                    {hasAnalysis ? (
+                      <>
+                        <Check strokeWidth={1.5} className="w-4 h-4 text-accent-primary" />
+                        <span className="text-text-primary">Analyzed</span>
+                        {activeTopicName && (
+                          <>
+                            <span className="text-text-tertiary">·</span>
+                            <span className="text-text-tertiary">{activeTopicName}</span>
+                          </>
+                        )}
+                        {activeTags.length > 0 && (
+                          <>
+                            <span className="text-text-tertiary">·</span>
+                            <span className="text-text-tertiary">
+                              {activeTags.join(", ")}
+                            </span>
+                          </>
+                        )}
+                      </>
                     ) : (
-                      <span
-                        className="inline-block px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none uppercase tracking-wide mb-2"
-                        style={{
-                          backgroundColor: platformBackgrounds[selectedConversation.platform],
-                          color: platformColors[selectedConversation.platform],
-                        }}
-                      >
-                        {selectedConversation.platform}
-                      </span>
+                      <span className="text-text-tertiary">Not analyzed yet</span>
                     )}
-                    <div
-                      className={`text-base font-serif text-text-primary leading-relaxed whitespace-pre-wrap ${
-                        isUser ? "" : "p-3 rounded-lg bg-bg-surface-ai-message"
-                      }`}
-                    >
-                      {message.content_text}
-                    </div>
                   </div>
-                );
-              })}
+                </div>
+
+                <div className="border-t border-border-subtle" />
+
+                {/* Summary 区域 */}
+                <div className="p-4">
+                  {analysisData?.summary ? (
+                    <div
+                      className="prose prose-slate max-w-none text-sm
+                        prose-p:text-text-secondary prose-p:leading-relaxed
+                        prose-li:text-text-secondary prose-li:leading-relaxed
+                        prose-p:my-1 prose-li:my-0.5"
+                    >
+                      <div
+                        className="text-text-secondary"
+                        dangerouslySetInnerHTML={{ __html: renderedAnalysisSummary }}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-[13px] font-sans text-text-tertiary leading-relaxed">
+                      Analysis runs automatically after capture. Step details are not stored yet.
+                    </p>
+                  )}
+                </div>
+
+                {/* 操作栏 */}
+                <div className="px-4 pb-3 flex items-center gap-2 border-t border-border-subtle pt-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      console.log("[library] import to notes", selectedConversationId)
+                    }
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-sans
+                      text-text-secondary hover:text-accent-primary hover:bg-accent-primary-light
+                      transition-colors duration-150"
+                  >
+                    <BookOpen strokeWidth={1.5} className="w-3.5 h-3.5" />
+                    Import to Notes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // TODO: navigate to linked note
+                      // 当 has_note 为 true 时跳转到对应笔记
+                      const linkedNote = MOCK_NOTES.find((n) =>
+                        n.linked_conversation_ids.includes(selectedConversationId ?? -1)
+                      );
+                      if (linkedNote) {
+                        setViewMode("notes");
+                        setSelectedNoteId(linkedNote.id);
+                      } else {
+                        console.log("[library] no linked note yet");
+                      }
+                    }}
+                    disabled={!selectedConversation?.has_note}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-sans
+                      transition-colors duration-150
+                      ${selectedConversation?.has_note
+                        ? "text-text-secondary hover:text-accent-primary hover:bg-accent-primary-light"
+                        : "text-text-tertiary cursor-not-allowed opacity-50"
+                      }`}
+                  >
+                    <ArrowRight strokeWidth={1.5} className="w-3.5 h-3.5" />
+                    View Note
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {canToggleMessages && (
-              <div className="mt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsConversationExpanded((prev) => !prev)}
-                  className="inline-flex items-center gap-1 text-[12px] font-sans text-text-tertiary hover:text-text-secondary transition-colors"
-                >
-                  {isConversationExpanded ? "Collapse" : "Expand"}
-                  {isConversationExpanded ? (
-                    <ChevronUp strokeWidth={1.5} className="w-3.5 h-3.5" />
-                  ) : (
-                    <ChevronDown strokeWidth={1.5} className="w-3.5 h-3.5" />
+            {/* Block C - Conversation Preview */}
+            <div className="mt-6">
+              {/* 默认预览条 - 折叠时显示 */}
+              {!isConversationExpanded && (
+                <div className="flex items-start justify-between gap-4">
+                  <p className="text-[13px] font-sans text-text-secondary leading-relaxed line-clamp-2 flex-1">
+                    {messagesLoading
+                      ? "Loading..."
+                      : messages.length === 0
+                        ? "No messages captured yet."
+                        : `${messages[0]?.content_text?.slice(0, 120) ?? ""}${
+                            (messages[0]?.content_text?.length ?? 0) > 120 ? "..." : ""
+                          }`}
+                  </p>
+                  {messageCount > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsConversationExpanded((prev) => !prev)}
+                      className="shrink-0 text-[12px] font-sans text-text-tertiary hover:text-text-secondary transition-colors whitespace-nowrap"
+                    >
+                      Show all {messageCount} messages ↓
+                    </button>
                   )}
-                </button>
+                </div>
+              )}
+
+              {/* 展开后的完整消息流 */}
+              <div
+                className={`transition-all duration-300 ease-in-out ${
+                  isConversationExpanded ? "opacity-100 mt-6" : "max-h-0 opacity-0"
+                }`}
+              >
+                <div
+                  className="rounded-lg bg-bg-surface-card border border-border-subtle p-4 max-h-[440px] overflow-y-auto"
+                  style={{ scrollbarGutter: "stable" }}
+                >
+                  {messageCount > 1 && (
+                    <div className="sticky top-0 z-10 flex justify-end bg-bg-surface-card pb-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsConversationExpanded(false)}
+                        className="text-[12px] font-sans text-text-tertiary hover:text-text-secondary transition-colors whitespace-nowrap"
+                      >
+                        Hide ↑
+                      </button>
+                    </div>
+                  )}
+                  <div className="prose prose-slate max-w-none">
+                  {messagesLoading && (
+                    <div className="text-[13px] font-sans text-text-tertiary">
+                      Loading messages...
+                    </div>
+                  )}
+                  {!messagesLoading && messagesError && (
+                    <div className="text-[13px] font-sans text-text-tertiary">
+                      Unable to load messages.
+                    </div>
+                  )}
+                  {messages.map((message) => {
+                    const isUser = message.role === "user";
+                    return (
+                      <div key={message.id} className="mb-6">
+                        {isUser ? (
+                          <div className="text-[11px] font-sans text-text-tertiary uppercase tracking-wide mb-2">
+                            You
+                          </div>
+                        ) : (
+                          <span
+                            className="inline-block px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none uppercase tracking-wide mb-2"
+                            style={{
+                              backgroundColor: PLATFORM_COLORS[selectedConversation.platform],
+                              color: PLATFORM_TEXT_COLORS[selectedConversation.platform],
+                            }}
+                          >
+                            {selectedConversation.platform}
+                          </span>
+                        )}
+                        <div
+                          className={`text-base font-serif text-text-primary leading-relaxed whitespace-pre-wrap ${
+                            isUser ? "" : "p-3 rounded-lg bg-bg-surface-ai-message"
+                          }`}
+                        >
+                          {message.content_text}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  </div>
+                </div>
               </div>
-            )}
+            </div>
 
             {/* Related Notes */}
             {selectedConversation && (
@@ -794,21 +1357,11 @@ export function LibraryTab({ storage }: LibraryTabProps) {
                     <button
                       key={related.id}
                       onClick={() => switchToConversation(related.id)}
-                      className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-bg-surface-card transition-colors group relative"
+                      className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-bg-surface-card transition-colors"
                     >
-                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent-primary opacity-0 group-hover:opacity-100 transition-opacity rounded-r" />
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <span className="text-[13px] font-sans text-text-primary truncate">
                           {related.title}
-                        </span>
-                        <span
-                          className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none flex-shrink-0"
-                          style={{
-                            backgroundColor: platformBackgrounds[related.platform],
-                            color: platformColors[related.platform],
-                          }}
-                        >
-                          {related.platform}
                         </span>
                       </div>
                       <span className="text-xs font-sans text-accent-primary font-medium">
@@ -868,17 +1421,51 @@ export function LibraryTab({ storage }: LibraryTabProps) {
               </span>
             </div>
 
-            <textarea
-              ref={textareaRef}
-              value={noteContent}
-              onChange={(e) => setNoteContent(e.target.value)}
-              placeholder="Start writing..."
-              className="w-full bg-transparent border-none outline-none resize-none text-[13px] leading-[1.7] text-text-primary placeholder:text-text-tertiary mb-12"
-              style={{
-                fontFamily: "\"JetBrains Mono\", \"SF Mono\", Menlo, monospace",
-                minHeight: "240px",
-              }}
-            />
+            {isEditingNoteBody ? (
+              <textarea
+                ref={textareaRef}
+                value={noteContent}
+                onChange={(e) => setNoteContent(e.target.value)}
+                onBlur={() => setIsEditingNoteBody(false)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && event.metaKey) {
+                    event.preventDefault();
+                    setIsEditingNoteBody(false);
+                  }
+                }}
+                placeholder="Start writing..."
+                className="w-full bg-transparent border-none outline-none resize-none text-[13px] leading-[1.7] text-text-primary placeholder:text-text-tertiary mb-12"
+                style={{
+                  fontFamily: "\"JetBrains Mono\", \"SF Mono\", Menlo, monospace",
+                  minHeight: "240px",
+                }}
+              />
+            ) : (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setIsEditingNoteBody(true)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setIsEditingNoteBody(true);
+                  }
+                }}
+                className="mb-12 cursor-text"
+                style={{ minHeight: "240px" }}
+              >
+                {renderedNoteContent ? (
+                  <div
+                    className="prose prose-slate max-w-none text-text-primary"
+                    dangerouslySetInnerHTML={{ __html: renderedNoteContent }}
+                  />
+                ) : (
+                  <div className="text-[13px] font-sans text-text-tertiary">
+                    Start writing...
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mt-8">
               <h3 className="text-[11px] font-sans font-medium text-text-tertiary uppercase tracking-wider mb-3">
@@ -890,32 +1477,20 @@ export function LibraryTab({ storage }: LibraryTabProps) {
                     const conversation = conversations.find((c) => c.id === convId);
                     if (!conversation) return null;
                     return (
-                      <div
+                      <button
                         key={convId}
-                        className="w-full flex items-center justify-between p-3 rounded-lg bg-bg-surface-card hover:bg-bg-surface-card-hover transition-colors group"
+                        onClick={() => switchToConversation(conversation.id)}
+                        className="w-full flex items-center justify-between p-3 rounded-lg bg-bg-surface-card hover:bg-bg-surface-card-hover transition-colors"
                       >
-                        <div>
-                          <span className="text-sm font-sans text-text-primary block">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <span className="text-[13px] font-sans text-text-primary truncate">
                             {conversation.title}
                           </span>
-                          <span
-                            className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none mt-1 inline-block"
-                            style={{
-                              backgroundColor: platformBackgrounds[conversation.platform],
-                              color: platformColors[conversation.platform],
-                            }}
-                          >
-                            {conversation.platform}
-                          </span>
                         </div>
-                        <button
-                          onClick={() => switchToConversation(conversation.id)}
-                          className="text-xs font-sans text-accent-primary flex items-center gap-1"
-                        >
-                          View
-                          <ArrowRight strokeWidth={1.5} className="w-3 h-3" />
-                        </button>
-                      </div>
+                        <span className="text-xs font-sans text-accent-primary font-medium">
+                          Preview →
+                        </span>
+                      </button>
                     );
                   })}
                 </div>

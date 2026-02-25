@@ -1,4 +1,73 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Lora:wght@400;600&family=Newsreader:opsz,wght@6..72,400;500;600&family=Noto+Serif+SC:wght@400;500;700&family=Nunito+Sans:wght@400;500;600&display=swap");
+<<<<<<< Updated upstream
+@font-face {
+  font-family: "Vesti Sans UI";
+  src: url("../public/fonts/Lexend-UI-400.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0100-024F, U+0259, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Vesti Sans UI";
+  src: url("../public/fonts/Lexend-UI-500.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0100-024F, U+0259, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Vesti Sans UI";
+  src: url("../public/fonts/Lexend-UI-600.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0100-024F, U+0259, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Vesti Sans UI";
+  src: url("../public/fonts/SourceHanSansSC-UI-400.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF, U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF;
+}
+
+@font-face {
+  font-family: "Vesti Sans UI";
+  src: url("../public/fonts/SourceHanSansSC-UI-500.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF, U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF;
+}
+
+@font-face {
+  font-family: "Vesti Sans UI";
+  src: url("../public/fonts/SourceHanSansSC-UI-600.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF, U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF;
+}
+=======
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/lora/400.css";
+@import "@fontsource/lora/600.css";
+@import "@fontsource/newsreader/400.css";
+@import "@fontsource/newsreader/500.css";
+@import "@fontsource/newsreader/600.css";
+@import "@fontsource/noto-serif-sc/400.css";
+@import "@fontsource/noto-serif-sc/500.css";
+@import "@fontsource/noto-serif-sc/700.css";
+@import "@fontsource/nunito-sans/400.css";
+@import "@fontsource/nunito-sans/500.css";
+@import "@fontsource/nunito-sans/600.css";
+>>>>>>> Stashed changes
 
 @font-face {
   font-family: "Tiempos Headline";
@@ -131,10 +200,85 @@
     --shadow-capsule: 0 3px 9px rgba(var(--shadow-color), 0.16), 0 1px 2px rgba(var(--shadow-color), 0.1);
 
     --font-serif: "Newsreader", "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
-    --font-vesti-serif: "Tiempos Headline", "Tiempos Text", "Tiempos", ui-serif, "Apple-System-UI-Serif", "BlinkMacSystemFont", serif;
-    --font-brand: "Lora", "Newsreader", "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
-    --font-ui: "Inter", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-vesti-serif: "Vesti Title Serif", "Tiempos Headline", "Tiempos Text", "Tiempos", ui-serif, "Apple-System-UI-Serif", "BlinkMacSystemFont", serif;
+    --font-ui: "Vesti Sans UI", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     --font-mono: "Cascadia Mono", "Consolas", "SF Mono", "Menlo", "Liberation Mono", monospace;
+  }
+}
+
+@layer base {
+  .dark {
+    --bg-primary: 0 0% 11%;
+    --bg-secondary: 0 0% 16%;
+    --bg-tertiary: 0 0% 10%;
+    --bg-sidebar: 0 0% 7%;
+
+    --surface-card: 0 0% 13%;
+    --surface-card-hover: 0 0% 17%;
+    --surface-card-active: 0 0% 21%;
+    --surface-ai-message: 0 0% 14%;
+
+    --text-primary: 0 0% 96%;
+    --text-secondary: 0 0% 78%;
+    --text-tertiary: 0 0% 62%;
+    --text-inverse: 0 0% 10%;
+
+    --accent-primary: 0 0% 96%;
+    --accent-primary-hover: 0 0% 100%;
+    --accent-primary-active: 0 0% 84%;
+    --accent-primary-light: 0 0% 100% / 0.08;
+    --accent-primary-muted: 0 0% 100% / 0.16;
+
+    --border-default: 0 0% 25%;
+    --border-subtle: 0 0% 20%;
+    --border-focus: 0 0% 84%;
+
+    --success: 145 55% 46%;
+    --warning: 40 85% 58%;
+    --danger: 0 72% 60%;
+
+    --chatgpt-bg: 158 33% 18%;
+    --chatgpt-text: 150 50% 66%;
+    --chatgpt-border: 154 30% 33%;
+
+    --claude-bg: 18 44% 20%;
+    --claude-text: 18 58% 66%;
+    --claude-border: 18 33% 34%;
+
+    --gemini-bg: 252 35% 20%;
+    --gemini-text: 252 80% 76%;
+    --gemini-border: 252 34% 35%;
+
+    --deepseek-bg: 224 44% 20%;
+    --deepseek-text: 222 88% 75%;
+    --deepseek-border: 223 35% 35%;
+
+    --qwen-bg: 242 42% 20%;
+    --qwen-text: 242 88% 76%;
+    --qwen-border: 242 33% 35%;
+
+    --doubao-bg: 211 46% 20%;
+    --doubao-text: 211 90% 76%;
+    --doubao-border: 211 37% 35%;
+
+    --capsule-bg: 0 0% 12% / 0.94;
+    --reader-user-text: 36 5% 58%;
+    --reader-model-text: 0 0% 91%;
+    --reader-code-text: 0 62% 67%;
+    --reader-code-bg: 0 0% 0% / 0.35;
+    --reader-fade-end: var(--bg-primary);
+    --reader-expand-bg: 0 0% 12%;
+    --reader-expand-text: 0 0% 26%;
+    --reader-expand-hover: 0 0% 16%;
+    --reader-bq-border: 27 6% 21%;
+    --reader-bq-text: 24 5% 46%;
+    --reader-bq-attribution: 22 7% 21%;
+
+    --shadow-color: 0, 0, 0;
+    --shadow-paper: 0 8px 24px rgba(var(--shadow-color), 0.33), 0 3px 8px rgba(var(--shadow-color), 0.24);
+    --shadow-card-hover: 0 10px 28px rgba(var(--shadow-color), 0.35), 0 3px 9px rgba(var(--shadow-color), 0.25);
+    --shadow-popover: 0 12px 30px rgba(var(--shadow-color), 0.4), 0 4px 10px rgba(var(--shadow-color), 0.3);
+    --shadow-capsule: 0 8px 20px rgba(var(--shadow-color), 0.45), 0 3px 8px rgba(var(--shadow-color), 0.3);
   }
 }
 
@@ -152,57 +296,6 @@
 }
 
 @layer utilities {
-  .vesti-options {
-    --bg-primary: 0 0% 100%;
-    --bg-secondary: 48 24% 96%;
-    --bg-tertiary: 48 33% 97%;
-    --bg-sidebar: 48 24% 96%;
-
-    --surface-card: 48 25% 92%;
-    --surface-card-hover: 49 21% 90%;
-    --surface-card-active: 49 16% 87%;
-    --surface-ai-message: 48 20% 95%;
-
-    --text-primary: 0 0% 10%;
-    --text-secondary: 0 0% 42%;
-    --text-tertiary: 0 0% 61%;
-    --text-inverse: 0 0% 100%;
-
-    --accent-primary: 215 55% 44%;
-    --accent-primary-hover: 215 55% 40%;
-    --accent-primary-active: 215 55% 36%;
-    --accent-primary-light: 215 55% 44% / 0.08;
-    --accent-primary-muted: 215 55% 44% / 0.15;
-
-    --border-default: 48 16% 88%;
-    --border-subtle: 47 21% 92%;
-    --border-focus: 215 55% 44%;
-
-    --success: 141 51% 36%;
-    --warning: 37 91% 44%;
-    --danger: 0 57% 51%;
-
-    --chatgpt-bg: 125 39% 94%;
-    --chatgpt-text: 123 46% 34%;
-    --chatgpt-border: 122 37% 84%;
-    --claude-bg: 37 100% 94%;
-    --claude-text: 25 80% 42%;
-    --claude-border: 36 100% 85%;
-    --gemini-bg: 231 44% 94%;
-    --gemini-text: 232 50% 45%;
-    --gemini-border: 232 45% 84%;
-    --deepseek-bg: 205 87% 94%;
-    --deepseek-text: 212 80% 42%;
-    --deepseek-border: 207 89% 86%;
-
-    --font-ui: "Nunito Sans", -apple-system, "Segoe UI", sans-serif;
-    --font-serif: Georgia, "Times New Roman", serif;
-    --font-mono: "Cascadia Mono", "Courier New", monospace;
-    --font-brand: "Lora", Georgia, "Times New Roman", serif;
-    --font-lora: "Lora", Georgia, "Times New Roman", serif;
-    font-family: var(--font-ui);
-  }
-
   .vesti-shell {
     font-family: var(--font-ui);
   }
@@ -226,8 +319,10 @@
   }
 
   .vesti-brand-wordmark {
-    font-family: var(--font-brand);
-    font-weight: 600;
+    font-family: var(--font-vesti-serif);
+    font-weight: 700;
+    font-synthesis: weight;
+    letter-spacing: -0.004em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -784,19 +879,19 @@
     width: 100%;
     height: 40px;
     border-radius: 8px;
-    border: 1px solid #e6e2d6;
-    background-color: #ffffff;
+    border: 1px solid hsl(var(--border-default));
+    background-color: hsl(var(--bg-primary));
     padding: 0 12px;
     font-family: var(--font-ui);
     font-size: 14px;
-    color: #1a1918;
+    color: hsl(var(--text-primary));
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
   .settings-input:focus-visible {
     outline: none;
-    border-color: #1a1918;
-    box-shadow: 0 0 0 2px rgba(26, 25, 24, 0.1);
+    border-color: hsl(var(--border-focus));
+    box-shadow: 0 0 0 2px hsl(var(--accent-primary-light));
   }
 
   .settings-switch {
@@ -812,13 +907,13 @@
     overflow: hidden;
     border-radius: 9999px;
     border: 2px solid transparent;
-    background-color: #d1d1d1;
+    background-color: hsl(var(--border-default));
     transition: background-color 0.2s ease-in-out;
   }
 
   .settings-switch[data-state="checked"] {
     --switch-x: 20px;
-    background-color: #1a1918;
+    background-color: hsl(var(--accent-primary));
   }
 
   .settings-switch-thumb {
@@ -830,8 +925,8 @@
     height: 20px;
     width: 20px;
     border-radius: 9999px;
-    background-color: #ffffff;
-    box-shadow: 0 1px 2px rgba(26, 25, 24, 0.2);
+    background-color: hsl(var(--bg-primary));
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.22);
     transform: translate3d(var(--switch-x), -50%, 0);
     transition: transform 0.2s ease-in-out;
   }

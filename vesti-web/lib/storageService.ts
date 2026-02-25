@@ -4,6 +4,7 @@ import type {
   Message,
   Platform,
   RelatedConversation,
+  RagResponse,
   Topic,
 } from './types';
 
@@ -38,6 +39,12 @@ type RequestMessage =
       payload: { id: number; topic_id: number | null };
     }
   | {
+      type: 'UPDATE_CONVERSATION';
+      target?: 'offscreen';
+      requestId?: string;
+      payload: { id: number; changes: { topic_id?: number | null; is_starred?: boolean; tags?: string[] } };
+    }
+  | {
       type: 'RUN_GARDENER';
       target?: 'offscreen';
       requestId?: string;
@@ -50,10 +57,46 @@ type RequestMessage =
       payload: { conversationId: number; limit?: number };
     }
   | {
+      type: 'RENAME_FOLDER_TAG';
+      target?: 'offscreen';
+      requestId?: string;
+      payload: { from: string; to: string };
+    }
+  | {
+      type: 'MOVE_FOLDER_TAG';
+      target?: 'offscreen';
+      requestId?: string;
+      payload: { from: string; to: string };
+    }
+  | {
+      type: 'REMOVE_FOLDER_TAG';
+      target?: 'offscreen';
+      requestId?: string;
+      payload: { tag: string };
+    }
+  | {
+      type: 'ASK_KNOWLEDGE_BASE';
+      target?: 'offscreen';
+      requestId?: string;
+      payload: { query: string; limit?: number };
+    }
+  | {
       type: 'GET_MESSAGES';
       target?: 'offscreen';
       requestId?: string;
       payload: { conversationId: number };
+    }
+  | {
+      type: 'DELETE_CONVERSATION';
+      target?: 'offscreen';
+      requestId?: string;
+      payload: { id: number };
+    }
+  | {
+      type: 'UPDATE_CONVERSATION_TITLE';
+      target?: 'offscreen';
+      requestId?: string;
+      payload: { id: number; title: string };
     };
 
 type ResponseDataMap = {
@@ -61,9 +104,16 @@ type ResponseDataMap = {
   GET_TOPICS: Topic[];
   CREATE_TOPIC: { topic: Topic };
   UPDATE_CONVERSATION_TOPIC: { updated: boolean; conversation: Conversation };
+  UPDATE_CONVERSATION: { updated: boolean; conversation: Conversation };
   RUN_GARDENER: { updated: boolean; conversation: Conversation; result: GardenerResult };
   GET_RELATED_CONVERSATIONS: RelatedConversation[];
+  RENAME_FOLDER_TAG: { updated: number };
+  MOVE_FOLDER_TAG: { updated: number };
+  REMOVE_FOLDER_TAG: { updated: number };
+  ASK_KNOWLEDGE_BASE: RagResponse;
   GET_MESSAGES: Message[];
+  DELETE_CONVERSATION: { deleted: boolean };
+  UPDATE_CONVERSATION_TITLE: { updated: boolean; conversation: Conversation };
 };
 
 type ResponseMessage<T extends keyof ResponseDataMap = keyof ResponseDataMap> =
@@ -169,6 +219,17 @@ export async function updateConversationTopic(
   return result.conversation;
 }
 
+export async function updateConversation(
+  id: number,
+  changes: { topic_id?: number | null; is_starred?: boolean; tags?: string[] }
+): Promise<{ updated: boolean; conversation: Conversation }> {
+  return sendRequest({
+    type: 'UPDATE_CONVERSATION',
+    target: 'offscreen',
+    payload: { id, changes },
+  }) as Promise<{ updated: boolean; conversation: Conversation }>;
+}
+
 export async function runGardener(
   conversationId: number
 ): Promise<{ updated: boolean; conversation: Conversation; result: GardenerResult }> {
@@ -198,6 +259,73 @@ export async function getRelatedConversations(
   }, LONG_RUNNING_TIMEOUT_MS) as Promise<RelatedConversation[]>;
 }
 
+export async function renameFolderTag(
+  from: string,
+  to: string
+): Promise<{ updated: number }> {
+  const result = (await sendRequest({
+    type: 'RENAME_FOLDER_TAG',
+    target: 'offscreen',
+    payload: { from, to },
+  }, LONG_RUNNING_TIMEOUT_MS)) as { updated: number };
+
+  if (result.updated > 0 && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({ type: 'VESTI_DATA_UPDATED' }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
+  return result;
+}
+
+export async function moveFolderTag(
+  from: string,
+  to: string
+): Promise<{ updated: number }> {
+  const result = (await sendRequest({
+    type: 'MOVE_FOLDER_TAG',
+    target: 'offscreen',
+    payload: { from, to },
+  }, LONG_RUNNING_TIMEOUT_MS)) as { updated: number };
+
+  if (result.updated > 0 && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({ type: 'VESTI_DATA_UPDATED' }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
+  return result;
+}
+
+export async function removeFolderTag(
+  tag: string
+): Promise<{ updated: number }> {
+  const result = (await sendRequest({
+    type: 'REMOVE_FOLDER_TAG',
+    target: 'offscreen',
+    payload: { tag },
+  }, LONG_RUNNING_TIMEOUT_MS)) as { updated: number };
+
+  if (result.updated > 0 && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({ type: 'VESTI_DATA_UPDATED' }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
+  return result;
+}
+
+export async function askKnowledgeBase(
+  query: string,
+  limit?: number
+): Promise<RagResponse> {
+  return sendRequest({
+    type: 'ASK_KNOWLEDGE_BASE',
+    target: 'offscreen',
+    payload: { query, limit },
+  }, LONG_RUNNING_TIMEOUT_MS) as Promise<RagResponse>;
+}
+
 export async function getMessages(
   conversationId: number
 ): Promise<Message[]> {
@@ -206,4 +334,37 @@ export async function getMessages(
     target: 'offscreen',
     payload: { conversationId },
   }) as Promise<Message[]>;
+}
+
+export async function deleteConversation(id: number): Promise<void> {
+  await sendRequest({
+    type: 'DELETE_CONVERSATION',
+    target: 'offscreen',
+    payload: { id },
+  });
+
+  if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({ type: 'VESTI_DATA_UPDATED' }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+}
+
+export async function updateConversationTitle(
+  id: number,
+  title: string
+): Promise<Conversation> {
+  const result = (await sendRequest({
+    type: 'UPDATE_CONVERSATION_TITLE',
+    target: 'offscreen',
+    payload: { id, title },
+  })) as { updated: boolean; conversation: Conversation };
+
+  if (result.updated && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({ type: 'VESTI_DATA_UPDATED' }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
+  return result.conversation;
 }

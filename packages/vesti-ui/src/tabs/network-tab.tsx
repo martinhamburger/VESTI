@@ -1,18 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { X, ArrowRight, ChevronDown } from "lucide-react";
-import type { Platform } from "../types";
+import type { Platform, StorageApi } from "../types";
 import { useLibraryData } from "../contexts/library-data";
-
-const platformColors: Record<Platform, string> = {
-  ChatGPT: "#F3F4F6",
-  Claude: "#F7D8BA",
-  Gemini: "#3A62D9",
-  DeepSeek: "#172554",
-  Qwen: "#F3F4F6",
-  Doubao: "#F3F4F6",
-};
+import * as echarts from "echarts";
+import { PLATFORM_COLORS, PLATFORM_TEXT_COLORS } from "../constants/platform";
 
 interface Node {
   id: number;
@@ -24,6 +17,7 @@ interface Node {
   platform: Platform;
   topicName?: string;
   isStarred?: boolean;
+  created_at: number;
 }
 
 interface Edge {
@@ -32,31 +26,55 @@ interface Edge {
   weight: number;
 }
 
+const NOW = Date.now();
+const DAY = 86_400_000;
+
 const mockNodes: Node[] = [
-  { id: 1, x: 420, y: 280, r: 22, color: "#F3F4F6", label: "React Virtual List", platform: "ChatGPT" },
-  { id: 2, x: 580, y: 200, r: 18, color: "#F7D8BA", label: "Rust Ownership", platform: "Claude" },
-  { id: 3, x: 650, y: 340, r: 16, color: "#3A62D9", label: "AI Papers 2024", platform: "Gemini" },
-  { id: 4, x: 300, y: 200, r: 20, color: "#172554", label: "PostgreSQL Tuning", platform: "DeepSeek" },
-  { id: 5, x: 500, y: 420, r: 24, color: "#F3F4F6", label: "Chrome Extension", platform: "ChatGPT" },
-  { id: 6, x: 740, y: 260, r: 17, color: "#F7D8BA", label: "TypeScript Migration", platform: "Claude" },
-  { id: 7, x: 350, y: 380, r: 15, color: "#172554", label: "Docker Compose", platform: "DeepSeek" },
-  { id: 8, x: 680, y: 440, r: 16, color: "#3A62D9", label: "SwiftUI vs Flutter", platform: "Gemini" },
+  { id: 1, x: 0, y: 0, r: 20, color: "#F7D8BA", label: "React 虚拟列表优化", platform: "Claude", created_at: NOW - 90 * DAY },
+  { id: 2, x: 0, y: 0, r: 18, color: "#F7D8BA", label: "TypeScript 重构实践", platform: "Claude", created_at: NOW - 80 * DAY },
+  { id: 3, x: 0, y: 0, r: 16, color: "#F3F4F6", label: "Chrome Extension MV3", platform: "ChatGPT", created_at: NOW - 72 * DAY },
+  { id: 4, x: 0, y: 0, r: 22, color: "#F3F4F6", label: "Plasmo 框架搭建", platform: "ChatGPT", created_at: NOW - 65 * DAY },
+  { id: 5, x: 0, y: 0, r: 16, color: "#F3F4F6", label: "IndexedDB 性能优化", platform: "ChatGPT", created_at: NOW - 55 * DAY },
+  { id: 6, x: 0, y: 0, r: 20, color: "#172554", label: "PostgreSQL 查询调优", platform: "DeepSeek", created_at: NOW - 50 * DAY },
+  { id: 7, x: 0, y: 0, r: 18, color: "#172554", label: "Docker Compose 编排", platform: "DeepSeek", created_at: NOW - 42 * DAY },
+  { id: 8, x: 0, y: 0, r: 16, color: "#172554", label: "Redis 缓存策略", platform: "DeepSeek", created_at: NOW - 35 * DAY },
+  { id: 9, x: 0, y: 0, r: 22, color: "#3A62D9", label: "AI Papers 2024", platform: "Gemini", created_at: NOW - 28 * DAY },
+  { id: 10, x: 0, y: 0, r: 20, color: "#3A62D9", label: "RAG 检索增强", platform: "Gemini", created_at: NOW - 20 * DAY },
+  { id: 11, x: 0, y: 0, r: 18, color: "#F7D8BA", label: "Tailwind 设计系统", platform: "Claude", created_at: NOW - 12 * DAY },
+  { id: 12, x: 0, y: 0, r: 16, color: "#3A62D9", label: "向量数据库选型", platform: "Gemini", created_at: NOW - 5 * DAY },
 ];
 
 const mockEdges: Edge[] = [
-  { source: 1, target: 5, weight: 0.87 },
-  { source: 1, target: 6, weight: 0.74 },
-  { source: 2, target: 6, weight: 0.65 },
-  { source: 4, target: 7, weight: 0.78 },
-  { source: 3, target: 8, weight: 0.61 },
-  { source: 5, target: 6, weight: 0.55 },
-  { source: 1, target: 4, weight: 0.42 },
+  { source: 1, target: 2, weight: 0.82 },
+  { source: 1, target: 3, weight: 0.75 },
+  { source: 3, target: 4, weight: 0.91 },
+  { source: 4, target: 5, weight: 0.78 },
+  { source: 2, target: 11, weight: 0.72 },
+  { source: 1, target: 11, weight: 0.68 },
+  { source: 6, target: 7, weight: 0.85 },
+  { source: 7, target: 8, weight: 0.79 },
+  { source: 6, target: 8, weight: 0.71 },
+  { source: 9, target: 10, weight: 0.88 },
+  { source: 10, target: 12, weight: 0.83 },
+  { source: 9, target: 12, weight: 0.76 },
+  { source: 5, target: 6, weight: 0.38 },
+  { source: 10, target: 1, weight: 0.35 },
+  { source: 4, target: 12, weight: 0.41 },
 ];
 
-export function NetworkTab() {
+interface NetworkTabProps {
+  storage: StorageApi;
+  onSelectConversation?: (id: number) => void;
+}
+
+export function NetworkTab({ storage, onSelectConversation }: NetworkTabProps) {
   const { conversations, topics } = useLibraryData();
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | "all">("all");
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [apiEdges, setApiEdges] = useState<Edge[]>([]);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const chartRef = useRef<HTMLDivElement>(null);
+  const chartInstance = useRef<echarts.ECharts | null>(null);
 
   const platforms: (Platform | "all")[] = [
     "all",
@@ -68,14 +86,20 @@ export function NetworkTab() {
     "Doubao",
   ];
 
-  const layoutPositions = useMemo(
-    () =>
-      mockNodes.map((node) => ({
-        x: node.x,
-        y: node.y,
-      })),
-    []
-  );
+  useEffect(() => {
+    if (!storage.getAllEdges) return;
+    setGraphLoading(true);
+    storage
+      .getAllEdges(0.4)
+      .then((edges) => {
+        setApiEdges(edges ?? []);
+      })
+      .catch((err) => {
+        console.error("[Network] getAllEdges error:", err);
+        setApiEdges([]);
+      })
+      .finally(() => setGraphLoading(false));
+  }, [storage]);
 
   const topicMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -90,25 +114,21 @@ export function NetworkTab() {
   }, [topics]);
 
   const baseNodes = useMemo<Node[]>(() => {
-    if (!conversations.length) {
-      return mockNodes;
-    }
-
-    return conversations.slice(0, layoutPositions.length).map((conversation, index) => {
-      const position = layoutPositions[index];
-      return {
-        id: conversation.id,
-        x: position.x,
-        y: position.y,
-        r: conversation.is_starred ? 24 : 16,
-        color: platformColors[conversation.platform],
-        label: conversation.title || "Untitled Conversation",
-        platform: conversation.platform,
-        topicName: conversation.topic_id ? topicMap.get(conversation.topic_id) : undefined,
-        isStarred: conversation.is_starred,
-      };
-    });
-  }, [conversations, layoutPositions, topicMap]);
+    const source = conversations.length >= 3 ? conversations : null;
+    if (!source) return mockNodes;
+    return source.slice(0, 30).map((conv) => ({
+      id: conv.id,
+      x: 0,
+      y: 0,
+      r: conv.is_starred ? 24 : 16,
+      color: PLATFORM_COLORS[conv.platform],
+      label: conv.title || "Untitled",
+      platform: conv.platform,
+      topicName: conv.topic_id ? topicMap.get(conv.topic_id) : undefined,
+      isStarred: conv.is_starred,
+      created_at: conv.created_at,
+    }));
+  }, [conversations, topicMap]);
 
   const visibleNodes = useMemo(() => {
     if (selectedPlatform === "all") return baseNodes;
@@ -121,18 +141,8 @@ export function NetworkTab() {
   );
 
   const baseEdges = useMemo<Edge[]>(() => {
-    if (!conversations.length) {
-      return mockEdges;
-    }
-    return baseNodes.slice(0, baseNodes.length - 1).map((node, index) => {
-      const next = baseNodes[index + 1];
-      return {
-        source: node.id,
-        target: next.id,
-        weight: node.isStarred || next.isStarred ? 0.7 : 0.5,
-      };
-    });
-  }, [baseNodes, conversations.length]);
+    return conversations.length >= 3 ? apiEdges.filter((edge) => edge.weight >= 0.4) : mockEdges;
+  }, [conversations.length, apiEdges]);
 
   const visibleEdges = useMemo(
     () =>
@@ -152,6 +162,129 @@ export function NetworkTab() {
     setSelectedNode(next);
   }, [baseNodes, selectedNode, visibleNodeIds]);
 
+  const handleNodeClick = useCallback(
+    (nodeId: number) => {
+      const node = visibleNodes.find((n) => n.id === nodeId);
+      if (node) setSelectedNode(node);
+    },
+    [visibleNodes]
+  );
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    if (!chartInstance.current) {
+      chartInstance.current = echarts.init(chartRef.current, null, {
+        renderer: "svg",
+      });
+    }
+
+    const chart = chartInstance.current;
+
+    const echartsNodes: echarts.GraphSeriesOption["data"] = visibleNodes.map((node) => ({
+      id: String(node.id),
+      name: node.label,
+      symbolSize: node.r * 2,
+      itemStyle: {
+        color: node.color,
+        borderColor: "#FFFFFF",
+        borderWidth: 2,
+      },
+      label: { show: false },
+      emphasis: {
+        label: {
+          show: true,
+          position: "bottom" as const,
+          fontSize: 11,
+          color: "#6B6B6B",
+          fontFamily: "Nunito Sans, sans-serif",
+          formatter: (params: { name: string }) =>
+            params.name.length > 16 ? params.name.slice(0, 16) + "…" : params.name,
+        },
+        itemStyle: {
+          borderColor: "#3266AD",
+          borderWidth: 3,
+        },
+      },
+    }));
+
+    const echartsEdges: echarts.GraphSeriesOption["edges"] = visibleEdges
+      .filter((edge) => edge.weight >= 0.4)
+      .map((edge) => ({
+        source: String(edge.source),
+        target: String(edge.target),
+        lineStyle: {
+          width: edge.weight * 2,
+          color: "#C8C4BC",
+          opacity: 0.3 + edge.weight * 0.4,
+          curveness: 0,
+        },
+        emphasis: {
+          lineStyle: {
+            color: "#3266AD",
+            opacity: 0.9,
+            width: edge.weight * 3,
+          },
+        },
+      }));
+
+    const option: echarts.EChartsOption = {
+      backgroundColor: "transparent",
+      series: [
+        {
+          type: "graph",
+          layout: "force",
+          animation: true,
+          animationDuration: 1200,
+          animationEasingUpdate: "quinticInOut",
+          data: echartsNodes,
+          edges: echartsEdges,
+          force: {
+            repulsion: 300,
+            gravity: 0.1,
+            edgeLength: [80, 200],
+            layoutAnimation: true,
+          },
+          roam: true,
+          focusNodeAdjacency: true,
+          lineStyle: {
+            color: "#C8C4BC",
+            curveness: 0,
+          },
+          emphasis: {
+            focus: "adjacency",
+          },
+        },
+      ],
+    };
+
+    chart.setOption(option);
+
+    chart.off("click");
+    chart.on("click", (params) => {
+      if (params.dataType === "node") {
+        handleNodeClick(Number((params.data as { id: string }).id));
+      }
+    });
+
+    return () => {
+      chart.off("click");
+    };
+  }, [visibleNodes, visibleEdges, handleNodeClick]);
+
+  useEffect(() => {
+    return () => {
+      chartInstance.current?.dispose();
+      chartInstance.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => chartInstance.current?.resize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   return (
     <div className="h-full flex flex-col">
       {/* Toolbar */}
@@ -170,7 +303,7 @@ export function NetworkTab() {
               }`}
               style={
                 selectedPlatform === platform && platform !== "all"
-                  ? { backgroundColor: platformColors[platform] }
+                  ? { backgroundColor: PLATFORM_COLORS[platform] }
                   : {}
               }
             >
@@ -191,65 +324,16 @@ export function NetworkTab() {
 
       {/* Graph Area */}
       <div className="flex-1 relative bg-bg-tertiary overflow-hidden">
-        <svg width="100%" height="100%" viewBox="0 0 1040 580" className="absolute inset-0">
-          {visibleEdges.map((edge) => {
-            const s = visibleNodes.find((n) => n.id === edge.source);
-            const t = visibleNodes.find((n) => n.id === edge.target);
-            if (!s || !t) return null;
-            return (
-              <line
-                key={`${edge.source}-${edge.target}`}
-                x1={s.x}
-                y1={s.y}
-                x2={t.x}
-                y2={t.y}
-                stroke="#E5E3DB"
-                strokeWidth={edge.weight * 3}
-                strokeOpacity={0.4 + edge.weight * 0.4}
-              />
-            );
-          })}
-          {visibleNodes.map((node) => (
-            <g
-              key={node.id}
-              style={{ cursor: "pointer" }}
-              onClick={() => setSelectedNode(node)}
-              className="hover:opacity-90 transition-opacity"
-            >
-              <circle
-                cx={node.x}
-                cy={node.y}
-                r={node.r}
-                fill={node.color}
-                fillOpacity={0.85}
-                stroke="#FFFFFF"
-                strokeWidth={2}
-              />
-              <text
-                x={node.x}
-                y={node.y + node.r + 14}
-                textAnchor="middle"
-                fontSize={11}
-                fill="#6B6B6B"
-                fontFamily="'Nunito Sans', sans-serif"
-              >
-                {node.label.length > 16 ? node.label.slice(0, 16) + "…" : node.label}
-              </text>
-            </g>
-          ))}
-        </svg>
-
-        <div className="absolute bottom-4 left-4 bg-bg-surface-card rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex items-center gap-4">
-          {(["ChatGPT", "Claude", "Gemini", "DeepSeek"] as Platform[]).map((platform) => (
-            <div key={platform} className="flex items-center gap-1.5">
-              <div
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: platformColors[platform] }}
-              />
-              <span className="text-[11px] font-sans text-text-secondary">{platform}</span>
-            </div>
-          ))}
-        </div>
+        {graphLoading && (
+          <div className="absolute top-3 left-3 text-[11px] font-sans text-text-tertiary">
+            Building graph...
+          </div>
+        )}
+        <div
+          ref={chartRef}
+          className="absolute inset-0"
+          style={{ width: "100%", height: "100%" }}
+        />
       </div>
 
       {selectedNode && (
@@ -279,11 +363,8 @@ export function NetworkTab() {
                 <span
                   className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none"
                   style={{
-                    backgroundColor: platformColors[selectedNode.platform],
-                    color:
-                      selectedNode.platform === "ChatGPT" || selectedNode.platform === "Claude"
-                        ? "#1A1A1A"
-                        : "#FFFFFF",
+                    backgroundColor: PLATFORM_COLORS[selectedNode.platform],
+                    color: PLATFORM_TEXT_COLORS[selectedNode.platform],
                   }}
                 >
                   {selectedNode.platform}
@@ -308,7 +389,15 @@ export function NetworkTab() {
                 </p>
               </div>
 
-              <button className="w-full py-2.5 px-4 rounded-lg bg-accent-primary hover:bg-accent-primary/90 text-white text-sm font-sans font-medium transition-all flex items-center justify-center gap-2">
+              <button
+                onClick={() => {
+                  if (onSelectConversation && selectedNode) {
+                    onSelectConversation(selectedNode.id);
+                  }
+                  setSelectedNode(null);
+                }}
+                className="w-full py-2.5 px-4 rounded-lg bg-accent-primary hover:bg-accent-primary/90 text-white text-sm font-sans font-medium transition-all flex items-center justify-center gap-2"
+              >
                 <span>View in Library</span>
                 <ArrowRight strokeWidth={1.5} className="w-4 h-4" />
               </button>

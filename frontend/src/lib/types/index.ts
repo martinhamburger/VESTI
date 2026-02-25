@@ -53,10 +53,11 @@ export interface Conversation {
   tags: string[];
   topic_id: number | null;
   is_starred: boolean;
+  has_note?: boolean;
 }
 
 export interface VectorRecord {
-  id: number;
+  id?: number;
   conversation_id: number;
   text_hash: string;
   embedding: Float32Array;
@@ -67,6 +68,11 @@ export interface RelatedConversation {
   title: string;
   platform: Platform;
   similarity: number;
+}
+
+export interface RagResponse {
+  answer: string;
+  sources: RelatedConversation[];
 }
 
 export interface Message {

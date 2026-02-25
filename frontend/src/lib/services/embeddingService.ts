@@ -254,23 +254,42 @@ export async function fetchEmbeddings(
     );
   }
 
-  const result = await requestEmbeddingsFromRoute(
-    config,
-    "proxy",
-    normalizedInput,
-    options
-  );
+  const result = await requestEmbeddings(config, normalizedInput, options);
 
   return result.vectors.map((vector) => new Float32Array(vector));
 }
 
 export async function embedText(text: string): Promise<Float32Array> {
-  const vectors = await fetchEmbeddings(text);
-  if (vectors.length === 0) {
-    throw createEmbeddingError(
-      "EMBEDDING_EMPTY_RESULT",
-      "Embedding response contains no vectors."
-    );
+  const settings = await requireLlmSettings();
+  const apiKey = (settings.apiKey || "").trim();
+
+  if (apiKey) {
+    const result = await requestEmbeddings(settings, text, {
+      fallbackToProxyOnDirectAuthError: false,
+    });
+    const vector = result.vectors[0];
+    if (!vector) {
+      throw createEmbeddingError(
+        "EMBEDDING_EMPTY_RESULT",
+        "Embedding response contains no vectors."
+      );
+    }
+    return new Float32Array(vector);
   }
-  return vectors[0];
+
+  const proxyToken = (settings.proxyServiceToken || "").trim();
+  if (proxyToken) {
+    const vectors = await fetchEmbeddings(text);
+    if (vectors.length === 0) {
+      throw createEmbeddingError(
+        "EMBEDDING_EMPTY_RESULT",
+        "Embedding response contains no vectors."
+      );
+    }
+    return vectors[0];
+  }
+
+  throw new Error(
+    "Embedding credentials missing: Please provide an API Key or Service Token in settings."
+  );
 }

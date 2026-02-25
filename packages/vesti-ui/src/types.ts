@@ -36,6 +36,7 @@ export interface Conversation {
   snippet: string;
   tags: string[];
   topic_id: number | null;
+  created_at: number;
   updated_at: number;
   is_starred: boolean;
   is_archived?: boolean;
@@ -48,6 +49,11 @@ export interface RelatedConversation {
   title: string;
   platform: Platform;
   similarity: number;
+}
+
+export interface RagResponse {
+  answer: string;
+  sources: RelatedConversation[];
 }
 
 export interface Message {
@@ -84,5 +90,24 @@ export type StorageApi = {
     conversationId: number,
     limit?: number
   ) => Promise<RelatedConversation[]>;
+  getAllEdges?: (
+    threshold?: number
+  ) => Promise<Array<{ source: number; target: number; weight: number }>>;
   getMessages?: (conversationId: number) => Promise<Message[]>;
+  updateConversation?: (
+    id: number,
+    changes: { topic_id?: number | null; is_starred?: boolean; tags?: string[] }
+  ) => Promise<{ updated: boolean; conversation: Conversation }>;
+  updateConversationTitle?: (id: number, title: string) => Promise<Conversation>;
+  deleteConversation?: (id: number) => Promise<void>;
+  renameFolderTag?: (
+    from: string,
+    to: string
+  ) => Promise<{ updated: number }>;
+  moveFolderTag?: (
+    from: string,
+    to: string
+  ) => Promise<{ updated: number }>;
+  removeFolderTag?: (tag: string) => Promise<{ updated: number }>;
+  askKnowledgeBase?: (query: string, limit?: number) => Promise<RagResponse>;
 };

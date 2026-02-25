@@ -621,7 +621,7 @@ export function InsightsPage({ conversation, refreshToken }: InsightsPageProps) 
     setWeeklyGenerationStartedAt(null);
     setWeeklyPhase("ready_to_compile");
 
-    if (result.ok) {
+    if (result.ok === true) {
       setWeeklyReport(result.data);
       const nextData = toWeeklySummaryData(result.data);
       const nextStableState = toWeeklyStableState(nextData);
@@ -631,7 +631,9 @@ export function InsightsPage({ conversation, refreshToken }: InsightsPageProps) 
       return;
     }
 
-    const nextError = getErrorMessage(result.error);
+    const nextError = getErrorMessage(
+      result.ok === false ? result.error : "UNKNOWN_ERROR"
+    );
     setWeeklyError(nextError);
 
     if (weeklyData) {

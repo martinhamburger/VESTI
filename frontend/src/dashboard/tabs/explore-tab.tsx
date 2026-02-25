@@ -7,6 +7,8 @@ const platformColors: Record<Platform, { bg: string; text: string }> = {
   Claude: { bg: "#F7D8BA", text: "#1A1A1A" },
   Gemini: { bg: "#3A62D9", text: "#FFFFFF" },
   DeepSeek: { bg: "#172554", text: "#FFFFFF" },
+  Qwen: { bg: "#E3F2FF", text: "#0F2B5B" },
+  Doubao: { bg: "#FCE7D6", text: "#7A2E0B" },
 };
 
 const sampleQuestions = [

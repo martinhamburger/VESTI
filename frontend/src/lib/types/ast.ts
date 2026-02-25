@@ -48,7 +48,7 @@ export interface AstBreakNode {
 
 export interface AstListNode {
   type: "ul" | "ol";
-  children: AstListItemNode[];
+  children: AstNode[];
 }
 
 export interface AstListItemNode {

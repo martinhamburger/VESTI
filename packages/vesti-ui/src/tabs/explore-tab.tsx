@@ -1,18 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { ArrowRight } from "lucide-react";
-import type { Platform } from "../types";
-import { useLibraryData } from "../contexts/library-data";
-
-const platformColors: Record<Platform, { bg: string; text: string }> = {
-  ChatGPT: { bg: "#F3F4F6", text: "#1A1A1A" },
-  Claude: { bg: "#F7D8BA", text: "#1A1A1A" },
-  Gemini: { bg: "#3A62D9", text: "#FFFFFF" },
-  DeepSeek: { bg: "#172554", text: "#FFFFFF" },
-  Qwen: { bg: "#F3F4F6", text: "#1A1A1A" },
-  Doubao: { bg: "#F3F4F6", text: "#1A1A1A" },
-};
+import type { RagResponse, RelatedConversation, StorageApi } from "../types";
 
 const sampleQuestions = [
   "What React performance optimization techniques have I discussed?",
@@ -20,61 +12,56 @@ const sampleQuestions = [
   "Find all discussions involving TypeScript type system",
 ];
 
-const mockAnswer = `Based on your knowledge base, you've discussed various React performance optimization approaches:
+type ExploreTabProps = {
+  askKnowledgeBase?: StorageApi["askKnowledgeBase"];
+  onOpenConversation?: (conversationId: number) => void;
+};
 
-**1. Memoization Techniques**
-In conversations with Claude, you explored React.memo, useMemo, and useCallback usage patterns. Key takeaways:
-- React.memo works best for pure presentational components
-- useMemo for expensive computations
-- useCallback prevents unnecessary child re-renders
-
-**2. Code Splitting**
-With ChatGPT, you discussed React.lazy and Suspense practices, including route-level and component-level lazy loading strategies.
-
-**3. Virtualizing Long Lists**
-In conversations about large data rendering, you mentioned react-window and react-virtualized libraries.`;
-
-const mockSources = [
-  {
-    id: 2,
-    title: "Optimizing React Rendering Performance",
-    platform: "Claude" as Platform,
-  },
-  {
-    id: 1,
-    title: "Building a Reusable Component Library",
-    platform: "ChatGPT" as Platform,
-  },
-  {
-    id: 6,
-    title: "Code Splitting Strategies",
-    platform: "Gemini" as Platform,
-  },
-];
-
-export function ExploreTab() {
-  const { conversations } = useLibraryData();
+export function ExploreTab({ askKnowledgeBase, onOpenConversation }: ExploreTabProps) {
   const [question, setQuestion] = useState("");
-  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [sources, setSources] = useState<RelatedConversation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const sources = useMemo(() => {
-    if (conversations.length === 0) return mockSources;
-    return conversations.slice(0, 3).map((conversation) => ({
-      id: conversation.id,
-      title: conversation.title || "Untitled Conversation",
-      platform: conversation.platform,
-    }));
-  }, [conversations]);
+  const renderedAnswer = useMemo(() => {
+    if (!answer) return "";
+    const html = marked.parse(answer, { gfm: true, breaks: false }) as string;
+    return DOMPurify.sanitize(html);
+  }, [answer]);
 
-  const handleSubmit = (q: string) => {
-    setQuestion(q);
-    setHasSubmitted(true);
+  const handleSubmit = async (q: string) => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    setQuestion(trimmed);
+    setSubmittedQuestion(trimmed);
+    setLoading(true);
+    setError(null);
+    setAnswer("");
+    setSources([]);
+
+    if (!askKnowledgeBase) {
+      setLoading(false);
+      setError("Explore is unavailable in the current environment.");
+      return;
+    }
+
+    try {
+      const result = (await askKnowledgeBase(trimmed, 5)) as RagResponse;
+      setAnswer(result.answer);
+      setSources(result.sources ?? []);
+    } catch (err) {
+      setError((err as Error)?.message ?? "Failed to retrieve answer.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="h-full flex items-start justify-center overflow-y-auto">
       <div className="w-full max-w-3xl px-8 py-16">
-        {!hasSubmitted ? (
+        {!submittedQuestion ? (
           <>
             <h1 className="text-[32px] font-serif font-normal text-text-primary text-center mb-12">
               What do you want to explore?
@@ -89,13 +76,13 @@ export function ExploreTab() {
                   onChange={(e) => setQuestion(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && question.trim()) {
-                      handleSubmit(question);
+                      void handleSubmit(question);
                     }
                   }}
                   className="w-full px-4 py-3 pr-12 rounded-lg border border-border-default bg-bg-primary text-base font-sans text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent-primary/20 focus:border-accent-primary transition-all"
                 />
                 <button
-                  onClick={() => question.trim() && handleSubmit(question)}
+                  onClick={() => question.trim() && void handleSubmit(question)}
                   disabled={!question.trim()}
                   className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md bg-accent-primary text-white hover:bg-accent-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
@@ -111,7 +98,7 @@ export function ExploreTab() {
               {sampleQuestions.map((q) => (
                 <button
                   key={q}
-                  onClick={() => handleSubmit(q)}
+                  onClick={() => void handleSubmit(q)}
                   className="block w-full text-left px-3.5 py-2.5 rounded-md bg-bg-surface-card hover:bg-bg-surface-card-hover text-[13px] font-sans text-text-secondary hover:text-text-primary transition-all"
                 >
                   {q}
@@ -123,15 +110,32 @@ export function ExploreTab() {
           <>
             {/* Question */}
             <div className="mb-8 pb-6 border-b border-border-subtle">
-              <h2 className="text-xl font-serif font-normal text-text-primary">{question}</h2>
+              <h2 className="text-xl font-serif font-normal text-text-primary">
+                {submittedQuestion}
+              </h2>
             </div>
 
             {/* Answer */}
             <div className="mb-8">
-              <div className="prose prose-slate max-w-none">
-                <div className="text-base font-serif text-text-primary leading-relaxed whitespace-pre-line">
-                  {mockAnswer}
-                </div>
+              <div className="prose prose-slate prose-lg max-w-none prose-p:leading-relaxed prose-li:leading-relaxed prose-p:text-text-primary prose-li:text-text-primary">
+                {loading ? (
+                  <div className="text-base font-serif text-text-primary leading-relaxed">
+                    Searching your knowledge base...
+                  </div>
+                ) : error ? (
+                  <div className="text-base font-serif text-text-primary leading-relaxed">
+                    {error}
+                  </div>
+                ) : answer ? (
+                  <div
+                    className="text-text-primary"
+                    dangerouslySetInnerHTML={{ __html: renderedAnswer }}
+                  />
+                ) : (
+                  <div className="text-base font-serif text-text-primary leading-relaxed">
+                    在知识库中暂未找到相关记录
+                  </div>
+                )}
               </div>
             </div>
 
@@ -141,29 +145,35 @@ export function ExploreTab() {
                 Sources
               </h3>
               <div className="space-y-2">
-                {sources.map((source) => (
-                  <button
-                    key={source.id}
-                    className="w-full flex items-center justify-between p-3 rounded-lg bg-bg-surface-card hover:bg-bg-surface-card-hover transition-all group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-sans text-text-primary">{source.title}</span>
-                      <span
-                        className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none"
-                        style={{
-                          backgroundColor: platformColors[source.platform].bg,
-                          color: platformColors[source.platform].text,
-                        }}
+                {loading && (
+                  <div className="text-[13px] font-sans text-text-tertiary">
+                    Retrieving sources...
+                  </div>
+                )}
+                {!loading && sources.length === 0 && (
+                  <div className="text-[13px] font-sans text-text-tertiary">
+                    No sources found yet.
+                  </div>
+                )}
+                {!loading &&
+                  sources.map((source) => {
+                    return (
+                      <button
+                        key={source.id}
+                        onClick={() => onOpenConversation?.(source.id)}
+                        className="w-full flex items-center justify-between p-3 rounded-lg bg-bg-surface-card hover:bg-bg-surface-card-hover transition-all group"
                       >
-                        {source.platform}
-                      </span>
-                    </div>
-                    <ArrowRight
-                      strokeWidth={1.5}
-                      className="w-4 h-4 text-text-tertiary group-hover:text-accent-primary transition-colors"
-                    />
-                  </button>
-                ))}
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <span className="text-sm font-sans text-text-primary truncate">
+                            {source.title}
+                          </span>
+                        </div>
+                        <span className="text-xs font-sans text-accent-primary font-medium">
+                          {source.similarity}% Match
+                        </span>
+                      </button>
+                    );
+                  })}
               </div>
             </div>
 
@@ -172,7 +182,10 @@ export function ExploreTab() {
               <button
                 onClick={() => {
                   setQuestion("");
-                  setHasSubmitted(false);
+                  setSubmittedQuestion(null);
+                  setAnswer("");
+                  setSources([]);
+                  setError(null);
                 }}
                 className="px-4 py-2 rounded-lg bg-bg-surface-card hover:bg-bg-surface-card-hover text-sm font-sans text-text-primary transition-all"
               >

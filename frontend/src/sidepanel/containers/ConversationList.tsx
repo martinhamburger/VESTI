@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Conversation, Message, Topic } from "~lib/types";
+import type { Conversation, Message, Platform, Topic } from "~lib/types";
 import {
   deleteConversation,
   getConversations,
   getMessages,
   getTopics,
+  searchConversationIdsByText,
   updateConversationTitle,
 } from "~lib/services/storageService";
 import { trackCardActionClick } from "~lib/services/telemetry";
@@ -72,6 +73,31 @@ function matchesSearch(conversation: Conversation, normalizedQuery: string): boo
     conversation.title.toLowerCase().includes(normalizedQuery) ||
     conversation.snippet.toLowerCase().includes(normalizedQuery)
   );
+}
+
+function matchesDatePreset(timestamp: number, preset: DatePreset): boolean {
+  if (preset === "all_time") return true;
+
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  ).getTime();
+
+  if (preset === "today") {
+    return timestamp >= startOfToday;
+  }
+
+  if (preset === "this_week") {
+    const day = new Date(startOfToday).getDay();
+    const offset = (day + 6) % 7; // Monday as week start
+    const startOfWeek = startOfToday - offset * 24 * 60 * 60 * 1000;
+    return timestamp >= startOfWeek;
+  }
+
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  return timestamp >= startOfMonth;
 }
 
 interface TopicOption {
@@ -153,7 +179,7 @@ export function ConversationList({
     const cached = queryCacheRef.current.get(normalizedSearchQuery);
     if (cached) {
       setIsMessageSearchPending(false);
-      setMessageMatchIds(new Set(cached));
+      setMessageMatchIds(new Set<number>(cached));
       return;
     }
 
@@ -167,12 +193,12 @@ export function ConversationList({
           }
           const matchSet = new Set(ids);
           queryCacheRef.current.set(normalizedSearchQuery, matchSet);
-          setMessageMatchIds(new Set(matchSet));
+          setMessageMatchIds(new Set<number>(matchSet));
         } catch {
           if (requestSeq !== searchRequestSeqRef.current) {
             return;
           }
-          setMessageMatchIds(new Set());
+          setMessageMatchIds(new Set<number>());
         } finally {
           if (requestSeq === searchRequestSeqRef.current) {
             setIsMessageSearchPending(false);
