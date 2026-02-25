@@ -5,6 +5,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import {
   BookOpen,
+  ChevronDown,
   List,
   Star,
   Check,
@@ -12,6 +13,7 @@ import {
   Clock,
   MoreHorizontal,
   Pencil,
+  RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -72,6 +74,7 @@ export function LibraryTab({
   const [summaryData, setSummaryData] = useState<ChatSummaryData | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryGenerating, setSummaryGenerating] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [pipelineStages, setPipelineStages] = useState<PipelineStageState[]>([]);
   const [customFolders, setCustomFolders] = useState<string[]>([]);
   const [openConversationMenuId, setOpenConversationMenuId] = useState<number | null>(null);
@@ -79,6 +82,7 @@ export function LibraryTab({
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
+  const [hasLinkedNote, setHasLinkedNote] = useState(false);
 
   // Note editing state
   const [editingTitle, setEditingTitle] = useState(false);
@@ -234,7 +238,18 @@ export function LibraryTab({
 
   useEffect(() => {
     setIsConversationExpanded(false);
+    setSummaryExpanded(false);
   }, [selectedConversationId]);
+
+  useEffect(() => {
+    if (!selectedConversationId) {
+      setHasLinkedNote(false);
+      return;
+    }
+    setHasLinkedNote(
+      notes.some((note) => note.linked_conversation_ids.includes(selectedConversationId))
+    );
+  }, [selectedConversationId, notes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1226,7 +1241,34 @@ export function LibraryTab({
                       Loading summary...
                     </p>
                   ) : summaryData ? (
-                    <StructuredSummaryCard data={summaryData} />
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setSummaryExpanded((prev) => !prev)}
+                        className="w-full flex items-center justify-between py-1 text-[13px]
+                   font-sans text-text-secondary hover:text-text-primary
+                   transition-colors duration-150"
+                      >
+                        <span className="font-medium">{summaryData.meta?.title || "Summary"}</span>
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform duration-200 ${
+                            summaryExpanded ? "rotate-180" : ""
+                          }`}
+                          strokeWidth={1.75}
+                        />
+                      </button>
+                      <div
+                        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out ${
+                          summaryExpanded
+                            ? "grid-rows-[1fr] opacity-100 mt-3"
+                            : "grid-rows-[0fr] opacity-0"
+                        }`}
+                      >
+                        <div className="overflow-hidden">
+                          <StructuredSummaryCard data={summaryData} />
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <div className="flex flex-col gap-3">
                       <p className="text-[13px] font-sans text-text-tertiary leading-relaxed">
@@ -1323,6 +1365,7 @@ export function LibraryTab({
                                   prev.map((stage) => ({ ...stage, status: "completed" }))
                                 );
                                 setSummaryData(data);
+                                setSummaryExpanded(true);
                               } catch (error) {
                                 console.error("[library] generateSummary failed", error);
                                 setPipelineStages((prev) =>
@@ -1359,6 +1402,51 @@ export function LibraryTab({
 
                 {/* 操作栏 */}
                 <div className="px-4 pb-3 flex items-center gap-2 border-t border-border-subtle pt-3">
+                  {storage.generateSummary && summaryData && (
+                    <button
+                      type="button"
+                      disabled={summaryGenerating}
+                      onClick={async () => {
+                        if (!selectedConversationId || !storage.generateSummary) return;
+                        setSummaryData(null);
+                        setSummaryExpanded(false);
+                        setSummaryGenerating(true);
+                        setPipelineStages(getInitialStages());
+                        setPipelineStages((prev) =>
+                          prev.map((stage, index) =>
+                            index === 0 ? { ...stage, status: "in_progress" } : stage
+                          )
+                        );
+                        try {
+                          const data = await storage.generateSummary(selectedConversationId);
+                          setPipelineStages((prev) =>
+                            prev.map((stage) => ({ ...stage, status: "completed" }))
+                          );
+                          setSummaryData(data);
+                          setSummaryExpanded(true);
+                        } catch (error) {
+                          console.error("[library] regenerateSummary failed", error);
+                          setPipelineStages((prev) =>
+                            prev.map((stage) =>
+                              stage.status === "in_progress"
+                                ? { ...stage, status: "degraded_fallback" }
+                                : stage
+                            )
+                          );
+                        } finally {
+                          setSummaryGenerating(false);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md
+                 text-[13px] font-sans text-text-secondary
+                 hover:text-accent-primary hover:bg-accent-primary-light
+                 transition-colors duration-150 disabled:opacity-50
+                 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.75} />
+                      Regenerate
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={async () => {
@@ -1368,6 +1456,14 @@ export function LibraryTab({
                         ? [
                             `## ${summaryData.core_question}`,
                             "",
+                            "### Thinking Journey",
+                            ...summaryData.thinking_journey.map(
+                              (item) =>
+                                `**Step ${item.step} · ${item.speaker}**: ${item.assertion}${
+                                  item.real_world_anchor ? `\n> ${item.real_world_anchor}` : ""
+                                }`
+                            ),
+                            "",
                             "### Key Insights",
                             ...summaryData.key_insights.map(
                               (item) => `**${item.term}**: ${item.definition}`
@@ -1375,6 +1471,9 @@ export function LibraryTab({
                             "",
                             "### Unresolved Threads",
                             ...summaryData.unresolved_threads.map((item) => `- ${item}`),
+                            "",
+                            "### Next Steps",
+                            ...summaryData.actionable_next_steps.map((item) => `- ${item}`),
                           ].join("\n")
                         : `Notes for: ${title}`;
                       try {
@@ -1384,6 +1483,7 @@ export function LibraryTab({
                           linked_conversation_ids: [selectedConversationId],
                         });
                         setNotes((prev) => [newNote, ...prev]);
+                        setHasLinkedNote(true);
                         setSelectedNoteId(newNote.id);
                         setViewMode("notes");
                       } catch (error) {
@@ -1412,10 +1512,10 @@ export function LibraryTab({
                         console.log("[library] no linked note yet");
                       }
                     }}
-                    disabled={!selectedConversation?.has_note}
+                    disabled={!hasLinkedNote}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-sans
                       transition-colors duration-150
-                      ${selectedConversation?.has_note
+                      ${hasLinkedNote
                         ? "text-text-secondary hover:text-accent-primary hover:bg-accent-primary-light"
                         : "text-text-tertiary cursor-not-allowed opacity-50"
                       }`}
