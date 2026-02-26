@@ -15,7 +15,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && pnpm --dir ../../frontend exec esbuild ../packages/vesti-ui/src/index.ts --bundle --format=esm --platform=browser --target=es2020 --jsx=automatic --tsconfig=../packages/vesti-ui/tsconfig.build.json --outfile=../packages/vesti-ui/dist/index.js --external:react --external:react-dom --external:react/jsx-runtime --external:react/jsx-dev-runtime --external:lucide-react --external:marked --external:dompurify --external:echarts"
+    "build": "node ./scripts/build-ui.mjs"
   },
   "peerDependencies": {
     "lucide-react": ">=0.5.0",
