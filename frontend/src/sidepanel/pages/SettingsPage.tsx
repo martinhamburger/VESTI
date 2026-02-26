@@ -762,6 +762,10 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                   <div className="model-access-section-divider">
                     <span>Proxy</span>
                   </div>
+                  <p className="text-[11px] font-sans text-text-tertiary">
+                    In Proxy mode, Summary and Explore default to proxy routing. Service token is
+                    optional and only needed when your proxy enforces token checks.
+                  </p>
 
                   <div className="model-access-field-group">
                     <label className="model-access-input-label">Base URL</label>

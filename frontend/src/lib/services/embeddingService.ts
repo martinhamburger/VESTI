@@ -1,5 +1,5 @@
 import type { LlmConfig } from "../types";
-import { getProxyRouteUrl } from "./llmConfig";
+import { getLlmAccessMode, getProxyRouteUrl } from "./llmConfig";
 import { getLlmSettings } from "./llmSettingsService";
 
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-v2";
@@ -58,6 +58,25 @@ function createEmbeddingError(
   error.status = status;
   error.requestId = requestId;
   return error;
+}
+
+function extractPayloadErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const error = record.error;
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+  if (error && typeof error === "object") {
+    const nested = error as Record<string, unknown>;
+    if (typeof nested.message === "string" && nested.message.trim()) {
+      return nested.message.trim();
+    }
+  }
+  if (typeof record.message === "string" && record.message.trim()) {
+    return record.message.trim();
+  }
+  return null;
 }
 
 function normalizeInput(input: string | string[]): string[] {
@@ -167,17 +186,39 @@ async function requestEmbeddingsFromRoute(
   const payload = await readResponseJson(response);
 
   if (!response.ok) {
-    const message =
-      typeof payload === "object" && payload && "error" in payload
-        ? JSON.stringify((payload as Record<string, unknown>).error)
-        : `${route} embedding request failed with status ${response.status}`;
-    throw createEmbeddingError(
-      "EMBEDDING_REQUEST_FAILED",
-      message,
-      route,
-      response.status,
-      requestId
-    );
+    const upstreamMessage =
+      extractPayloadErrorMessage(payload) ??
+      `${route} embedding request failed with status ${response.status}`;
+
+    if (route === "proxy" && response.status === 404) {
+      throw createEmbeddingError(
+        "PROXY_EMBEDDINGS_ROUTE_MISSING",
+        "Proxy embeddings route missing: ensure /embeddings is deployed and reachable.",
+        route,
+        response.status,
+        requestId
+      );
+    }
+    if (route === "proxy" && (response.status === 401 || response.status === 403)) {
+      throw createEmbeddingError(
+        "PROXY_ACCESS_DENIED",
+        "Proxy access denied for embeddings: check proxy token policy, allowed origin, or auth settings.",
+        route,
+        response.status,
+        requestId
+      );
+    }
+    if (route === "proxy" && response.status === 429) {
+      throw createEmbeddingError(
+        "PROXY_RATE_LIMITED",
+        "Proxy embeddings rate-limited. Please retry in a moment.",
+        route,
+        response.status,
+        requestId
+      );
+    }
+
+    throw createEmbeddingError("EMBEDDING_REQUEST_FAILED", upstreamMessage, route, response.status, requestId);
   }
 
   return parseEmbeddingResponse(payload, route, requestId);
@@ -261,12 +302,16 @@ export async function fetchEmbeddings(
 
 export async function embedText(text: string): Promise<Float32Array> {
   const settings = await requireLlmSettings();
+  const mode = getLlmAccessMode(settings);
   const apiKey = (settings.apiKey || "").trim();
 
-  if (apiKey) {
-    const result = await requestEmbeddings(settings, text, {
-      fallbackToProxyOnDirectAuthError: false,
-    });
+  if (mode === "demo_proxy") {
+    const result = await requestEmbeddingsFromRoute(
+      settings,
+      "proxy",
+      normalizeInput(text),
+      { fallbackToProxyOnDirectAuthError: false }
+    );
     const vector = result.vectors[0];
     if (!vector) {
       throw createEmbeddingError(
@@ -277,19 +322,26 @@ export async function embedText(text: string): Promise<Float32Array> {
     return new Float32Array(vector);
   }
 
-  const proxyToken = (settings.proxyServiceToken || "").trim();
-  if (proxyToken) {
-    const vectors = await fetchEmbeddings(text);
-    if (vectors.length === 0) {
-      throw createEmbeddingError(
-        "EMBEDDING_EMPTY_RESULT",
-        "Embedding response contains no vectors."
-      );
-    }
-    return vectors[0];
+  if (!apiKey) {
+    throw createEmbeddingError(
+      "EMBEDDING_API_KEY_MISSING",
+      "BYOK mode requires an API Key for embeddings. Add API Key in settings.",
+      "direct"
+    );
   }
 
-  throw new Error(
-    "Embedding credentials missing: Please provide an API Key or Service Token in settings."
+  const result = await requestEmbeddingsFromRoute(
+    settings,
+    "direct",
+    normalizeInput(text),
+    { fallbackToProxyOnDirectAuthError: false }
   );
+  const vector = result.vectors[0];
+  if (!vector) {
+    throw createEmbeddingError(
+      "EMBEDDING_EMPTY_RESULT",
+      "Embedding response contains no vectors."
+    );
+  }
+  return new Float32Array(vector);
 }
