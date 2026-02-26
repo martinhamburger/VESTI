@@ -97,6 +97,39 @@ https://github.com/user-attachments/assets/c860092c-9ab1-4773-8b8c-063e22912672
 ## ⭐ 核心功能
 
 心迹当前的能力覆盖从数据捕获到知识沉淀的完整链路，分布在两个协同工作的产品层次上：作为 Chrome 扩展运行的**捕获与洞察引擎**，以及作为独立 Web 视图运行的**知识管理平台**。
+### 🔗 浏览器浮窗 - 扩展程序侧边栏 - 独立知识库视图：咬合衔接管线
+
+<blockquote>
+  <p>🎨 <b>心迹 (Vesti) 采用渐进式披露设计，实现从轻量捕获到深度管理的无缝流转：</b><br><br>
+  <b>页面常驻（悬浮胶囊-折叠态）</b>在 AI 对话页边缘静默指示捕获状态，实现零干扰；点击小球进入<b>当前控制（悬浮胶囊-展开态）</b>，即可查看状态详情或快捷归档；随后可一键呼出<b>全局浏览（浏览器侧边栏）</b>，支持跨平台检索与当前对话摘要；最后，通过侧边栏 Insights 面板的探索外链，平滑过渡至<b>深度洞察（独立 Dashboard）</b>的 Web 平台，解锁 RAG 问答、思维图谱与策展笔记等高级知识管理功能。</p>
+</blockquote>
+
+<table border="0" width="100%" cellspacing="0" cellpadding="10">
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src=".github/assets/pipeline-1.png" alt="Vesti Capsule Folded" width="100%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <br>
+      <sub><b>1. 页面常驻 </b> (悬浮胶囊-折叠态)</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src=".github/assets/pipeline-2.png" alt="Vesti Capsule Expanded" width="100%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <br>
+      <sub><b>2. 当前控制 </b> (悬浮胶囊-展开态)</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src=".github/assets/pipeline-3.png" alt="Vesti Sidebar" width="100%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <br>
+      <sub><b>3. 全局浏览 </b> (浏览器侧边栏)</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src=".github/assets/pipeline-4.png" alt="Vesti Web Dashboard" width="100%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <br>
+      <sub><b>4. 深度洞察 </b> (独立 Dashboard)</sub>
+    </td>
+  </tr>
+</table>
 
 ### 捕获与洞察引擎（Chrome 扩展）
 
@@ -115,6 +148,40 @@ https://github.com/user-attachments/assets/c860092c-9ab1-4773-8b8c-063e22912672
 * **本地优先**：所有数据存储在你的本地设备中，不上传到任何云端服务器。你拥有完整的数据主权，可以随时导出、备份或删除。即使开发者也无法访问你的对话记录。这不仅是技术选择，更是价值立场。
 
 ### 知识管理平台（Web Dashboard）
+
+### 🧠 知识库应用全链路：Agent 赋能的自主记忆探索平台
+
+<blockquote>
+  <p>🎨 <b>心迹 (Vesti) 将零散的跨平台对话转化为体系化的个人知识资产：</b><br><br>
+  打破数据围墙，在 <b>Library</b> 中实现思维资产的完整标记、收藏与目录结构化管理；通过 Agent 赋能的 <b>Explore</b> 平台，你可以用自然语言唤醒历史记忆，由系统动态生成 RAG 结构化洞察；最终在 <b>Notes</b> 视图中，将高价值的对话精要一键落库，完成从信息捕获、知识召回到深度内化的全链路闭环。</p>
+</blockquote>
+
+<table border="0" width="100%" cellspacing="0" cellpadding="10">
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src=".github/assets/web-view-1.png" alt="Vesti Explore Intent Analysis" width="100%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <br>
+      <sub><b>1. 意图解析与向量检索 (Explore)</b><br>用自然语言向自己的历史思考提问，系统在本地静默完成语义理解与上下文精确召回。</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src=".github/assets/web-view-2.png" alt="Vesti RAG Insights" width="100%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <br>
+      <sub><b>2. 生成式洞察引擎 (RAG)</b><br>基于召回的专属记忆，Agent 动态合成带有引用的结构化解答，让长时段的隐性知识显性化。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src=".github/assets/web-view-3.png" alt="Vesti Library View" width="100%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <br>
+      <sub><b>3. 全景知识枢纽 (Library)</b><br>打破平台孤岛，通过自动语义标记、智能目录归类与相似度计算，实现跨平台思维资产的一站式管理。</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src=".github/assets/web-view-4.png" alt="Vesti Notes View" width="100%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <br>
+      <sub><b>4. 沉浸式策展笔记 (Notes)</b><br>将高价值的对话精要一键归纳落库，在极简的纯文本环境中完成个人知识的最终沉淀与内化。</sub>
+    </td>
+  </tr>
+</table>
 
 知识管理平台是心迹在本轮迭代中引入的第二个产品层次，提供四个核心模块。所有数据读写通过统一的 `StorageApi` 接口与底层 IndexedDB 通信，UI 层对存储实现完全透明，Local-First 原则在架构边界上得到严格保障。
 
