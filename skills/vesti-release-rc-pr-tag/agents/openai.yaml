@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vesti Release Rc PR Tag"
+  short_description: "RC branch, batch commits, changelog alignment, and annotated tag flow"
+  default_prompt: "Prepare a decision-complete RC release plan with batch commits, PR gates, and annotated tagging on main."

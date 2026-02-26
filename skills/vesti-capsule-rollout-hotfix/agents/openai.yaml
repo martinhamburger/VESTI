@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vesti Capsule Rollout Hotfix"
+  short_description: "Capsule rollout, drag hotfix, and 26-case acceptance workflow"
+  default_prompt: "Use the capsule rollout checklist to implement or hotfix capsule changes with minimal regression risk."
