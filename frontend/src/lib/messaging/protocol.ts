@@ -57,7 +57,7 @@ export interface ConversationDraft {
 }
 
 export type InsightPipelineScope = "summary" | "weekly";
-export type InsightPipelineRoute = "proxy" | "modelscope";
+export type InsightPipelineRoute = "proxy" | "modelscope" | "unknown";
 export type InsightPipelineStage =
   | "initiating_pipeline"
   | "distilling_core_logic"
@@ -91,39 +91,6 @@ export interface ParsedMessage {
   degradedNodesCount?: number;
   htmlContent?: string;
   timestamp?: number;
-}
-
-export type InsightPipelineScope = "summary" | "weekly";
-
-export type InsightPipelineStage =
-  | "initiating_pipeline"
-  | "distilling_core_logic"
-  | "curating_summary"
-  | "aggregating_weekly_digest"
-  | "persisting_result"
-  | "completed"
-  | "degraded_fallback";
-
-export type InsightPipelineStatus =
-  | "in_progress"
-  | "completed"
-  | "degraded_fallback";
-
-export type InsightPipelineRoute = "proxy" | "modelscope" | "unknown";
-
-export interface InsightPipelineProgressPayload {
-  pipelineId: string;
-  scope: InsightPipelineScope;
-  targetId: string;
-  stage: InsightPipelineStage;
-  status: InsightPipelineStatus;
-  attempt: number;
-  startedAt: number;
-  updatedAt: number;
-  route: InsightPipelineRoute;
-  modelId: string;
-  promptVersion: string;
-  seq: number;
 }
 
 export interface InsightPipelineProgressMessage {

@@ -75,6 +75,66 @@ async function readResponseJson(response: Response): Promise<unknown> {
   }
 }
 
+function readErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const record = payload as Record<string, unknown>;
+  const error = record.error;
+  if (typeof error === "string" && error.trim()) return error.trim();
+
+  if (error && typeof error === "object") {
+    const nested = error as Record<string, unknown>;
+    if (typeof nested.message === "string" && nested.message.trim()) {
+      return nested.message.trim();
+    }
+    if (typeof nested.code === "string" && nested.code.trim()) {
+      return nested.code.trim();
+    }
+  }
+
+  if (typeof record.message === "string" && record.message.trim()) {
+    return record.message.trim();
+  }
+
+  return null;
+}
+
+function resolveFailureCode(route: EmbeddingRoute, status: number): string {
+  if (status === 401 || status === 403) {
+    return route === "proxy"
+      ? "EMBEDDING_PROXY_AUTH_FAILED"
+      : "EMBEDDING_DIRECT_AUTH_FAILED";
+  }
+  if (route === "proxy" && status === 404) {
+    return "EMBEDDING_CONFIG_MISSING";
+  }
+  if (status >= 500) {
+    return "EMBEDDING_UPSTREAM_FAILED";
+  }
+  return "EMBEDDING_REQUEST_FAILED";
+}
+
+function buildFailureMessage(
+  route: EmbeddingRoute,
+  status: number,
+  payload: unknown
+): string {
+  const detail =
+    readErrorMessage(payload) || `${route} embedding request failed with status ${status}.`;
+  const code = resolveFailureCode(route, status);
+
+  if (code === "EMBEDDING_CONFIG_MISSING") {
+    return `Proxy embedding route is unavailable: ${detail}`;
+  }
+  if (code === "EMBEDDING_DIRECT_AUTH_FAILED" || code === "EMBEDDING_PROXY_AUTH_FAILED") {
+    return `${route} embedding authentication failed: ${detail}`;
+  }
+  if (code === "EMBEDDING_UPSTREAM_FAILED") {
+    return `Embedding upstream error (${status}): ${detail}`;
+  }
+  return detail;
+}
+
 function parseEmbeddingResponse(
   payload: unknown,
   route: EmbeddingRoute,
@@ -135,9 +195,14 @@ async function requestEmbeddingsFromRoute(
   };
 
   const url =
-    route === "direct"
-      ? DASHSCOPE_EMBEDDINGS_URL
-      : getProxyRouteUrl(config, "embeddings");
+    route === "direct" ? DASHSCOPE_EMBEDDINGS_URL : getProxyRouteUrl(config, "embeddings").trim();
+  if (route === "proxy" && !url) {
+    throw createEmbeddingError(
+      "EMBEDDING_CONFIG_MISSING",
+      "Missing proxy embeddings route configuration.",
+      route
+    );
+  }
 
   if (route === "direct") {
     const apiKey = (config.apiKey || "").trim();
@@ -156,23 +221,34 @@ async function requestEmbeddingsFromRoute(
     }
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+  } catch (error) {
+    const message = (error as Error)?.message ?? String(error);
+    const isConfigError = route === "proxy" && /invalid url/i.test(message);
+    throw createEmbeddingError(
+      isConfigError ? "EMBEDDING_CONFIG_MISSING" : "EMBEDDING_REQUEST_FAILED",
+      isConfigError
+        ? "Proxy embeddings route is invalid or missing."
+        : `${route} embedding request failed: ${message}`,
+      route
+    );
+  }
 
   const requestId = response.headers.get("x-request-id") || undefined;
   const payload = await readResponseJson(response);
 
   if (!response.ok) {
-    const message =
-      typeof payload === "object" && payload && "error" in payload
-        ? JSON.stringify((payload as Record<string, unknown>).error)
-        : `${route} embedding request failed with status ${response.status}`;
+    const code = resolveFailureCode(route, response.status);
+    const message = buildFailureMessage(route, response.status, payload);
     throw createEmbeddingError(
-      "EMBEDDING_REQUEST_FAILED",
+      code,
       message,
       route,
       response.status,
@@ -261,35 +337,15 @@ export async function fetchEmbeddings(
 
 export async function embedText(text: string): Promise<Float32Array> {
   const settings = await requireLlmSettings();
-  const apiKey = (settings.apiKey || "").trim();
-
-  if (apiKey) {
-    const result = await requestEmbeddings(settings, text, {
-      fallbackToProxyOnDirectAuthError: false,
-    });
-    const vector = result.vectors[0];
-    if (!vector) {
-      throw createEmbeddingError(
-        "EMBEDDING_EMPTY_RESULT",
-        "Embedding response contains no vectors."
-      );
-    }
-    return new Float32Array(vector);
+  const result = await requestEmbeddings(settings, text, {
+    fallbackToProxyOnDirectAuthError: true,
+  });
+  const vector = result.vectors[0];
+  if (!vector) {
+    throw createEmbeddingError(
+      "EMBEDDING_EMPTY_RESULT",
+      "Embedding response contains no vectors."
+    );
   }
-
-  const proxyToken = (settings.proxyServiceToken || "").trim();
-  if (proxyToken) {
-    const vectors = await fetchEmbeddings(text);
-    if (vectors.length === 0) {
-      throw createEmbeddingError(
-        "EMBEDDING_EMPTY_RESULT",
-        "Embedding response contains no vectors."
-      );
-    }
-    return vectors[0];
-  }
-
-  throw new Error(
-    "Embedding credentials missing: Please provide an API Key or Service Token in settings."
-  );
+  return new Float32Array(vector);
 }
