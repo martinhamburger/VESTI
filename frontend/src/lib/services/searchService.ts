@@ -3,11 +3,14 @@ import { db } from "../db/schema";
 import { embedText } from "./embeddingService";
 import { callInference } from "./llmService";
 import { getLlmSettings } from "./llmSettingsService";
+import { logger } from "../utils/logger";
 
 const MAX_MESSAGE_COUNT = 12;
 const MAX_TEXT_LENGTH = 4000;
 const MAX_RAG_SOURCES = 5;
 const MAX_EMBEDDING_CHARS = 2048;
+const DEFAULT_SIMILARITY_THRESHOLD = 0.3;
+const USE_NORMALIZED_COSINE = false;
 
 function normalizeEmbeddingInput(text: string): string {
   const trimmed = text.trim();
@@ -138,10 +141,24 @@ export async function ensureVectorForConversation(
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   if (a.length === 0 || b.length === 0 || a.length !== b.length) return 0;
   let dot = 0;
+  let normA = 0;
+  let normB = 0;
   for (let i = 0; i < a.length; i += 1) {
     dot += a[i] * b[i];
+    if (USE_NORMALIZED_COSINE) {
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
   }
-  return dot;
+
+  if (!USE_NORMALIZED_COSINE) {
+    return dot;
+  }
+
+  if (normA <= 0 || normB <= 0) {
+    return 0;
+  }
+  return dot / Math.sqrt(normA * normB);
 }
 
 export async function findRelatedConversations(
@@ -195,7 +212,7 @@ export async function findRelatedConversations(
 }
 
 export async function findAllEdges(
-  threshold = 0.3
+  threshold = DEFAULT_SIMILARITY_THRESHOLD
 ): Promise<Array<{ source: number; target: number; weight: number }>> {
   const vectors = await db.vectors.toArray();
   const edges: Array<{ source: number; target: number; weight: number }> = [];
@@ -255,7 +272,7 @@ export async function askKnowledgeBase(
       continue;
     }
     const similarity = cosineSimilarity(queryVector, embedding);
-    if (similarity < 0.3) {
+    if (similarity < DEFAULT_SIMILARITY_THRESHOLD) {
       continue;
     }
     scored.push({ id: vector.conversation_id, similarity });
@@ -290,6 +307,14 @@ export async function askKnowledgeBase(
     });
   }
 
+  logger.info("vectorize", "Knowledge base retrieval stats", {
+    vectorsTotal: vectors.length,
+    vectorsMatched: scored.length,
+    sourcesReturned: sources.length,
+    threshold: DEFAULT_SIMILARITY_THRESHOLD,
+    normalizedCosineEnabled: USE_NORMALIZED_COSINE,
+  });
+
   const context = contextBlocks.join("\n\n---\n\n");
   const systemPrompt = buildRagSystemPrompt(context);
   const settings = await getLlmSettings();
@@ -311,15 +336,25 @@ export async function hybridSearch(query: string): Promise<RagResponse> {
 export async function vectorizeAllConversations(): Promise<number> {
   const conversations = await db.conversations.toArray();
   let created = 0;
+  let failed = 0;
   for (const conversation of conversations) {
     if (!conversation?.id) continue;
     try {
       const { text } = await getConversationText(conversation.id);
       await ensureVectorForConversation(conversation.id, text);
       created += 1;
-    } catch {
-      // skip failures to keep task resilient
+    } catch (error) {
+      failed += 1;
+      logger.warn("vectorize", "Vectorization skipped for conversation", {
+        conversationId: conversation.id,
+        error: (error as Error)?.message ?? String(error),
+      });
     }
   }
+  logger.info("vectorize", "Vectorization batch completed", {
+    total: conversations.length,
+    created,
+    failed,
+  });
   return created;
 }
