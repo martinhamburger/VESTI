@@ -1,14 +1,17 @@
 'use client';
 
+// LEGACY PROTOTYPE: not wired by app/page.tsx
 import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Platform } from '@/lib/types';
 
 const platformColors: Record<Platform, { bg: string; text: string }> = {
-  ChatGPT: { bg: '#F3F4F6', text: '#1A1A1A' },
-  Claude: { bg: '#F7D8BA', text: '#1A1A1A' },
-  Gemini: { bg: '#3A62D9', text: '#FFFFFF' },
-  DeepSeek: { bg: '#172554', text: '#FFFFFF' },
+  ChatGPT: { bg: '#10A37F', text: '#1A1A1A' },
+  Claude: { bg: '#CC785C', text: '#1A1A1A' },
+  Gemini: { bg: '#AD89EB', text: '#1A1A1A' },
+  DeepSeek: { bg: '#0D28F3', text: '#FFFFFF' },
+  Qwen: { bg: '#615CED', text: '#FFFFFF' },
+  Doubao: { bg: '#1E6FFF', text: '#1A1A1A' },
 };
 
 const sampleQuestions = [

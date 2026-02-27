@@ -1,14 +1,26 @@
 'use client';
 
+// LEGACY PROTOTYPE: not wired by app/page.tsx
 import { useState } from 'react';
 import { X, ArrowRight, ChevronDown } from 'lucide-react';
 import { Platform } from '@/lib/types';
 
 const platformColors: Record<Platform, string> = {
-  ChatGPT: '#F3F4F6',
-  Claude: '#F7D8BA',
-  Gemini: '#3A62D9',
-  DeepSeek: '#172554',
+  ChatGPT: '#10A37F',
+  Claude: '#CC785C',
+  Gemini: '#AD89EB',
+  DeepSeek: '#0D28F3',
+  Qwen: '#615CED',
+  Doubao: '#1E6FFF',
+};
+
+const platformTextColors: Record<Platform, string> = {
+  ChatGPT: '#1A1A1A',
+  Claude: '#1A1A1A',
+  Gemini: '#1A1A1A',
+  DeepSeek: '#FFFFFF',
+  Qwen: '#FFFFFF',
+  Doubao: '#1A1A1A',
 };
 
 interface Node {
@@ -28,14 +40,14 @@ interface Edge {
 }
 
 const mockNodes: Node[] = [
-  { id: 1, x: 420, y: 280, r: 22, color: '#F3F4F6', label: 'React Virtual List', platform: 'ChatGPT' },
-  { id: 2, x: 580, y: 200, r: 18, color: '#F7D8BA', label: 'Rust Ownership', platform: 'Claude' },
-  { id: 3, x: 650, y: 340, r: 16, color: '#3A62D9', label: 'AI Papers 2024', platform: 'Gemini' },
-  { id: 4, x: 300, y: 200, r: 20, color: '#172554', label: 'PostgreSQL Tuning', platform: 'DeepSeek' },
-  { id: 5, x: 500, y: 420, r: 24, color: '#F3F4F6', label: 'Chrome Extension', platform: 'ChatGPT' },
-  { id: 6, x: 740, y: 260, r: 17, color: '#F7D8BA', label: 'TypeScript Migration', platform: 'Claude' },
-  { id: 7, x: 350, y: 380, r: 15, color: '#172554', label: 'Docker Compose', platform: 'DeepSeek' },
-  { id: 8, x: 680, y: 440, r: 16, color: '#3A62D9', label: 'SwiftUI vs Flutter', platform: 'Gemini' },
+  { id: 1, x: 420, y: 280, r: 22, color: '#10A37F', label: 'React Virtual List', platform: 'ChatGPT' },
+  { id: 2, x: 580, y: 200, r: 18, color: '#CC785C', label: 'Rust Ownership', platform: 'Claude' },
+  { id: 3, x: 650, y: 340, r: 16, color: '#AD89EB', label: 'AI Papers 2024', platform: 'Gemini' },
+  { id: 4, x: 300, y: 200, r: 20, color: '#0D28F3', label: 'PostgreSQL Tuning', platform: 'DeepSeek' },
+  { id: 5, x: 500, y: 420, r: 24, color: '#10A37F', label: 'Chrome Extension', platform: 'ChatGPT' },
+  { id: 6, x: 740, y: 260, r: 17, color: '#CC785C', label: 'TypeScript Migration', platform: 'Claude' },
+  { id: 7, x: 350, y: 380, r: 15, color: '#0D28F3', label: 'Docker Compose', platform: 'DeepSeek' },
+  { id: 8, x: 680, y: 440, r: 16, color: '#AD89EB', label: 'SwiftUI vs Flutter', platform: 'Gemini' },
 ];
 
 const mockEdges: Edge[] = [
@@ -52,7 +64,7 @@ export function NetworkTab() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | 'all'>('all');
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
-  const platforms: (Platform | 'all')[] = ['all', 'ChatGPT', 'Claude', 'Gemini', 'DeepSeek'];
+  const platforms: (Platform | 'all')[] = ['all', 'ChatGPT', 'Claude', 'Gemini', 'DeepSeek', 'Qwen', 'Doubao'];
 
   return (
     <div className="h-full flex flex-col">
@@ -67,12 +79,15 @@ export function NetworkTab() {
                 selectedPlatform === platform
                   ? platform === 'all'
                     ? 'bg-accent-primary text-white'
-                    : 'text-white'
+                    : ''
                   : 'bg-bg-surface-card text-text-secondary hover:bg-bg-surface-card-hover'
               }`}
               style={
                 selectedPlatform === platform && platform !== 'all'
-                  ? { backgroundColor: platformColors[platform] }
+                  ? {
+                      backgroundColor: platformColors[platform],
+                      color: platformTextColors[platform],
+                    }
                   : {}
               }
             >
@@ -145,7 +160,7 @@ export function NetworkTab() {
 
         {/* Legend - bottom left */}
         <div className="absolute bottom-4 left-4 bg-bg-surface-card rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex items-center gap-4">
-          {(['ChatGPT', 'Claude', 'Gemini', 'DeepSeek'] as Platform[]).map((platform) => (
+          {(['ChatGPT', 'Claude', 'Gemini', 'DeepSeek', 'Qwen', 'Doubao'] as Platform[]).map((platform) => (
             <div key={platform} className="flex items-center gap-1.5">
               <div
                 className="w-2.5 h-2.5 rounded-full"
@@ -186,7 +201,7 @@ export function NetworkTab() {
                   className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none"
                   style={{
                     backgroundColor: platformColors[selectedNode.platform],
-                    color: selectedNode.platform === 'ChatGPT' || selectedNode.platform === 'Claude' ? '#1A1A1A' : '#FFFFFF',
+                    color: platformTextColors[selectedNode.platform],
                   }}
                 >
                   {selectedNode.platform}

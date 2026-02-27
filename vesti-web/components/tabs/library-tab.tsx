@@ -1,5 +1,6 @@
 'use client';
 
+// LEGACY PROTOTYPE: not wired by app/page.tsx
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronRight, ChevronDown, BookOpen, List, Star, ChevronUp, Check, ArrowRight, X } from 'lucide-react';
 import { Topic, Conversation, Platform } from '@/lib/types';
@@ -10,15 +11,19 @@ import { useExtensionSync, type ConversationUpdatedPayload } from '@/hooks/use-e
 const platformColors: Record<Platform, string> = {
   ChatGPT: '#1A1A1A',
   Claude: '#1A1A1A',
-  Gemini: '#FFFFFF',
+  Gemini: '#1A1A1A',
   DeepSeek: '#FFFFFF',
+  Qwen: '#FFFFFF',
+  Doubao: '#1A1A1A',
 };
 
 const platformBackgrounds: Record<Platform, string> = {
-  ChatGPT: '#F3F4F6',
-  Claude: '#F7D8BA',
-  Gemini: '#3A62D9',
-  DeepSeek: '#172554',
+  ChatGPT: '#10A37F',
+  Claude: '#CC785C',
+  Gemini: '#AD89EB',
+  DeepSeek: '#0D28F3',
+  Qwen: '#615CED',
+  Doubao: '#1E6FFF',
 };
 
 type ViewMode = 'conversations' | 'notes';

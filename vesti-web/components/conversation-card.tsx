@@ -1,5 +1,6 @@
 'use client';
 
+// LEGACY PROTOTYPE: not wired by app/page.tsx
 import { Conversation } from '@/lib/types';
 import { Star, GripVertical } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -11,10 +12,12 @@ interface ConversationCardProps {
 }
 
 const platformColors = {
-  ChatGPT: { bg: '#F3F4F6', text: '#1A1A1A' },
-  Claude: { bg: '#F7D8BA', text: '#1A1A1A' },
-  Gemini: { bg: '#3A62D9', text: '#FFFFFF' },
-  DeepSeek: { bg: '#172554', text: '#FFFFFF' },
+  ChatGPT: { bg: '#10A37F', text: '#1A1A1A' },
+  Claude: { bg: '#CC785C', text: '#1A1A1A' },
+  Gemini: { bg: '#AD89EB', text: '#1A1A1A' },
+  DeepSeek: { bg: '#0D28F3', text: '#FFFFFF' },
+  Qwen: { bg: '#615CED', text: '#FFFFFF' },
+  Doubao: { bg: '#1E6FFF', text: '#1A1A1A' },
 };
 
 export function ConversationCard({ conversation, onSelect, isSelected }: ConversationCardProps) {
