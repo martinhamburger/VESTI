@@ -615,7 +615,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
 
   return (
     <div className="vesti-shell flex h-full flex-col overflow-y-auto vesti-scroll bg-bg-app">
-      <header className="flex h-8 shrink-0 items-center px-4">
+      <header className="vesti-page-header">
         <h1 className="vesti-page-title text-text-primary">Settings</h1>
       </header>
 
@@ -763,7 +763,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                     <span>Proxy</span>
                   </div>
                   <p className="text-[11px] font-sans text-text-tertiary">
-                    In Proxy mode, Summary and Explore default to proxy routing. Service token is
+                    Summary and Explore embeddings route through proxy by default. Service token is
                     optional and only needed when your proxy enforces token checks.
                   </p>
 
@@ -841,7 +841,7 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                   </div>
 
                   <div className="model-access-field-group">
-                    <label className="model-access-input-label">API Key</label>
+                    <label className="model-access-input-label">API Key (Chat / ModelScope)</label>
                     <div className="model-access-input-wrap">
                       <input
                         type={showApiKey ? "text" : "password"}
@@ -868,6 +868,10 @@ export function SettingsPage({ onNavigateToData }: SettingsPageProps) {
                         )}
                       </button>
                     </div>
+                    <p className="text-[11px] font-sans text-text-tertiary">
+                      This key is used for BYOK chat generation. Explore embeddings continue to use
+                      proxy routing.
+                    </p>
                   </div>
 
                   <div className="model-access-field-group">

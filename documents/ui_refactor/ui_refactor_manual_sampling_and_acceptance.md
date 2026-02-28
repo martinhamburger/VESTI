@@ -64,6 +64,10 @@ Threads child flow (mandatory):
 18. Settings Language row is `Soon`, non-expandable, and does not show accordion affordance.
 19. Support block has exactly three rows (Docs & Help / Send Feedback / What's New), not accordion cards.
 20. Send Feedback row toggles inline reveal correctly; email copy action and issue-link path are available.
+21. Threads / Insights / Data / Settings page titles use one unified 18px title role and aligned top spacing.
+22. Insights top header has no extra gray divider line under the title.
+23. Threads top header does not render duplicated brand logo/wordmark (Dock logo remains unchanged).
+24. Threads search button opens inline search input; `Cancel` and `Esc` both exit search mode.
 
 ---
 

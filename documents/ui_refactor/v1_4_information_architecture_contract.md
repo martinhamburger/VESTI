@@ -17,6 +17,7 @@ Locked decisions:
 4. Knowledge base entry is fixed in `Insights` header.
 5. Compaction follows split ownership: trigger in `Threads`, audit/metrics in `Data`.
 6. v1.4 keeps internal route id `timeline`; UI label is `Threads`.
+7. Top-level page headers use one title contract (18px role) and do not duplicate brand logo/wordmark.
 
 ---
 
@@ -106,6 +107,7 @@ Behavior:
 - one-click, no hover menu fan-out
 - delegates to existing manual archive chain
 - result feedback follows existing capture decision mapping
+- logo identity is owned by Dock center action; page headers should remain page-semantic, not brand-mark containers
 
 State contract:
 - `enabled`: smart/manual mode + supported active tab + transient available
@@ -173,3 +175,4 @@ Rationale:
 4. Knowledge base entry is documented in Insights header.
 5. Compaction split ownership is explicit: trigger vs audit.
 6. Internal route compatibility (`timeline`) is clearly documented.
+7. Top-level page headers are documented as unified 18px title role with no duplicated logo/wordmark.

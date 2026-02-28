@@ -2,7 +2,6 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Conversation, DashboardStats, Platform } from "~lib/types";
 import { getDashboardStats } from "~lib/services/storageService";
-import { LOGO_BASE64 } from "~lib/ui/logo";
 import { PLATFORM_TONE } from "../components/platformTone";
 import { ConversationList } from "../containers/ConversationList";
 import {
@@ -66,42 +65,66 @@ export function TimelinePage({ onSelectConversation, refreshToken }: TimelinePag
 
   return (
     <div className="flex h-full flex-col bg-bg-app">
-      <header className="flex h-8 shrink-0 items-center justify-between px-4">
-        <div className="flex items-center gap-2">
-          <img src={LOGO_BASE64} alt="Vesti" width={20} height={20} />
-          <span className="vesti-brand-wordmark text-[14px] text-text-primary">
-            Vesti
-          </span>
-          <div className="flex items-center gap-2">
+      {headerMode === "search" ? (
+        <header className="vesti-page-header gap-2">
+          <div className="threads-search-surface flex h-8 flex-1 items-center gap-2 rounded-lg px-3">
+            <Search className="h-3.5 w-3.5 shrink-0 text-text-secondary" strokeWidth={1.8} />
+            <input
+              type="text"
+              autoFocus
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  handleCancelSearch();
+                }
+              }}
+              placeholder="Search conversations"
+              className="h-full w-full bg-transparent text-vesti-sm text-text-primary outline-none placeholder:text-text-tertiary"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleCancelSearch}
+            className="rounded-sm px-1 py-1 text-vesti-sm font-medium text-text-secondary transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+          >
+            Cancel
+          </button>
+        </header>
+      ) : (
+        <header className="vesti-page-header justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="vesti-page-title text-text-primary">Threads</h1>
             <span className="inline-flex items-center gap-1.5 text-vesti-xs font-medium text-success/90">
               <span className="h-1.5 w-1.5 rounded-full bg-success" />
               {todayCount} captured today
             </span>
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                aria-label="Search conversations"
-                onClick={handleOpenSearch}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-text-tertiary transition-colors duration-150 hover:bg-bg-secondary hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
-              >
-                <Search className="h-3.5 w-3.5" strokeWidth={1.8} />
-              </button>
-              <button
-                type="button"
-                aria-label="Filter conversations"
-                onClick={handleToggleFilter}
-                className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
-                  headerMode === "filter"
-                    ? "bg-bg-secondary text-text-primary"
-                    : "text-text-tertiary hover:bg-bg-secondary hover:text-text-secondary"
-                }`}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.8} />
-              </button>
-            </div>
           </div>
-        </div>
-      </header>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              aria-label="Search conversations"
+              onClick={handleOpenSearch}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-text-tertiary transition-colors duration-150 hover:bg-bg-secondary hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+            >
+              <Search className="h-3.5 w-3.5" strokeWidth={1.8} />
+            </button>
+            <button
+              type="button"
+              aria-label="Filter conversations"
+              onClick={handleToggleFilter}
+              className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
+                headerMode === "filter"
+                  ? "bg-bg-secondary text-text-primary"
+                  : "text-text-tertiary hover:bg-bg-secondary hover:text-text-secondary"
+              }`}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.8} />
+            </button>
+          </div>
+        </header>
+      )}
 
       {headerMode === "filter" && (
         <div className="shrink-0 border-b border-border-subtle bg-bg-secondary/40 px-4 py-3">

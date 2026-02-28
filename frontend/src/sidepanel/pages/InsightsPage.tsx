@@ -1752,7 +1752,7 @@ export function InsightsPage({
 
   return (
     <div className="vesti-shell flex h-full flex-col overflow-y-auto vesti-scroll bg-bg-app">
-      <header className="border-b border-border-subtle px-4 py-3">
+      <header className="vesti-page-header">
         <h1 className="vesti-page-title text-text-primary">Insights</h1>
       </header>
 

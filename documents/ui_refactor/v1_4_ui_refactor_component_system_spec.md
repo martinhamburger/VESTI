@@ -47,12 +47,13 @@ Rules:
 1. All colors come from semantic tokens; avoid hard-coded hex in components.
 2. Spacing scale must be consistent across all top-level regions.
 3. Typography roles are fixed:
-   - page title
+   - page title (18px role, shared by Threads / Insights / Data / Settings)
    - section title
    - body text
    - metadata text
 4. Platform tag colors must keep six-platform mapping unchanged.
 5. Sans UI font must load from local bundle (`Vesti Sans UI`) with unicode split (Lexend for Latin, Source Han Sans SC for CJK), not external CDN.
+6. Brand logo/wordmark is not repeated in top-level page headers; Dock center action remains the single logo owner.
 
 ---
 
