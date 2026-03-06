@@ -221,7 +221,7 @@ export function VestiDashboard({
           )}
           {activeTab === "explore" && (
             <ExploreTab
-              askKnowledgeBase={storage.askKnowledgeBase}
+              storage={storage}
               onOpenConversation={handleOpenConversation}
             />
           )}

@@ -18,6 +18,7 @@ import type {
   GardenerResult,
 } from "../types";
 import type { ChatSummaryData } from "../types/insightsPresentation";
+import type { ExploreSession, ExploreMessage } from "../db/repository";
 import { sendRequest } from "../messaging/runtime";
 import type { ConversationUpdateChanges } from "../messaging/protocol";
 import { toChatSummaryData } from "./insightAdapter";
@@ -247,16 +248,67 @@ export async function searchConversationIdsByText(
 
 export async function askKnowledgeBase(
   query: string,
+  sessionId?: string,
   limit?: number
-): Promise<RagResponse> {
+): Promise<RagResponse & { sessionId: string }> {
   return sendRequest(
     {
       type: "ASK_KNOWLEDGE_BASE",
       target: "offscreen",
-      payload: { query, limit },
+      payload: { query, sessionId, limit },
     },
     LONG_RUNNING_TIMEOUT_MS
-  ) as Promise<RagResponse>;
+  ) as Promise<RagResponse & { sessionId: string }>;
+}
+
+// Explore Session APIs
+export async function createExploreSession(title: string): Promise<string> {
+  const result = (await sendRequest({
+    type: "CREATE_EXPLORE_SESSION",
+    target: "offscreen",
+    payload: { title },
+  })) as { sessionId: string };
+  return result.sessionId;
+}
+
+export async function listExploreSessions(limit?: number): Promise<ExploreSession[]> {
+  return sendRequest({
+    type: "LIST_EXPLORE_SESSIONS",
+    target: "offscreen",
+    payload: { limit },
+  }) as Promise<ExploreSession[]>;
+}
+
+export async function getExploreSession(sessionId: string): Promise<ExploreSession | null> {
+  return sendRequest({
+    type: "GET_EXPLORE_SESSION",
+    target: "offscreen",
+    payload: { sessionId },
+  }) as Promise<ExploreSession | null>;
+}
+
+export async function getExploreMessages(sessionId: string): Promise<ExploreMessage[]> {
+  return sendRequest({
+    type: "GET_EXPLORE_MESSAGES",
+    target: "offscreen",
+    payload: { sessionId },
+  }) as Promise<ExploreMessage[]>;
+}
+
+export async function deleteExploreSession(sessionId: string): Promise<void> {
+  await sendRequest({
+    type: "DELETE_EXPLORE_SESSION",
+    target: "offscreen",
+    payload: { sessionId },
+  });
+}
+
+export async function renameExploreSession(sessionId: string, title: string): Promise<void> {
+  await sendRequest({
+    type: "RENAME_EXPLORE_SESSION",
+    target: "offscreen",
+    payload: { sessionId, title },
+  });
 }
 
 export async function deleteConversation(id: number): Promise<void> {

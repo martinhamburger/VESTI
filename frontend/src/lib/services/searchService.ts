@@ -1,5 +1,11 @@
 import type { Conversation, RagResponse, RelatedConversation } from "../types";
 import { db } from "../db/schema";
+import {
+  createExploreSession,
+  addExploreMessage,
+  getExploreMessages,
+  updateExploreSession,
+} from "../db/repository";
 import { embedText } from "./embeddingService";
 import { callInference } from "./llmService";
 import { getLlmSettings } from "./llmSettingsService";
@@ -103,9 +109,7 @@ export async function ensureVectorForConversation(
   text: string
 ): Promise<void> {
   const preparedText = normalizeEmbeddingInput(text);
-  if (!preparedText) {
-    return;
-  }
+  if (!preparedText) return;
 
   const textHash = await hashText(preparedText);
 
@@ -114,9 +118,7 @@ export async function ensureVectorForConversation(
     .equals(conversationId)
     .and((record) => record.text_hash === textHash)
     .first();
-  if (existing && existing.id !== undefined) {
-    return;
-  }
+  if (existing && existing.id !== undefined) return;
 
   const embedding = await embedText(preparedText);
 
@@ -233,31 +235,47 @@ export async function findAllEdges(
 
 export async function askKnowledgeBase(
   userQuery: string,
+  existingSessionId?: string,
   limit = MAX_RAG_SOURCES
-): Promise<RagResponse> {
+): Promise<RagResponse & { sessionId: string }> {
   const query = userQuery.trim();
   if (!query) {
     throw new Error("QUERY_EMPTY");
   }
+
+  // Get or create session
+  let sessionId = existingSessionId;
+  if (!sessionId) {
+    sessionId = await createExploreSession(query.slice(0, 100));
+  }
+
+  // Save user message
+  await addExploreMessage(sessionId, {
+    role: "user",
+    content: query,
+    timestamp: Date.now(),
+  });
 
   const preparedQuery = normalizeEmbeddingInput(query);
   if (!preparedQuery) {
     throw new Error("QUERY_EMPTY");
   }
 
-  const queryVector = toFloat32Array(await embedText(preparedQuery));
-  const vectors = await db.vectors.toArray();
+  // Get recent conversation history for context
+  const recentMessages = await getExploreMessages(sessionId);
+  const historyContext = buildHistoryContext(recentMessages.slice(-6));
 
+  const queryVector = toFloat32Array(await embedText(preparedQuery));
+  
+  const vectors = await db.vectors.toArray();
+  
   const scored: Array<{ id: number; similarity: number }> = [];
+  
   for (const vector of vectors) {
     const embedding = toFloat32Array(vector.embedding as Float32Array | number[]);
-    if (embedding.length !== queryVector.length || embedding.length === 0) {
-      continue;
-    }
+    if (embedding.length !== queryVector.length || embedding.length === 0) continue;
     const similarity = cosineSimilarity(queryVector, embedding);
-    if (similarity < 0.3) {
-      continue;
-    }
+    if (similarity < 0.15) continue;
     scored.push({ id: vector.conversation_id, similarity });
   }
 
@@ -267,6 +285,7 @@ export async function askKnowledgeBase(
   const conversations = top.length
     ? await db.conversations.bulkGet(top.map((item) => item.id))
     : [];
+  
   const sources: RelatedConversation[] = [];
   const contextBlocks: string[] = [];
 
@@ -291,35 +310,102 @@ export async function askKnowledgeBase(
   }
 
   const context = contextBlocks.join("\n\n---\n\n");
-  const systemPrompt = buildRagSystemPrompt(context);
+  const systemPrompt = buildContextualRagPrompt(context, historyContext);
+  
   const settings = await getLlmSettings();
   if (!settings) {
     throw new Error("LLM_CONFIG_MISSING");
   }
 
   const result = await callInference(settings, query, { systemPrompt });
+  
+  // Save AI response
+  await addExploreMessage(sessionId, {
+    role: "assistant",
+    content: result.content,
+    sources,
+    timestamp: Date.now(),
+  });
+
+  // Update session preview
+  await updateExploreSession(sessionId, {
+    preview: result.content.slice(0, 100),
+  });
+
   return {
     answer: result.content,
     sources,
+    sessionId,
   };
+}
+
+function buildHistoryContext(messages: Array<{ role: string; content: string }>): string {
+  if (messages.length === 0) return "";
+  
+  return `\n\nPrevious conversation context:\n${messages
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 200)}`)
+    .join("\n")}\n\nConsider the above context when answering the new question.`;
+}
+
+function buildContextualRagPrompt(retrievedContext: string, historyContext: string): string {
+  const basePrompt = `You are Vesti's knowledge base assistant. Answer based primarily on the retrieved conversations below.`;
+  
+  return `${basePrompt}${historyContext}
+
+Retrieved Conversations:
+${retrievedContext}
+
+Instructions:
+1. If this is a follow-up question, consider the previous conversation context.
+2. Answer based primarily on the retrieved conversations.
+3. If information is insufficient, say so clearly.
+4. Cite specific conversations when possible.
+5. Be concise but comprehensive.`;
 }
 
 export async function hybridSearch(query: string): Promise<RagResponse> {
   return askKnowledgeBase(query);
 }
 
+export async function getVectorStats(): Promise<{ 
+  totalVectors: number; 
+  totalConversations: number;
+  vectorizedConversations: number;
+  unvectorizedConversations: number;
+}> {
+  const totalVectors = await db.vectors.count();
+  const allConversations = await db.conversations.toArray();
+  const totalConversations = allConversations.length;
+  
+  const vectorizedIds = new Set<number>();
+  const vectors = await db.vectors.toArray();
+  vectors.forEach(v => vectorizedIds.add(v.conversation_id));
+  
+  return {
+    totalVectors,
+    totalConversations,
+    vectorizedConversations: vectorizedIds.size,
+    unvectorizedConversations: totalConversations - vectorizedIds.size,
+  };
+}
+
 export async function vectorizeAllConversations(): Promise<number> {
   const conversations = await db.conversations.toArray();
+  
   let created = 0;
+  let failed = 0;
+  
   for (const conversation of conversations) {
     if (!conversation?.id) continue;
     try {
       const { text } = await getConversationText(conversation.id);
       await ensureVectorForConversation(conversation.id, text);
       created += 1;
-    } catch {
-      // skip failures to keep task resilient
+    } catch (err) {
+      console.error("[Vectorize] Failed to vectorize conv", conversation.id, ":", (err as Error).message);
+      failed += 1;
     }
   }
+  
   return created;
 }

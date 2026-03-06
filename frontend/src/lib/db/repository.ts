@@ -819,3 +819,259 @@ export async function updateNote(
 export async function deleteNote(id: number): Promise<void> {
   await db.notes.delete(id);
 }
+
+// ===== Explore (RAG Chat) Operations =====
+
+import type { ExploreSessionRecord, ExploreMessageRecord } from "./schema";
+
+export interface ExploreSession {
+  id: string;
+  title: string;
+  preview: string;
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ExploreMessage {
+  id: string;
+  sessionId: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: Array<{ id: number; title: string; platform: string; similarity: number }>;
+  timestamp: number;
+}
+
+const MAX_SESSIONS = 50;
+const MAX_MESSAGES_PER_SESSION = 100;
+const MAX_TOTAL_MESSAGES = 1000;
+
+function generateId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Session CRUD
+
+export async function createExploreSession(title: string): Promise<string> {
+  await enforceStorageWriteGuard();
+  
+  const now = Date.now();
+  const session: ExploreSessionRecord = {
+    id: generateId("sess"),
+    title: title.slice(0, 100), // Limit title length
+    preview: "",
+    messageCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  
+  await db.explore_sessions.add(session);
+  
+  // Cleanup old sessions if needed
+  await cleanupExploreSessionsIfNeeded();
+  
+  return session.id;
+}
+
+export async function getExploreSession(id: string): Promise<ExploreSession | null> {
+  const record = await db.explore_sessions.get(id);
+  if (!record) return null;
+  return record as ExploreSession;
+}
+
+export async function listExploreSessions(limit = 50): Promise<ExploreSession[]> {
+  const records = await db.explore_sessions
+    .orderBy("updatedAt")
+    .reverse()
+    .limit(limit)
+    .toArray();
+  return records as ExploreSession[];
+}
+
+export async function updateExploreSession(
+  id: string,
+  changes: Partial<Pick<ExploreSessionRecord, "title" | "preview" | "messageCount">>
+): Promise<void> {
+  await db.explore_sessions.update(id, {
+    ...changes,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function deleteExploreSession(id: string): Promise<void> {
+  // Delete all messages first
+  await db.explore_messages.where("sessionId").equals(id).delete();
+  // Delete session
+  await db.explore_sessions.delete(id);
+}
+
+// Message CRUD
+
+export async function addExploreMessage(
+  sessionId: string,
+  message: Omit<ExploreMessage, "id" | "sessionId">
+): Promise<ExploreMessage> {
+  await enforceStorageWriteGuard();
+  
+  const record: ExploreMessageRecord = {
+    id: generateId("msg"),
+    sessionId,
+    role: message.role,
+    content: message.content,
+    sources: message.sources ? JSON.stringify(message.sources) : undefined,
+    timestamp: message.timestamp,
+  };
+  
+  await db.explore_messages.add(record);
+  
+  // Update session message count
+  const session = await db.explore_sessions.get(sessionId);
+  if (session) {
+    const newCount = session.messageCount + 1;
+    const preview = message.role === "assistant" 
+      ? message.content.slice(0, 100)
+      : session.preview;
+    
+    await db.explore_sessions.update(sessionId, {
+      messageCount: newCount,
+      preview,
+      updatedAt: Date.now(),
+    });
+    
+    // Cleanup old messages if needed
+    if (newCount > MAX_MESSAGES_PER_SESSION) {
+      await cleanupSessionMessages(sessionId);
+    }
+  }
+  
+  await cleanupExploreMessagesIfNeeded();
+  
+  return {
+    id: record.id,
+    sessionId,
+    role: message.role,
+    content: message.content,
+    sources: message.sources,
+    timestamp: message.timestamp,
+  };
+}
+
+export async function getExploreMessages(sessionId: string): Promise<ExploreMessage[]> {
+  const records = await db.explore_messages
+    .where("sessionId")
+    .equals(sessionId)
+    .sortBy("timestamp");
+  
+  return records.map((record) => ({
+    id: record.id,
+    sessionId: record.sessionId,
+    role: record.role,
+    content: record.content,
+    sources: record.sources ? JSON.parse(record.sources) : undefined,
+    timestamp: record.timestamp,
+  }));
+}
+
+export async function getRecentExploreMessages(
+  sessionId: string,
+  limit = 6
+): Promise<ExploreMessage[]> {
+  const records = await db.explore_messages
+    .where("sessionId")
+    .equals(sessionId)
+    .reverse()
+    .limit(limit)
+    .sortBy("timestamp");
+  
+  // Return in chronological order
+  return records
+    .reverse()
+    .map((record) => ({
+      id: record.id,
+      sessionId: record.sessionId,
+      role: record.role,
+      content: record.content,
+      sources: record.sources ? JSON.parse(record.sources) : undefined,
+      timestamp: record.timestamp,
+    }));
+}
+
+// Cleanup functions
+
+async function cleanupExploreSessionsIfNeeded(): Promise<void> {
+  const count = await db.explore_sessions.count();
+  if (count <= MAX_SESSIONS) return;
+  
+  const toDelete = await db.explore_sessions
+    .orderBy("updatedAt")
+    .limit(count - MAX_SESSIONS)
+    .toArray();
+  
+  for (const session of toDelete) {
+    await deleteExploreSession(session.id);
+  }
+}
+
+async function cleanupSessionMessages(sessionId: string): Promise<void> {
+  const messages = await db.explore_messages
+    .where("sessionId")
+    .equals(sessionId)
+    .sortBy("timestamp");
+  
+  if (messages.length <= MAX_MESSAGES_PER_SESSION) return;
+  
+  const toDelete = messages.slice(0, messages.length - MAX_MESSAGES_PER_SESSION);
+  for (const msg of toDelete) {
+    await db.explore_messages.delete(msg.id);
+  }
+  
+  // Update count
+  await db.explore_sessions.update(sessionId, {
+    messageCount: MAX_MESSAGES_PER_SESSION,
+  });
+}
+
+async function cleanupExploreMessagesIfNeeded(): Promise<void> {
+  const count = await db.explore_messages.count();
+  if (count <= MAX_TOTAL_MESSAGES) return;
+  
+  // Get oldest messages across all sessions
+  const toDelete = await db.explore_messages
+    .orderBy("timestamp")
+    .limit(count - MAX_TOTAL_MESSAGES)
+    .toArray();
+  
+  const sessionCounts = new Map<string, number>();
+  
+  for (const msg of toDelete) {
+    await db.explore_messages.delete(msg.id);
+    sessionCounts.set(msg.sessionId, (sessionCounts.get(msg.sessionId) || 0) + 1);
+  }
+  
+  // Update session counts
+  for (const [sessionId, deletedCount] of sessionCounts) {
+    const session = await db.explore_sessions.get(sessionId);
+    if (session) {
+      await db.explore_sessions.update(sessionId, {
+        messageCount: Math.max(0, session.messageCount - deletedCount),
+      });
+    }
+  }
+}
+
+// For export functionality
+export async function getAllExploreSessions(): Promise<ExploreSession[]> {
+  return db.explore_sessions.toArray() as Promise<ExploreSession[]>;
+}
+
+export async function getAllExploreMessages(): Promise<ExploreMessage[]> {
+  const records = await db.explore_messages.toArray();
+  return records.map((record) => ({
+    id: record.id,
+    sessionId: record.sessionId,
+    role: record.role,
+    content: record.content,
+    sources: record.sources ? JSON.parse(record.sources) : undefined,
+    timestamp: record.timestamp,
+  }));
+}

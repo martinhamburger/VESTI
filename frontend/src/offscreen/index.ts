@@ -27,6 +27,12 @@ import {
   clearInsightsCache,
   getSummary,
   getWeeklyReport,
+  createExploreSession,
+  listExploreSessions,
+  getExploreSession,
+  getExploreMessages,
+  deleteExploreSession,
+  updateExploreSession,
 } from "../lib/db/repository";
 import { runGardener } from "../lib/services/gardenerService";
 import {
@@ -132,9 +138,36 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
       case "ASK_KNOWLEDGE_BASE": {
         const data = await askKnowledgeBase(
           message.payload.query,
+          message.payload.sessionId,
           message.payload.limit
         );
         return { ok: true, type: messageType, data };
+      }
+      case "CREATE_EXPLORE_SESSION": {
+        const sessionId = await createExploreSession(message.payload.title);
+        return { ok: true, type: messageType, data: { sessionId } };
+      }
+      case "LIST_EXPLORE_SESSIONS": {
+        const sessions = await listExploreSessions(message.payload?.limit);
+        return { ok: true, type: messageType, data: sessions };
+      }
+      case "GET_EXPLORE_SESSION": {
+        const session = await getExploreSession(message.payload.sessionId);
+        return { ok: true, type: messageType, data: session };
+      }
+      case "GET_EXPLORE_MESSAGES": {
+        const msgs = await getExploreMessages(message.payload.sessionId);
+        return { ok: true, type: messageType, data: msgs };
+      }
+      case "DELETE_EXPLORE_SESSION": {
+        await deleteExploreSession(message.payload.sessionId);
+        return { ok: true, type: messageType, data: { deleted: true } };
+      }
+      case "RENAME_EXPLORE_SESSION": {
+        await updateExploreSession(message.payload.sessionId, {
+          title: message.payload.title,
+        });
+        return { ok: true, type: messageType, data: { updated: true } };
       }
       case "GET_MESSAGES": {
         const data = await listMessages(message.payload.conversationId);

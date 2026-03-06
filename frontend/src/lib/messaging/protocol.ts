@@ -19,6 +19,7 @@ import type {
   RagResponse,
   Note,
 } from "../types";
+import type { ExploreSession, ExploreMessage } from "../db/repository";
 import type { AstRoot, AstVersion } from "../types/ast";
 
 export interface DateRange {
@@ -197,7 +198,43 @@ export type RequestMessage =
       target?: "offscreen";
       via?: "background";
       requestId?: string;
-      payload: { query: string; limit?: number };
+      payload: { query: string; limit?: number; sessionId?: string };
+    }
+  | {
+      type: "CREATE_EXPLORE_SESSION";
+      target?: "offscreen";
+      requestId?: string;
+      payload: { title: string };
+    }
+  | {
+      type: "LIST_EXPLORE_SESSIONS";
+      target?: "offscreen";
+      requestId?: string;
+      payload?: { limit?: number };
+    }
+  | {
+      type: "GET_EXPLORE_SESSION";
+      target?: "offscreen";
+      requestId?: string;
+      payload: { sessionId: string };
+    }
+  | {
+      type: "GET_EXPLORE_MESSAGES";
+      target?: "offscreen";
+      requestId?: string;
+      payload: { sessionId: string };
+    }
+  | {
+      type: "DELETE_EXPLORE_SESSION";
+      target?: "offscreen";
+      requestId?: string;
+      payload: { sessionId: string };
+    }
+  | {
+      type: "RENAME_EXPLORE_SESSION";
+      target?: "offscreen";
+      requestId?: string;
+      payload: { sessionId: string; title: string };
     }
   | {
       type: "GET_MESSAGES";
@@ -372,7 +409,13 @@ export type ResponseDataMap = {
   RENAME_FOLDER_TAG: { updated: number };
   MOVE_FOLDER_TAG: { updated: number };
   REMOVE_FOLDER_TAG: { updated: number };
-  ASK_KNOWLEDGE_BASE: RagResponse;
+  ASK_KNOWLEDGE_BASE: RagResponse & { sessionId: string };
+  CREATE_EXPLORE_SESSION: { sessionId: string };
+  LIST_EXPLORE_SESSIONS: ExploreSession[];
+  GET_EXPLORE_SESSION: ExploreSession | null;
+  GET_EXPLORE_MESSAGES: ExploreMessage[];
+  DELETE_EXPLORE_SESSION: { deleted: boolean };
+  RENAME_EXPLORE_SESSION: { updated: boolean };
   GET_MESSAGES: Message[];
   GET_NOTES: Note[];
   CREATE_NOTE: { note: Note };

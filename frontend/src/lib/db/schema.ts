@@ -36,6 +36,25 @@ export interface NoteRecord {
   linked_conversation_ids: number[];
 }
 
+// Explore (RAG Chat) Records
+export interface ExploreSessionRecord {
+  id: string; // UUID format: "sess_xxx"
+  title: string;
+  preview: string; // Last message preview for list display
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ExploreMessageRecord {
+  id: string; // UUID format: "msg_xxx"
+  sessionId: string; // Foreign key to explore_sessions
+  role: "user" | "assistant";
+  content: string;
+  sources?: string; // JSON serialized RelatedConversation[]
+  timestamp: number;
+}
+
 export class MemoryHubDB extends Dexie {
   conversations!: Table<ConversationRecord, number>;
   messages!: Table<MessageRecord, number>;
@@ -43,7 +62,9 @@ export class MemoryHubDB extends Dexie {
   weekly_reports!: Table<WeeklyReportRecordRecord, number>;
   topics!: Table<TopicRecord, number>;
   vectors!: Table<VectorRecord, number>;
-  notes!: Dexie.Table<NoteRecord, number>;
+  notes!: Table<NoteRecord, number>;
+  explore_sessions!: Table<ExploreSessionRecord, string>;
+  explore_messages!: Table<ExploreMessageRecord, string>;
 
   constructor() {
     super("MemoryHubDB");
@@ -204,6 +225,22 @@ export class MemoryHubDB extends Dexie {
           "++id, parent_id, name, created_at, updated_at, [parent_id+name]",
         vectors: "++id, conversation_id, text_hash",
         notes: "++id, created_at, updated_at",
+      })
+      .upgrade(() => undefined);
+    this.version(9)
+      .stores({
+        conversations:
+          "++id, platform, title, created_at, updated_at, uuid, source_created_at, turn_count, topic_id, is_starred, [platform+created_at], [platform+uuid], [topic_id+updated_at]",
+        messages:
+          "++id, conversation_id, role, created_at, [conversation_id+created_at]",
+        summaries: "++id, conversationId, createdAt",
+        weekly_reports: "++id, rangeStart, rangeEnd, createdAt",
+        topics:
+          "++id, parent_id, name, created_at, updated_at, [parent_id+name]",
+        vectors: "++id, conversation_id, text_hash",
+        notes: "++id, created_at, updated_at",
+        explore_sessions: "id, updatedAt, createdAt",
+        explore_messages: "id, sessionId, timestamp, [sessionId+timestamp]",
       })
       .upgrade(() => undefined);
   }

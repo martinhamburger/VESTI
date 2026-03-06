@@ -84,6 +84,24 @@ export type ConversationFilters = {
   dateRange?: { start: number; end: number };
 };
 
+export interface ExploreSession {
+  id: string;
+  title: string;
+  preview: string;
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ExploreMessage {
+  id: string;
+  sessionId: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: RelatedConversation[];
+  timestamp: number;
+}
+
 export type StorageApi = {
   getTopics: () => Promise<Topic[]>;
   getConversations: (filters?: ConversationFilters) => Promise<Conversation[]>;
@@ -113,7 +131,14 @@ export type StorageApi = {
     to: string
   ) => Promise<{ updated: number }>;
   removeFolderTag?: (tag: string) => Promise<{ updated: number }>;
-  askKnowledgeBase?: (query: string, limit?: number) => Promise<RagResponse>;
+  askKnowledgeBase?: (query: string, sessionId?: string, limit?: number) => Promise<RagResponse & { sessionId: string }>;
+  // Explore Session APIs
+  createExploreSession?: (title: string) => Promise<string>;
+  listExploreSessions?: (limit?: number) => Promise<ExploreSession[]>;
+  getExploreSession?: (sessionId: string) => Promise<ExploreSession | null>;
+  getExploreMessages?: (sessionId: string) => Promise<ExploreMessage[]>;
+  deleteExploreSession?: (sessionId: string) => Promise<void>;
+  renameExploreSession?: (sessionId: string, title: string) => Promise<void>;
   getSummary?: (conversationId: number) => Promise<ChatSummaryData | null>;
   generateSummary?: (conversationId: number) => Promise<ChatSummaryData>;
   getNotes?: () => Promise<Note[]>;
