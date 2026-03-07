@@ -273,7 +273,11 @@ export function VestiDashboard({
             />
           )}
           {activeTab === "explore" && (
-            <ExploreTab storage={storage} onOpenConversation={handleOpenConversation} />
+            <ExploreTab
+              storage={storage}
+              themeMode={themeMode}
+              onOpenConversation={handleOpenConversation}
+            />
           )}
           {activeTab === "network" && (
             <NetworkTab

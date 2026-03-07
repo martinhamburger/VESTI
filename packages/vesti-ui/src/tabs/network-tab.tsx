@@ -303,7 +303,9 @@ export function NetworkTab({
               className={`px-3 py-1 rounded-full text-[11px] font-sans font-medium transition-all ${
                 selectedPlatform === platform
                   ? platform === "all"
-                    ? "bg-accent-primary text-white"
+                    ? themeMode === "dark"
+                      ? "bg-bg-secondary text-text-primary"
+                      : "bg-accent-primary text-white"
                     : "text-white"
                   : "bg-bg-surface-card text-text-secondary hover:bg-bg-surface-card-hover"
               }`}

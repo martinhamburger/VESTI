@@ -21,6 +21,7 @@ import type {
   ExploreMessage,
   RelatedConversation,
   StorageApi,
+  UiThemeMode,
 } from "../types";
 
 const SEARCH_STAGES = [
@@ -37,6 +38,7 @@ const sampleQuestions = [
 
 type ExploreTabProps = {
   storage: StorageApi;
+  themeMode?: UiThemeMode;
   onOpenConversation?: (conversationId: number) => void;
 };
 
@@ -86,7 +88,11 @@ function groupSessionsByTime(sessions: ExploreSession[]): {
   );
 }
 
-export function ExploreTab({ storage, onOpenConversation }: ExploreTabProps) {
+export function ExploreTab({
+  storage,
+  themeMode = "light",
+  onOpenConversation,
+}: ExploreTabProps) {
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sessions, setSessions] = useState<ExploreSession[]>([]);
@@ -497,7 +503,11 @@ export function ExploreTab({ storage, onOpenConversation }: ExploreTabProps) {
           <div className="p-3 border-b border-border-subtle">
             <button
               onClick={handleNewChat}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-accent-primary text-white hover:bg-accent-primary/90 transition-colors"
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                themeMode === "dark"
+                  ? "bg-bg-secondary text-text-primary hover:bg-bg-surface-card-hover"
+                  : "bg-accent-primary text-white hover:bg-accent-primary/90"
+              }`}
             >
               <MessageSquarePlus className="w-4 h-4" strokeWidth={1.5} />
               <span className="text-sm font-sans font-medium">New Chat</span>
