@@ -1,4 +1,3 @@
-﻿
 import { isRequestMessage } from "../lib/messaging/protocol";
 import type { RequestMessage, ResponseMessage } from "../lib/messaging/protocol";
 import { interceptAndPersistCapture } from "../lib/capture/storage-interceptor";
@@ -143,32 +142,41 @@ const SUPPORTED_CAPTURE_HOSTS = new Set([
   "chat.deepseek.com",
   "www.doubao.com",
   "chat.qwen.ai",
+  "kimi.moonshot.cn",
+  "yuanbao.tencent.com",
 ]);
 
 function resolvePlatformFromUrl(url: string): Platform | undefined {
   try {
     const host = new URL(url).hostname.toLowerCase();
-    if (host.includes("chatgpt.com") || host.includes("chat.openai.com")) {
+    if (host === "chatgpt.com" || host === "chat.openai.com") {
       return "ChatGPT";
     }
-    if (host.includes("claude.ai")) {
+    if (host === "claude.ai") {
       return "Claude";
     }
-    if (host.includes("gemini.google.com")) {
+    if (host === "gemini.google.com") {
       return "Gemini";
     }
-    if (host.includes("chat.deepseek.com")) {
+    if (host === "chat.deepseek.com") {
       return "DeepSeek";
     }
-    if (host.includes("www.doubao.com")) {
+    if (host === "www.doubao.com") {
       return "Doubao";
     }
-    if (host.includes("chat.qwen.ai")) {
+    if (host === "chat.qwen.ai") {
       return "Qwen";
+    }
+    if (host === "kimi.moonshot.cn") {
+      return "Kimi";
+    }
+    if (host === "yuanbao.tencent.com") {
+      return "YUANBAO";
     }
   } catch {
     return undefined;
   }
+
   return undefined;
 }
 
@@ -176,9 +184,7 @@ function isSupportedCaptureTabUrl(url?: string): boolean {
   if (!url) return false;
   try {
     const host = new URL(url).hostname.toLowerCase();
-    return Array.from(SUPPORTED_CAPTURE_HOSTS).some((supportedHost) =>
-      host.includes(supportedHost)
-    );
+    return SUPPORTED_CAPTURE_HOSTS.has(host);
   } catch {
     return false;
   }

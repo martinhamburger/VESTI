@@ -37,4 +37,14 @@ export const PLATFORM_TONE: Record<Platform, PlatformToneClassSet> = {
     text: "text-doubao-text",
     border: "border-doubao-border",
   },
+  Kimi: {
+    bg: "bg-kimi-bg",
+    text: "text-kimi-text",
+    border: "border-kimi-border",
+  },
+  YUANBAO: {
+    bg: "bg-yuanbao-bg",
+    text: "text-yuanbao-text",
+    border: "border-yuanbao-border",
+  },
 };

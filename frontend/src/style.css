@@ -159,6 +159,14 @@
     --doubao-text: 212 66% 44%;
     --doubao-border: 211 69% 81%;
 
+    --yuanbao-bg: 173 62% 93%;
+    --yuanbao-text: 173 58% 26%;
+    --yuanbao-border: 173 35% 75%;
+
+    --kimi-bg: 222 20% 93%;
+    --kimi-text: 222 15% 28%;
+    --kimi-border: 222 12% 74%;
+
     --capsule-bg: 0 0% 10% / 0.88;
     --reader-user-text: 38 5% 40%;
     --reader-model-text: var(--text-primary);
@@ -265,6 +273,14 @@
     --doubao-bg: 211 46% 20%;
     --doubao-text: 211 90% 76%;
     --doubao-border: 211 37% 35%;
+
+    --yuanbao-bg: 173 30% 16%;
+    --yuanbao-text: 173 52% 62%;
+    --yuanbao-border: 173 28% 31%;
+
+    --kimi-bg: 222 20% 16%;
+    --kimi-text: 222 18% 68%;
+    --kimi-border: 222 14% 32%;
 
     --capsule-bg: 0 0% 12% / 0.94;
     --reader-user-text: 36 5% 58%;
@@ -1397,6 +1413,14 @@
     --ins-thread-ai-accent: var(--doubao-text);
   }
 
+  .ins-thread-theme-kimi {
+    --ins-thread-ai-accent: var(--kimi-text);
+  }
+
+  .ins-thread-theme-yuanbao {
+    --ins-thread-ai-accent: var(--yuanbao-text);
+  }
+
   .ins-thread-core-card {
     border-radius: 10px;
     border: 1px solid hsl(var(--accent-primary-muted));
@@ -1883,6 +1907,18 @@
     border: 1px solid hsl(var(--doubao-border));
     background-color: hsl(var(--doubao-bg));
     color: hsl(var(--doubao-text));
+  }
+
+  .ins-platform-badge-kimi {
+    border: 1px solid hsl(var(--kimi-border));
+    background-color: hsl(var(--kimi-bg));
+    color: hsl(var(--kimi-text));
+  }
+
+  .ins-platform-badge-yuanbao {
+    border: 1px solid hsl(var(--yuanbao-border));
+    background-color: hsl(var(--yuanbao-bg));
+    color: hsl(var(--yuanbao-text));
   }
 
   .ins-week-thread-title {

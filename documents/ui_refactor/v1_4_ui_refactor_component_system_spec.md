@@ -1,6 +1,6 @@
-﻿# Vesti v1.4 UI Refactor Component System Spec
+# Vesti v1.4 UI Refactor Component System Spec
 
-Version: v1.1  
+Version: v1.2  
 Status: Decision Complete  
 Scope: Component architecture, visual tokens, and interaction contracts
 
@@ -51,9 +51,18 @@ Rules:
    - section title
    - body text
    - metadata text
-4. Platform tag colors must keep six-platform mapping unchanged.
-5. Sans UI font must load from local bundle (`Vesti Sans UI`) with unicode split (Lexend for Latin, Source Han Sans SC for CJK), not external CDN.
-6. Brand logo/wordmark is not repeated in top-level page headers; Dock center action remains the single logo owner.
+4. Platform tag colors use the locked 8-platform mapping:
+   - ChatGPT `#10A37F`
+   - Claude `#CC785C`
+   - Gemini `#AD89EB`
+   - DeepSeek `#0D28F3`
+   - Qwen `#615CED`
+   - Doubao `#1E6FFF`
+   - Kimi `#181C28`
+   - YUANBAO `#00C5A3`
+5. Naming contract is fixed to `YUANBAO` (uppercase) for type/display/theme mapping.
+6. Sans UI font must load from local bundle (`Vesti Sans UI`) with unicode split (Lexend for Latin, Source Han Sans SC for CJK), not external CDN.
+7. Brand logo/wordmark is not repeated in top-level page headers; Dock center action remains the single logo owner.
 
 ---
 
@@ -149,3 +158,11 @@ Do not regress:
 2. Before/after screenshot set by region and Reader child flow.
 3. Component diff notes explaining hierarchy or behavior changes.
 4. QA evidence package from manual sampling checklist.
+
+---
+
+## 10. rc.6 Addendum (Kimi + YUANBAO)
+
+1. This cycle only expands platform mapping for capture/capsule/insights badges.
+2. Threads layout structure must remain unchanged (no header/spacing/density/radius redesign).
+3. Light/dark token additions are additive only; existing 6-platform tones must not shift.

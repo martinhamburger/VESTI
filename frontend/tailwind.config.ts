@@ -1,4 +1,4 @@
-﻿import type { Config } from "tailwindcss";
+import type { Config } from "tailwindcss";
 
 const config: Config = {
   darkMode: ["class"],
@@ -56,6 +56,12 @@ const config: Config = {
         "doubao-bg": "hsl(var(--doubao-bg))",
         "doubao-text": "hsl(var(--doubao-text))",
         "doubao-border": "hsl(var(--doubao-border))",
+        "kimi-bg": "hsl(var(--kimi-bg))",
+        "kimi-text": "hsl(var(--kimi-text))",
+        "kimi-border": "hsl(var(--kimi-border))",
+        "yuanbao-bg": "hsl(var(--yuanbao-bg))",
+        "yuanbao-text": "hsl(var(--yuanbao-text))",
+        "yuanbao-border": "hsl(var(--yuanbao-border))",
         "capsule-bg": "hsl(var(--capsule-bg))",
         card: {
           DEFAULT: "hsl(var(--card))",

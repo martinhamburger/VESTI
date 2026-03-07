@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // --- types/index.ts ---
 // All interface definitions for Vesti (kept in sync with frontend)
 // ============================================================
@@ -11,7 +11,9 @@ export type Platform =
   | "Gemini"
   | "DeepSeek"
   | "Qwen"
-  | "Doubao";
+  | "Doubao"
+  | "Kimi"
+  | "YUANBAO";
 
 export interface Topic {
   id: number;

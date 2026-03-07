@@ -73,14 +73,13 @@ const SELECTORS = {
     /^retry$/i,
     /^edit$/i,
     /^copy$/i,
-    /^deepseek can make mistakes\.?/i,
+    /^kimi can make mistakes\.?/i,
   ],
   sourceTimes: ["time[datetime]", "article time[datetime]"],
 };
 
 const TITLE_PLATFORM_SUFFIX_PATTERN =
   /\s*[-\u2013\u2014]\s*(ChatGPT|Claude|Gemini|DeepSeek|Qwen|Doubao|Kimi|YUANBAO)\s*$/i;
-
 const SESSION_ID_QUERY_KEYS = [
   "conversation",
   "conversation_id",
@@ -145,11 +144,11 @@ interface ParsedNodeResult {
   astNodeCount: number;
 }
 
-export class DeepSeekParser implements IParser {
+export class KimiParser implements IParser {
   detect(): Platform | null {
     const host = window.location.hostname;
-    if (host.includes("chat.deepseek.com")) {
-      return "DeepSeek";
+    if (host.includes("kimi.moonshot.cn")) {
+      return "Kimi";
     }
     return null;
   }
@@ -167,13 +166,13 @@ export class DeepSeekParser implements IParser {
 
   getMessages(): ParsedMessage[] {
     const startedAt = performance.now();
-    const perfMode = astPerfModeController.getMode("DeepSeek");
+    const perfMode = astPerfModeController.getMode("Kimi");
     const selectorResult = this.extractUsingSelectorStrategy(perfMode);
     const anchorResult = this.extractUsingAnchorStrategy(perfMode);
     const chosen = this.chooseBestExtraction(selectorResult, anchorResult);
     const deduped = this.dedupeNearDuplicates(chosen.messages);
     const parseDurationMs = Math.round(performance.now() - startedAt);
-    const modeUpdate = astPerfModeController.record("DeepSeek", parseDurationMs);
+    const modeUpdate = astPerfModeController.record("Kimi", parseDurationMs);
 
     const stats: ParserStats = {
       source: chosen.source,
@@ -188,12 +187,12 @@ export class DeepSeekParser implements IParser {
       degraded_nodes_count: chosen.degradedNodesCount,
       ast_node_count: chosen.astNodeCount,
       message_count: deduped.length,
-      platform: "DeepSeek",
+      platform: "Kimi",
     };
 
     if (modeUpdate.switched) {
-      logger.warn("parser", "DeepSeek AST perf mode switched", {
-        platform: "DeepSeek",
+      logger.warn("parser", "Kimi AST perf mode switched", {
+        platform: "Kimi",
         from: modeUpdate.previousMode,
         to: modeUpdate.mode,
         parse_duration_ms: parseDurationMs,
@@ -363,7 +362,7 @@ export class DeepSeekParser implements IParser {
     const contentEl = queryFirstWithin(node, SELECTORS.messageContent);
     const textContent = this.cleanExtractedText(safeTextContent(contentEl ?? node));
     const ast = extractAstFromElement(contentEl ?? node, {
-      platform: "DeepSeek",
+      platform: "Kimi",
       perfMode,
     });
 
@@ -382,7 +381,7 @@ export class DeepSeekParser implements IParser {
   }
 
   private inferRole(node: Element): MessageRole | null {
-    const deepSeekClassRole = this.roleFromDeepSeekClass(node.className?.toString() ?? "");
+    const deepSeekClassRole = this.roleFromKimiClass(node.className?.toString() ?? "");
     if (deepSeekClassRole) return deepSeekClassRole;
 
     const attrRole =
@@ -399,7 +398,7 @@ export class DeepSeekParser implements IParser {
 
     const ancestor = node.parentElement?.closest("[data-role], [data-author], [data-testid], [class]");
     if (ancestor) {
-      const deepSeekAncestorRole = this.roleFromDeepSeekClass(
+      const deepSeekAncestorRole = this.roleFromKimiClass(
         ancestor.className?.toString() ?? ""
       );
       if (deepSeekAncestorRole) return deepSeekAncestorRole;
@@ -416,7 +415,7 @@ export class DeepSeekParser implements IParser {
     return null;
   }
 
-  private roleFromDeepSeekClass(value: string): MessageRole | null {
+  private roleFromKimiClass(value: string): MessageRole | null {
     if (!value) return null;
     const normalized = value.toLowerCase();
     if (!normalized.includes("ds-message")) {
@@ -444,7 +443,7 @@ export class DeepSeekParser implements IParser {
       normalized === "assistant" ||
       normalized === "model" ||
       normalized === "ai" ||
-      normalized === "deepseek"
+      normalized === "kimi"
     ) {
       return "ai";
     }
@@ -465,7 +464,7 @@ export class DeepSeekParser implements IParser {
     if (
       normalized.includes("assistant") ||
       normalized.includes("model") ||
-      normalized.includes("deepseek") ||
+      normalized.includes("kimi") ||
       normalized.includes("response")
     ) {
       return "ai";
@@ -541,10 +540,10 @@ export class DeepSeekParser implements IParser {
   }
 
   private logStats(stats: ParserStats, messages: ParsedMessage[]): void {
-    logger.info("parser", "DeepSeek parse stats", stats);
+    logger.info("parser", "Kimi parse stats", stats);
 
     if (messages.length === 0) {
-      logger.warn("parser", "DeepSeek parser kept zero messages", {
+      logger.warn("parser", "Kimi parser kept zero messages", {
         source: stats.source,
         totalCandidates: stats.totalCandidates,
         droppedNoise: stats.droppedNoise,
@@ -555,7 +554,7 @@ export class DeepSeekParser implements IParser {
 
     const hasSingleRole = stats.roleDistribution.user === 0 || stats.roleDistribution.ai === 0;
     if (hasSingleRole) {
-      logger.warn("parser", "DeepSeek parser captured only one role", {
+      logger.warn("parser", "Kimi parser captured only one role", {
         source: stats.source,
         roleDistribution: stats.roleDistribution,
         samples: messages

@@ -20,4 +20,6 @@ export const PLATFORM_OPTIONS: ReadonlyArray<Platform> = [
   "DeepSeek",
   "Qwen",
   "Doubao",
+  "Kimi",
+  "YUANBAO",
 ];
