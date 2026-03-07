@@ -30,6 +30,11 @@ if (!parser.detect()) {
   const observer = new ConversationObserver(parser, pipeline);
   observer.start();
 
+  // Ensure manual mode has an initial transient snapshot even without fresh mutations.
+  window.setTimeout(() => {
+    void pipeline.capture();
+  }, 1200);
+
   chrome.runtime.onMessage.addListener(
     (
       message: unknown,

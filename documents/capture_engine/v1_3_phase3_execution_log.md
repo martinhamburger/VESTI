@@ -32,17 +32,24 @@ Status: In progress (rc.6)
 5. UI + capsule mapping
    - Added light/dark tokens and platform mappings for Kimi/YUANBAO.
    - Explicitly preserved Threads layout structure (mapping-only change).
-
+6. Kimi DOM realignment + warm start snapshot
+   - Replaced generic `ds-message` assumptions with semantic Kimi anchors (`.user-content`, `.segment-container`).
+   - Switched AI capture to Final-Only markdown stitching inside each turn and excluded `.toolcall-container` descendants.
+   - Added one delayed startup capture in Kimi content script to prevent persistent `no_transient` on already-rendered threads.
+7. Kimi header-pollution hotfix
+   - Restricted selector and anchor candidate sets to `.user-content` + `.segment-container` only.
+   - Added hard reject for `.chat-header` scope and explicit sanitization blacklist (`.chat-header`, `.chat-header-content`, `.chat-header-actions`).
+   - Removed cross-container AI fallback so captured text can only come from in-turn `.markdown` leaves (Final-Only).
 ---
 
 ## 3. Validation Status
 
 - Static checks:
-  - `pnpm -C frontend exec tsc --noEmit` -> pending
+  - `pnpm -C frontend exec tsc --noEmit` -> pass (2026-03-07)
 - Build:
-  - `pnpm -C frontend build` -> pending
+  - `pnpm -C frontend build` -> pass (2026-03-07)
 - Prompt evaluation:
-  - `pnpm -C frontend eval:prompts --mode=mock --strict` -> pending
+  - `pnpm -C frontend eval:prompts --mode=mock --strict` -> pass (2026-03-07)
 - Manual sampling checklist:
   - `documents/capture_engine/v1_3_phase3_manual_sampling_checklist.md`
 

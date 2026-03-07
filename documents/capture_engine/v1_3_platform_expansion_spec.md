@@ -91,6 +91,13 @@ Each parse cycle logs:
 - No fallback synthetic IDs.
 - Missing stable ID remains blocked by governance with `missing_conversation_id`.
 
+### 4.4 Kimi DOM adaptation guardrails
+- Never depend on `data-v-*` scoped attributes.
+- Parser containment is strict: candidate roots are limited to `.user-content` (user) and `.segment-container` (AI turn).
+- Hard-reject any node that resolves inside `.chat-header` semantic scope.
+- Final-only extraction for AI responses: collect `.markdown` leaves inside a turn, exclude `.toolcall-container` descendants, and never fallback across turn/container boundaries.
+- Sanitization blacklist includes `.chat-header`, `.chat-header-content`, `.chat-header-actions` to prevent title pollution from future DOM nesting changes.
+- Kimi content script may trigger one delayed startup capture to avoid `no_transient` on already-rendered pages.
 ---
 
 ## 5. File and Module Mapping (Phase 3)
