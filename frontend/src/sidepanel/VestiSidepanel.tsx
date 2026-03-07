@@ -56,8 +56,23 @@ export function VestiSidepanel() {
   };
 
   const handleNavigateToLibrary = () => {
-    const url = chrome.runtime.getURL("options.html?tab=library");
-    chrome.tabs.create({ url });
+    const libraryUrl = chrome.runtime.getURL("options.html?tab=library");
+    const optionsUrlPattern = `${chrome.runtime.getURL("options.html")}*`;
+
+    chrome.tabs.query({ url: optionsUrlPattern }, (tabs) => {
+      const existingTab = tabs[0];
+
+      if (existingTab?.id !== undefined) {
+        chrome.tabs.update(existingTab.id, { active: true, url: libraryUrl }, () => {
+          if (typeof existingTab.windowId === "number") {
+            chrome.windows.update(existingTab.windowId, { focused: true });
+          }
+        });
+        return;
+      }
+
+      chrome.tabs.create({ url: libraryUrl });
+    });
   };
 
   const handleNavigateToData = () => {
