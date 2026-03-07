@@ -2,10 +2,15 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { X, ArrowRight, ChevronDown } from "lucide-react";
-import type { Platform, StorageApi } from "../types";
+import type { Platform, StorageApi, UiThemeMode } from "../types";
 import { useLibraryData } from "../contexts/library-data";
 import * as echarts from "echarts";
-import { PLATFORM_COLORS, PLATFORM_TEXT_COLORS } from "../constants/platform";
+import {
+  getPlatformBadgeStyle,
+  PLATFORM_FILTER_OPTIONS,
+  getPlatformHex,
+  getPlatformLabel,
+} from "../constants/platform";
 
 interface Node {
   id: number;
@@ -44,6 +49,10 @@ const mockNodes: Node[] = [
   { id: 12, x: 0, y: 0, r: 16, color: "#3A62D9", label: "向量数据库选型", platform: "Gemini", created_at: NOW - 5 * DAY },
 ];
 
+mockNodes.forEach((node) => {
+  node.color = getPlatformHex(node.platform);
+});
+
 const mockEdges: Edge[] = [
   { source: 1, target: 2, weight: 0.82 },
   { source: 1, target: 3, weight: 0.75 },
@@ -64,10 +73,15 @@ const mockEdges: Edge[] = [
 
 interface NetworkTabProps {
   storage: StorageApi;
+  themeMode?: UiThemeMode;
   onSelectConversation?: (id: number) => void;
 }
 
-export function NetworkTab({ storage, onSelectConversation }: NetworkTabProps) {
+export function NetworkTab({
+  storage,
+  themeMode = "light",
+  onSelectConversation,
+}: NetworkTabProps) {
   const { conversations, topics } = useLibraryData();
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | "all">("all");
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -76,15 +90,7 @@ export function NetworkTab({ storage, onSelectConversation }: NetworkTabProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
-  const platforms: (Platform | "all")[] = [
-    "all",
-    "ChatGPT",
-    "Claude",
-    "Gemini",
-    "DeepSeek",
-    "Qwen",
-    "Doubao",
-  ];
+  const platforms: (Platform | "all")[] = ["all", ...PLATFORM_FILTER_OPTIONS];
 
   useEffect(() => {
     if (!storage.getAllEdges) return;
@@ -121,7 +127,7 @@ export function NetworkTab({ storage, onSelectConversation }: NetworkTabProps) {
       x: 0,
       y: 0,
       r: conv.is_starred ? 24 : 16,
-      color: PLATFORM_COLORS[conv.platform],
+      color: getPlatformHex(conv.platform),
       label: conv.title || "Untitled",
       platform: conv.platform,
       topicName: conv.topic_id ? topicMap.get(conv.topic_id) : undefined,
@@ -303,11 +309,11 @@ export function NetworkTab({ storage, onSelectConversation }: NetworkTabProps) {
               }`}
               style={
                 selectedPlatform === platform && platform !== "all"
-                  ? { backgroundColor: PLATFORM_COLORS[platform] }
+                  ? getPlatformBadgeStyle(platform, themeMode)
                   : {}
               }
             >
-              {platform === "all" ? "All" : platform}
+              {platform === "all" ? "All" : getPlatformLabel(platform)}
             </button>
           ))}
         </div>
@@ -362,12 +368,9 @@ export function NetworkTab({ storage, onSelectConversation }: NetworkTabProps) {
               <div className="flex items-center gap-2 mb-4 flex-wrap">
                 <span
                   className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none"
-                  style={{
-                    backgroundColor: PLATFORM_COLORS[selectedNode.platform],
-                    color: PLATFORM_TEXT_COLORS[selectedNode.platform],
-                  }}
+                  style={getPlatformBadgeStyle(selectedNode.platform, themeMode)}
                 >
-                  {selectedNode.platform}
+                  {getPlatformLabel(selectedNode.platform)}
                 </span>
                 <span className="text-xs font-sans text-text-tertiary">2yr ago</span>
                 {selectedNode.topicName && (

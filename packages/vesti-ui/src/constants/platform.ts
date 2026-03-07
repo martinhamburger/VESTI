@@ -1,21 +1,62 @@
-import type { Platform } from "../types";
+import type { Platform, UiThemeMode } from "../types";
 
-// Shared source of truth for web/dashboard/options platform badges.
-// Sidepanel does not consume this constant set.
-export const PLATFORM_COLORS: Record<Platform, string> = {
-  ChatGPT: "#10A37F",
-  Claude: "#CC785C",
-  Gemini: "#AD89EB",
-  DeepSeek: "#0D28F3",
-  Qwen: "#615CED",
-  Doubao: "#1E6FFF",
-  Kimi: "#181C28",
-  YUANBAO: "#00C5A3",
-};
+interface PlatformMetadata {
+  label: string;
+  hex: string;
+  isNew?: boolean;
+}
 
+const FALLBACK_PLATFORM: Platform = "ChatGPT";
 const DARK_TEXT = "#1A1A1A";
 const LIGHT_TEXT = "#FFFFFF";
 const WCAG_DARK_REFERENCE = "#000000";
+
+const KIMI_BADGE_TOKENS: Record<UiThemeMode, { backgroundColor: string; color: string }> = {
+  light: {
+    backgroundColor: "hsl(220 20% 93%)",
+    color: "#111111",
+  },
+  dark: {
+    backgroundColor: "hsl(220 20% 16%)",
+    color: "#FFFFFF",
+  },
+};
+
+export const PLATFORM_FILTER_OPTIONS: readonly Platform[] = [
+  "ChatGPT",
+  "Claude",
+  "Gemini",
+  "DeepSeek",
+  "Qwen",
+  "Doubao",
+  "Yuanbao",
+  "Kimi",
+];
+
+export const PLATFORM_METADATA: Record<Platform, PlatformMetadata> = {
+  ChatGPT: { label: "ChatGPT", hex: "#10A37F" },
+  Claude: { label: "Claude", hex: "#CC785C" },
+  Gemini: { label: "Gemini", hex: "#AD89EB" },
+  DeepSeek: { label: "DeepSeek", hex: "#0D28F3" },
+  Qwen: { label: "Qwen", hex: "#C026D3" },
+  Doubao: { label: "Doubao", hex: "#1E6FFF" },
+  Yuanbao: { label: "Yuanbao", hex: "#00C5A3", isNew: true },
+  Kimi: { label: "Kimi", hex: "#181C28", isNew: true },
+};
+
+function normalizePlatform(platform: Platform | string): Platform {
+  if (platform === "YUANBAO") {
+    return "Yuanbao";
+  }
+  if (platform in PLATFORM_METADATA) {
+    return platform as Platform;
+  }
+  return FALLBACK_PLATFORM;
+}
+
+function normalizeThemeMode(themeMode?: UiThemeMode): UiThemeMode {
+  return themeMode === "dark" ? "dark" : "light";
+}
 
 function hexToRgb(hex: string): [number, number, number] {
   const normalized = hex.replace("#", "");
@@ -54,12 +95,39 @@ function getAccessibleTextColor(backgroundHex: string): string {
   return darkContrast >= lightContrast ? DARK_TEXT : LIGHT_TEXT;
 }
 
-function buildPlatformTextColors(): Record<Platform, string> {
-  const result = {} as Record<Platform, string>;
-  for (const platform of Object.keys(PLATFORM_COLORS) as Platform[]) {
-    result[platform] = getAccessibleTextColor(PLATFORM_COLORS[platform]);
-  }
-  return result;
+export function getPlatformLabel(platform: Platform | string): string {
+  return PLATFORM_METADATA[normalizePlatform(platform)].label;
 }
 
-export const PLATFORM_TEXT_COLORS: Record<Platform, string> = buildPlatformTextColors();
+export function getPlatformHex(platform: Platform | string): string {
+  return PLATFORM_METADATA[normalizePlatform(platform)].hex;
+}
+
+export function getPlatformTextColor(
+  platform: Platform | string,
+  themeMode: UiThemeMode = "light"
+): string {
+  const normalizedPlatform = normalizePlatform(platform);
+  if (normalizedPlatform === "Kimi") {
+    return KIMI_BADGE_TOKENS[normalizeThemeMode(themeMode)].color;
+  }
+  return getAccessibleTextColor(getPlatformHex(normalizedPlatform));
+}
+
+export function getPlatformBadgeStyle(
+  platform: Platform | string,
+  themeMode: UiThemeMode = "light"
+): {
+  backgroundColor: string;
+  color: string;
+} {
+  const normalizedPlatform = normalizePlatform(platform);
+  if (normalizedPlatform === "Kimi") {
+    return KIMI_BADGE_TOKENS[normalizeThemeMode(themeMode)];
+  }
+
+  return {
+    backgroundColor: getPlatformHex(normalizedPlatform),
+    color: getPlatformTextColor(normalizedPlatform, themeMode),
+  };
+}

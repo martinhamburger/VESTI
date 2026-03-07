@@ -10,6 +10,7 @@ export type {
   ArtifactMetaData,
   ChatSummaryData,
   Platform,
+  UiThemeMode,
   Topic,
   Conversation,
   GardenerStep,

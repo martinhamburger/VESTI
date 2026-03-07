@@ -6,7 +6,9 @@ export type Platform =
   | "Qwen"
   | "Doubao"
   | "Kimi"
-  | "YUANBAO";
+  | "Yuanbao";
+
+export type UiThemeMode = "light" | "dark";
 
 export interface Topic {
   id: number;

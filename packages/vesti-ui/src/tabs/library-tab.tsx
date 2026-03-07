@@ -26,9 +26,10 @@ import type {
   Message,
   ChatSummaryData,
   Note,
+  UiThemeMode,
 } from "../types";
 import { useLibraryData } from "../contexts/library-data";
-import { PLATFORM_COLORS, PLATFORM_TEXT_COLORS } from "../constants/platform";
+import { getPlatformBadgeStyle, getPlatformLabel } from "../constants/platform";
 import { StructuredSummaryCard } from "../components/StructuredSummaryCard";
 import { SummaryPipelineProgress } from "../components/SummaryPipelineProgress";
 import type { PipelineStageState } from "../components/SummaryPipelineProgress";
@@ -39,12 +40,14 @@ type FolderMeta = { customFolders: string[] };
 
 type LibraryTabProps = {
   storage: StorageApi;
+  themeMode?: UiThemeMode;
   openConversationId?: number | null;
   onConversationOpened?: () => void;
 };
 
 export function LibraryTab({
   storage,
+  themeMode = "light",
   openConversationId,
   onConversationOpened,
 }: LibraryTabProps) {
@@ -1096,12 +1099,9 @@ export function LibraryTab({
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span
                             className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none"
-                            style={{
-                              backgroundColor: PLATFORM_COLORS[conv.platform],
-                              color: PLATFORM_TEXT_COLORS[conv.platform],
-                            }}
+                            style={getPlatformBadgeStyle(conv.platform, themeMode)}
                           >
-                            {conv.platform}
+                            {getPlatformLabel(conv.platform)}
                           </span>
                           {normalizeTags(conv.tags).slice(0, 2).map((tag) => (
                             <span
@@ -1276,12 +1276,9 @@ export function LibraryTab({
               <div className="flex items-center gap-2 text-[13px] font-sans text-text-secondary mb-4">
                 <span
                   className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none"
-                  style={{
-                    backgroundColor: PLATFORM_COLORS[selectedConversation.platform],
-                    color: PLATFORM_TEXT_COLORS[selectedConversation.platform],
-                  }}
+                  style={getPlatformBadgeStyle(selectedConversation.platform, themeMode)}
                 >
-                  {selectedConversation.platform}
+                  {getPlatformLabel(selectedConversation.platform)}
                 </span>
                 <span>·</span>
                 <span>{formatDate(messageDate)}</span>
@@ -1711,12 +1708,9 @@ export function LibraryTab({
                         ) : (
                           <span
                             className="inline-block px-2 py-0.5 rounded-md text-[11px] font-sans font-medium leading-none uppercase tracking-wide mb-2"
-                            style={{
-                              backgroundColor: PLATFORM_COLORS[selectedConversation.platform],
-                              color: PLATFORM_TEXT_COLORS[selectedConversation.platform],
-                            }}
+                            style={getPlatformBadgeStyle(selectedConversation.platform, themeMode)}
                           >
-                            {selectedConversation.platform}
+                            {getPlatformLabel(selectedConversation.platform)}
                           </span>
                         )}
                         <div

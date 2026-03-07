@@ -2,6 +2,8 @@ import type { UiSettings, UiThemeMode } from "~lib/types";
 
 const UI_SETTINGS_KEY = "vesti_ui_settings";
 
+type UiSettingsListener = (settings: UiSettings) => void;
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   themeMode: "light",
 };
@@ -74,9 +76,29 @@ export async function setUiThemeMode(themeMode: UiThemeMode): Promise<UiSettings
   return next;
 }
 
+export function subscribeUiSettings(listener: UiSettingsListener): () => void {
+  if (typeof chrome === "undefined" || !chrome.storage?.onChanged) {
+    return () => {};
+  }
+
+  const handleStorageChanged: Parameters<typeof chrome.storage.onChanged.addListener>[0] = (
+    changes,
+    areaName
+  ) => {
+    if (areaName !== "local") return;
+    const nextSettings = changes[UI_SETTINGS_KEY]?.newValue;
+    if (typeof nextSettings === "undefined") return;
+    listener(normalizeUiSettings(nextSettings));
+  };
+
+  chrome.storage.onChanged.addListener(handleStorageChanged);
+  return () => {
+    chrome.storage.onChanged.removeListener(handleStorageChanged);
+  };
+}
+
 export async function initializeUiTheme(): Promise<UiThemeMode> {
   const settings = await getUiSettings();
   applyUiTheme(settings.themeMode);
   return settings.themeMode;
 }
-
