@@ -176,6 +176,8 @@ function initPlatformDistribution(): Record<Platform, number> {
     DeepSeek: 0,
     Qwen: 0,
     Doubao: 0,
+    Kimi: 0,
+    YUANBAO: 0,
   };
 }
 

@@ -15,48 +15,25 @@ import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
 import { logger } from "../../../utils/logger";
 
 const SELECTORS = {
-  roleAnchors: [
-    ".ds-message",
-    "[class*='ds-message']",
-    "[data-message-author-role='user']",
-    "[data-message-author-role='assistant']",
-    "[data-role='user']",
-    "[data-role='assistant']",
-    "[data-author='user']",
-    "[data-author='assistant']",
-    "[data-testid*='user']",
-    "[data-testid*='assistant']",
-    "[class*='user-message']",
-    "[class*='assistant-message']",
-    "[class*='message-user']",
-    "[class*='message-assistant']",
-  ],
-  turnBlocks: [
-    "[data-message-id]",
-    "[data-testid*='message']",
-    "[data-testid*='chat-message']",
-    ".ds-message",
-    "[class*='ds-message']",
-    "article",
-    "[role='listitem']",
-  ],
+  explicitUserAnchors: [".user-content"],
+  explicitAiAnchors: [".segment-container"],
+  roleAnchors: [".user-content", ".segment-container"],
+  turnBlocks: [".segment-container", ".user-content"],
   messageContent: [
-    ".ds-message",
-    "[class*='ds-message']",
-    "[data-testid*='message-content']",
-    "[data-testid*='response-content']",
-    "[class*='message']",
-    "article",
+    ".user-content",
+    ".segment-container",
+    ".segment-content-box",
+    ".segment-content",
+    ".markdown-container",
     ".markdown",
-    ".prose",
-    "div[class*='markdown']",
-    "div[class*='content']",
   ],
-  title: ["main h1", "header h1", "title"],
+  headerNoiseContainers: [".chat-header", ".chat-header-content", ".chat-header-actions"],
+  title: [".chat-title", ".conversation-title", "main h1", "header h1", "title"],
   generating: [
     "[data-is-streaming='true']",
     "[data-testid*='stream']",
     "[data-testid*='typing']",
+    "[class*='loading']",
     "[class*='stream']",
     "[class*='typing']",
   ],
@@ -67,20 +44,45 @@ const SELECTORS = {
     "[role='navigation']",
     "[data-testid*='composer']",
     "[contenteditable='true']",
+    ".segment-assistant-actions",
+    ".upgrade-membership",
+    ".okc-cards-container",
+    ".chat-header",
+    ".chat-header-content",
+    ".chat-header-actions",
   ],
   noiseTextPatterns: [
     /^new chat$/i,
     /^retry$/i,
     /^edit$/i,
     /^copy$/i,
-    /^deepseek can make mistakes\.?/i,
+    /^kimi can make mistakes\.?/i,
+    /^go premium$/i,
+    /^\u53bb\u5347\u7ea7$/i,
   ],
   sourceTimes: ["time[datetime]", "article time[datetime]"],
+  markdownLeaves: [".markdown"],
+  uiNoiseSelectors: [
+    ".toolcall-container",
+    ".container-block",
+    ".segment-assistant-actions",
+    ".rag-tag",
+    ".toolcall-title-container",
+    ".table-actions",
+    ".icon-button",
+    ".simple-button",
+    ".upgrade-membership",
+    ".okc-cards-container",
+    ".chat-header",
+    ".chat-header-content",
+    ".chat-header-actions",
+    "button",
+    "svg",
+  ],
 };
 
 const TITLE_PLATFORM_SUFFIX_PATTERN =
   /\s*[-\u2013\u2014]\s*(ChatGPT|Claude|Gemini|DeepSeek|Qwen|Doubao|Kimi|YUANBAO)\s*$/i;
-
 const SESSION_ID_QUERY_KEYS = [
   "conversation",
   "conversation_id",
@@ -109,6 +111,12 @@ const INVALID_SESSION_IDS = new Set([
   "search",
   "library",
 ]);
+
+const NOISE_LINE_PATTERNS = [
+  /^(copy|edit|retry|like|dislike|share)$/i,
+  /^(references?|\u5f15\u7528)$/i,
+  /^\u53bb\u5347\u7ea7$/i,
+];
 
 type MessageRole = "user" | "ai";
 type ExtractionSource = "selector" | "anchor";
@@ -145,11 +153,11 @@ interface ParsedNodeResult {
   astNodeCount: number;
 }
 
-export class DeepSeekParser implements IParser {
+export class KimiParser implements IParser {
   detect(): Platform | null {
     const host = window.location.hostname;
-    if (host.includes("chat.deepseek.com")) {
-      return "DeepSeek";
+    if (host === "www.kimi.com" || host === "kimi.com" || host === "kimi.moonshot.cn") {
+      return "Kimi";
     }
     return null;
   }
@@ -167,13 +175,13 @@ export class DeepSeekParser implements IParser {
 
   getMessages(): ParsedMessage[] {
     const startedAt = performance.now();
-    const perfMode = astPerfModeController.getMode("DeepSeek");
+    const perfMode = astPerfModeController.getMode("Kimi");
     const selectorResult = this.extractUsingSelectorStrategy(perfMode);
     const anchorResult = this.extractUsingAnchorStrategy(perfMode);
     const chosen = this.chooseBestExtraction(selectorResult, anchorResult);
     const deduped = this.dedupeNearDuplicates(chosen.messages);
     const parseDurationMs = Math.round(performance.now() - startedAt);
-    const modeUpdate = astPerfModeController.record("DeepSeek", parseDurationMs);
+    const modeUpdate = astPerfModeController.record("Kimi", parseDurationMs);
 
     const stats: ParserStats = {
       source: chosen.source,
@@ -188,12 +196,12 @@ export class DeepSeekParser implements IParser {
       degraded_nodes_count: chosen.degradedNodesCount,
       ast_node_count: chosen.astNodeCount,
       message_count: deduped.length,
-      platform: "DeepSeek",
+      platform: "Kimi",
     };
 
     if (modeUpdate.switched) {
-      logger.warn("parser", "DeepSeek AST perf mode switched", {
-        platform: "DeepSeek",
+      logger.warn("parser", "Kimi AST perf mode switched", {
+        platform: "Kimi",
         from: modeUpdate.previousMode,
         to: modeUpdate.mode,
         parse_duration_ms: parseDurationMs,
@@ -241,7 +249,8 @@ export class DeepSeekParser implements IParser {
 
   private extractUsingSelectorStrategy(perfMode: AstPerfMode): ExtractionResult {
     const rawCandidates = this.collectMessageCandidates();
-    const normalized = normalizeCandidateNodes(rawCandidates, {
+    const scopedCandidates = rawCandidates.filter((candidate) => !this.isHeaderNoiseNode(candidate));
+    const normalized = normalizeCandidateNodes(scopedCandidates, {
       minTextLength: 2,
       noiseContainerSelectors: SELECTORS.noiseContainers,
       noiseTextPatterns: SELECTORS.noiseTextPatterns,
@@ -249,11 +258,15 @@ export class DeepSeekParser implements IParser {
 
     const messages: ParsedMessage[] = [];
     let droppedUnknownRole = 0;
-    let droppedNoise = normalized.droppedNoise;
+    let droppedNoise = normalized.droppedNoise + (rawCandidates.length - scopedCandidates.length);
     let degradedNodesCount = 0;
     let astNodeCount = 0;
 
     for (const node of normalized.nodes) {
+      if (this.isHeaderNoiseNode(node)) {
+        droppedNoise += 1;
+        continue;
+      }
       const parsed = this.parseMessageNode(node, perfMode);
       if (!parsed) {
         droppedUnknownRole += 1;
@@ -281,7 +294,9 @@ export class DeepSeekParser implements IParser {
   }
 
   private extractUsingAnchorStrategy(perfMode: AstPerfMode): ExtractionResult {
-    const anchors = queryAllUnique(SELECTORS.roleAnchors);
+    const anchors = queryAllUnique(SELECTORS.turnBlocks).filter(
+      (anchor) => !this.isHeaderNoiseNode(anchor),
+    );
     if (anchors.length === 0) {
       return {
         source: "anchor",
@@ -297,14 +312,23 @@ export class DeepSeekParser implements IParser {
     const resolved = uniqueNodesInDocumentOrder(
       anchors.map((anchor) => this.resolveAnchorNode(anchor)).filter(Boolean) as Element[],
     );
+    const normalized = normalizeCandidateNodes(resolved, {
+      minTextLength: 2,
+      noiseContainerSelectors: SELECTORS.noiseContainers,
+      noiseTextPatterns: SELECTORS.noiseTextPatterns,
+    });
 
     const messages: ParsedMessage[] = [];
-    let droppedNoise = 0;
+    let droppedNoise = normalized.droppedNoise;
     let droppedUnknownRole = 0;
     let degradedNodesCount = 0;
     let astNodeCount = 0;
 
-    for (const node of resolved) {
+    for (const node of normalized.nodes) {
+      if (this.isHeaderNoiseNode(node)) {
+        droppedNoise += 1;
+        continue;
+      }
       const parsed = this.parseMessageNode(node, perfMode);
       if (!parsed) {
         droppedUnknownRole += 1;
@@ -331,39 +355,48 @@ export class DeepSeekParser implements IParser {
   }
 
   private resolveAnchorNode(anchor: Element): Element | null {
-    let current: Element | null = anchor;
-    while (current) {
-      if (SELECTORS.turnBlocks.some((selector) => current?.matches(selector))) {
-        return current;
-      }
-      current = current.parentElement;
+    if (this.isHeaderNoiseNode(anchor)) return null;
+    if (anchor.matches(".segment-container, .user-content")) {
+      return anchor;
     }
-    return anchor;
+
+    const scopedAncestor = anchor.closest(".segment-container, .user-content");
+    if (scopedAncestor && !this.isHeaderNoiseNode(scopedAncestor)) {
+      return scopedAncestor;
+    }
+
+    return null;
   }
 
   private collectMessageCandidates(): Element[] {
-    const combinedCandidates: Element[] = [...queryAllUnique(SELECTORS.roleAnchors)];
+    const combinedCandidates: Element[] = [
+      ...queryAllUnique(SELECTORS.explicitUserAnchors),
+      ...queryAllUnique(SELECTORS.explicitAiAnchors),
+      ...queryAllUnique(SELECTORS.roleAnchors),
+      ...queryAllUnique(SELECTORS.turnBlocks),
+    ];
 
-    for (const turnNode of queryAllUnique(SELECTORS.turnBlocks)) {
-      const splitNodes = queryAllWithinUnique(turnNode, SELECTORS.roleAnchors);
-      if (splitNodes.length > 0) {
-        combinedCandidates.push(...splitNodes);
-        continue;
-      }
-      combinedCandidates.push(turnNode);
-    }
-
-    return uniqueNodesInDocumentOrder(combinedCandidates);
+    return uniqueNodesInDocumentOrder(combinedCandidates).filter(
+      (candidate) => !this.isHeaderNoiseNode(candidate),
+    );
   }
 
   private parseMessageNode(node: Element, perfMode: AstPerfMode): ParsedNodeResult | null {
+    if (this.isHeaderNoiseNode(node)) return null;
+
     const role = this.inferRole(node);
     if (!role) return null;
 
-    const contentEl = queryFirstWithin(node, SELECTORS.messageContent);
-    const textContent = this.cleanExtractedText(safeTextContent(contentEl ?? node));
-    const ast = extractAstFromElement(contentEl ?? node, {
-      platform: "DeepSeek",
+    const contentEl = this.resolveContentElement(node, role);
+    if (!contentEl) return null;
+
+    const sanitized = this.sanitizeContentElement(contentEl);
+    const textContent = this.cleanExtractedText(this.extractVisibleText(sanitized));
+    if (!textContent) return null;
+    if (this.shouldDropHeaderScopedTitle(node, textContent)) return null;
+
+    const ast = extractAstFromElement(sanitized, {
+      platform: "Kimi",
       perfMode,
     });
 
@@ -374,16 +407,112 @@ export class DeepSeekParser implements IParser {
         contentAst: ast.root,
         contentAstVersion: ast.root ? "ast_v1" : null,
         degradedNodesCount: ast.degradedNodesCount,
-        htmlContent: contentEl ? contentEl.innerHTML : undefined,
+        htmlContent: sanitized.innerHTML,
       },
       degradedNodesCount: ast.degradedNodesCount,
       astNodeCount: ast.astNodeCount,
     };
   }
 
+  private resolveContentElement(node: Element, role: MessageRole): Element | null {
+    if (this.isHeaderNoiseNode(node)) return null;
+
+    if (role === "user") {
+      if (node.matches(".user-content")) return node;
+      const userNode = queryFirstWithin(node, [".user-content"]);
+      if (!userNode || this.isHeaderNoiseNode(userNode)) return null;
+      return userNode;
+    }
+
+    const segment = node.matches(".segment-container")
+      ? node
+      : (node.closest(".segment-container") ?? queryFirstWithin(node, [".segment-container"]));
+    if (!segment || this.isHeaderNoiseNode(segment)) return null;
+
+    const markdownLeaves = queryAllWithinUnique(segment, SELECTORS.markdownLeaves).filter(
+      (leaf) => !leaf.closest(".toolcall-container") && !this.isHeaderNoiseNode(leaf),
+    );
+
+    if (markdownLeaves.length === 0) {
+      return null;
+    }
+
+    if (markdownLeaves.length === 1) {
+      return markdownLeaves[0];
+    }
+
+    const merged = document.createElement("div");
+    merged.setAttribute("data-vesti-kimi-final-only", "true");
+    for (const leaf of markdownLeaves) {
+      const fragment = document.createElement("div");
+      fragment.setAttribute("data-vesti-kimi-fragment", "true");
+      fragment.appendChild(leaf.cloneNode(true));
+      merged.appendChild(fragment);
+    }
+    return merged;
+  }
+
+  private sanitizeContentElement(source: Element): Element {
+    const clone = source.cloneNode(true) as Element;
+
+    for (const selector of SELECTORS.uiNoiseSelectors) {
+      clone.querySelectorAll(selector).forEach((node) => node.remove());
+    }
+
+    if (SELECTORS.headerNoiseContainers.some((selector) => clone.matches(selector))) {
+      clone.textContent = "";
+    }
+
+    this.pruneEmptyNodes(clone);
+    return clone;
+  }
+
+  private pruneEmptyNodes(root: Element): void {
+    const emptyTextNodes: Node[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const current = walker.currentNode;
+      if (!(current.textContent ?? "").trim()) {
+        emptyTextNodes.push(current);
+      }
+    }
+
+    for (const node of emptyTextNodes) {
+      node.parentNode?.removeChild(node);
+    }
+
+    const descendants = Array.from(root.querySelectorAll("*")).reverse();
+    for (const descendant of descendants) {
+      if (descendant.tagName.toLowerCase() === "br") continue;
+      const text = safeTextContent(descendant).replace(/\s+/g, " ").trim();
+      if (descendant.childElementCount === 0 && text.length === 0) {
+        descendant.remove();
+      }
+    }
+  }
+
+  private extractVisibleText(element: Element): string {
+    if (element instanceof HTMLElement) {
+      const innerText = (element.innerText || "").trim();
+      if (innerText) {
+        return innerText;
+      }
+    }
+    return safeTextContent(element);
+  }
+
   private inferRole(node: Element): MessageRole | null {
-    const deepSeekClassRole = this.roleFromDeepSeekClass(node.className?.toString() ?? "");
-    if (deepSeekClassRole) return deepSeekClassRole;
+    if (this.isHeaderNoiseNode(node)) return null;
+
+    if (node.matches(".user-content")) return "user";
+    if (node.matches(".segment-container")) return "ai";
+
+    const scopedAncestor = node.closest(".user-content, .segment-container");
+    if (scopedAncestor?.matches(".user-content")) return "user";
+    if (scopedAncestor?.matches(".segment-container")) return "ai";
+
+    const kimiClassRole = this.roleFromKimiClass(node.className?.toString() ?? "");
+    if (kimiClassRole) return kimiClassRole;
 
     const attrRole =
       this.roleFromAttribute(node.getAttribute("data-message-author-role")) ??
@@ -399,10 +528,8 @@ export class DeepSeekParser implements IParser {
 
     const ancestor = node.parentElement?.closest("[data-role], [data-author], [data-testid], [class]");
     if (ancestor) {
-      const deepSeekAncestorRole = this.roleFromDeepSeekClass(
-        ancestor.className?.toString() ?? ""
-      );
-      if (deepSeekAncestorRole) return deepSeekAncestorRole;
+      const kimiAncestorRole = this.roleFromKimiClass(ancestor.className?.toString() ?? "");
+      if (kimiAncestorRole) return kimiAncestorRole;
 
       const ancestorRole =
         this.roleFromAttribute(ancestor.getAttribute("data-message-author-role")) ??
@@ -416,24 +543,17 @@ export class DeepSeekParser implements IParser {
     return null;
   }
 
-  private roleFromDeepSeekClass(value: string): MessageRole | null {
+  private roleFromKimiClass(value: string): MessageRole | null {
     if (!value) return null;
     const normalized = value.toLowerCase();
-    if (!normalized.includes("ds-message")) {
-      return null;
-    }
 
-    if (
-      normalized.includes("d29f3d7d") ||
-      normalized.includes("user") ||
-      normalized.includes("human") ||
-      normalized.includes("query") ||
-      normalized.includes("prompt")
-    ) {
+    if (normalized.includes("user-content")) {
       return "user";
     }
-
-    return "ai";
+    if (normalized.includes("segment-container")) {
+      return "ai";
+    }
+    return null;
   }
 
   private roleFromAttribute(value: string | null): MessageRole | null {
@@ -444,7 +564,7 @@ export class DeepSeekParser implements IParser {
       normalized === "assistant" ||
       normalized === "model" ||
       normalized === "ai" ||
-      normalized === "deepseek"
+      normalized === "kimi"
     ) {
       return "ai";
     }
@@ -455,29 +575,54 @@ export class DeepSeekParser implements IParser {
     if (!value) return null;
     const normalized = value.toLowerCase();
     if (
-      normalized.includes("user") ||
-      normalized.includes("human") ||
-      normalized.includes("prompt") ||
-      normalized.includes("query")
+      normalized.includes("user-content") ||
+      normalized.includes("data-role=user") ||
+      normalized.includes("author=user")
     ) {
       return "user";
     }
     if (
+      normalized.includes("segment-container") ||
       normalized.includes("assistant") ||
-      normalized.includes("model") ||
-      normalized.includes("deepseek") ||
-      normalized.includes("response")
+      normalized.includes("data-role=assistant") ||
+      normalized.includes("author=assistant")
     ) {
       return "ai";
     }
     return null;
   }
 
+  private isHeaderNoiseNode(node: Element | null): boolean {
+    if (!node) return false;
+    return SELECTORS.headerNoiseContainers.some(
+      (selector) => node.matches(selector) || node.closest(selector),
+    );
+  }
+
+  private shouldDropHeaderScopedTitle(node: Element, textContent: string): boolean {
+    if (!this.isHeaderNoiseNode(node)) {
+      return false;
+    }
+
+    const normalizedText = textContent.replace(/\s+/g, " ").trim();
+    if (!normalizedText) return true;
+
+    const title = this.cleanTitle(this.getConversationTitle());
+    if (!title) return true;
+
+    return normalizedText === title.replace(/\s+/g, " ").trim();
+  }
+
   private cleanExtractedText(rawText: string): string {
-    return rawText
-      .replace(/\s+/g, " ")
-      .replace(/^(copy|edit|retry)\s+/i, "")
-      .trim();
+    const lines = rawText
+      .replace(/\r/g, "")
+      .replace(/\u00a0/g, " ")
+      .split("\n")
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter((line) => line.length > 0)
+      .filter((line) => !NOISE_LINE_PATTERNS.some((pattern) => pattern.test(line)));
+
+    return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
   private cleanTitle(rawTitle: string): string {
@@ -541,10 +686,10 @@ export class DeepSeekParser implements IParser {
   }
 
   private logStats(stats: ParserStats, messages: ParsedMessage[]): void {
-    logger.info("parser", "DeepSeek parse stats", stats);
+    logger.info("parser", "Kimi parse stats", stats);
 
     if (messages.length === 0) {
-      logger.warn("parser", "DeepSeek parser kept zero messages", {
+      logger.warn("parser", "Kimi parser kept zero messages", {
         source: stats.source,
         totalCandidates: stats.totalCandidates,
         droppedNoise: stats.droppedNoise,
@@ -555,7 +700,7 @@ export class DeepSeekParser implements IParser {
 
     const hasSingleRole = stats.roleDistribution.user === 0 || stats.roleDistribution.ai === 0;
     if (hasSingleRole) {
-      logger.warn("parser", "DeepSeek parser captured only one role", {
+      logger.warn("parser", "Kimi parser captured only one role", {
         source: stats.source,
         roleDistribution: stats.roleDistribution,
         samples: messages

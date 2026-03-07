@@ -217,7 +217,7 @@ function formatCaptureStatusReason(reason?: ActiveCaptureStatus["reason"]): stri
     case "mode_mirror":
       return "Mirror mode does not need manual archive.";
     case "unsupported_tab":
-      return "Open a ChatGPT, Claude, Gemini, DeepSeek, Doubao, or Qwen thread in the active tab.";
+      return "Open a ChatGPT, Claude, Gemini, DeepSeek, Doubao, Qwen, Kimi, or YUANBAO thread in the active tab.";
     case "no_transient":
       return "No active thread snapshot detected yet.";
     case "content_unreachable":
@@ -233,7 +233,7 @@ function mapArchiveErrorMessage(error: unknown): string {
     case "ARCHIVE_MODE_DISABLED":
       return "Manual archive is available only in Smart or Manual mode.";
     case "ACTIVE_TAB_UNSUPPORTED":
-      return "Active tab is unsupported. Open ChatGPT, Claude, Gemini, DeepSeek, Doubao, or Qwen.";
+      return "Active tab is unsupported. Open ChatGPT, Claude, Gemini, DeepSeek, Doubao, Qwen, Kimi, or YUANBAO.";
     case "ACTIVE_TAB_UNAVAILABLE":
       return "No active tab found.";
     case "TRANSIENT_NOT_FOUND":

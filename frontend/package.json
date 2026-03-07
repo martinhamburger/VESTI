@@ -1,7 +1,7 @@
 {
   "name": "vesti",
   "displayName": "Vesti",
-  "version": "1.2.0-rc.3",
+  "version": "1.2.0-rc.6",
   "description": "AI Chat Memory - Capture and review your conversations",
   "author": "Vesti",
   "scripts": {
@@ -45,7 +45,7 @@
   },
   "manifest": {
     "version": "1.2.0",
-    "version_name": "1.2.0-rc.3",
+    "version_name": "1.2.0-rc.6",
     "host_permissions": [
       "https://vesti-proxy.vercel.app/*",
       "https://dashscope.aliyuncs.com/*",
@@ -56,7 +56,11 @@
       "https://gemini.google.com/*",
       "https://chat.deepseek.com/*",
       "https://www.doubao.com/*",
-      "https://chat.qwen.ai/*"
+      "https://chat.qwen.ai/*",
+      "https://www.kimi.com/*",
+      "https://kimi.com/*",
+      "https://kimi.moonshot.cn/*",
+      "https://yuanbao.tencent.com/*"
     ],
     "permissions": [
       "storage",
@@ -81,10 +85,13 @@
           "https://gemini.google.com/*",
           "https://chat.deepseek.com/*",
           "https://chat.qwen.ai/*",
-          "https://www.doubao.com/*"
+          "https://www.doubao.com/*",
+          "https://www.kimi.com/*",
+          "https://kimi.com/*",
+          "https://kimi.moonshot.cn/*",
+          "https://yuanbao.tencent.com/*"
         ]
       }
     ]
   }
 }
-

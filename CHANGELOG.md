@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -27,6 +27,31 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ---
 
+## [1.2.0-rc.6] - 2026-03-07
+
+### Added
+- Added Kimi and YUANBAO capture entrypoints (`frontend/src/contents/kimi.ts`, `frontend/src/contents/yuanbao.ts`) with transient status + force-archive handlers.
+- Added Kimi and YUANBAO parser modules with selector+anchor extraction, strict session-ID gating, parse stats logging, and v1.2 governance compatibility.
+
+### Changed
+- Expanded capture host routing for Kimi to include `www.kimi.com` + `kimi.com` (with transitional `kimi.moonshot.cn` compatibility) and YUANBAO `yuanbao.tencent.com` for `GET_ACTIVE_CAPTURE_STATUS` and `FORCE_ARCHIVE_TRANSIENT`.
+- Expanded platform enum/theme mapping to 8 platforms (ChatGPT/Claude/Gemini/DeepSeek/Qwen/Doubao/Kimi/YUANBAO).
+- Added sidepanel + capsule light/dark token mapping for Kimi/YUANBAO while preserving existing Threads layout structure.
+- Updated extension manifest host permissions and web-accessible matches for Kimi/YUANBAO domains.
+
+### Fixed
+- _None yet_
+
+### Docs
+- Updated `documents/capture_engine/v1_3_platform_expansion_spec.md` for Phase 3 (Kimi + YUANBAO).
+- Added `documents/capture_engine/v1_3_phase3_manual_sampling_checklist.md`.
+- Added `documents/capture_engine/v1_3_phase3_execution_log.md`.
+- Updated `documents/ui_refactor/v1_4_ui_refactor_component_system_spec.md` with 8-platform token contract and YUANBAO naming rule.
+
+### Chore
+- _None yet_
+
+---
 ## [1.2.0-rc.3] - 2026-02-27
 
 ### Added
@@ -189,7 +214,8 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ---
 
-[Unreleased]: https://github.com/abraxas914/VESTI/compare/v1.2.0-rc.3...HEAD
+[Unreleased]: https://github.com/abraxas914/VESTI/compare/v1.2.0-rc.6...HEAD
+[1.2.0-rc.6]: https://github.com/abraxas914/VESTI/releases/tag/v1.2.0-rc.6
 [1.2.0-rc.3]: https://github.com/abraxas914/VESTI/releases/tag/v1.2.0-rc.3
 [1.2.0-rc.2]: https://github.com/abraxas914/VESTI/releases/tag/v1.2.0-rc.2
 [1.2.0-rc.1]: https://github.com/abraxas914/VESTI/releases/tag/v1.2.0-rc.1

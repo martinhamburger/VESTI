@@ -22,6 +22,10 @@ export const config: PlasmoCSConfig = {
     "https://chat.deepseek.com/*",
     "https://www.doubao.com/*",
     "https://chat.qwen.ai/*",
+    "https://www.kimi.com/*",
+    "https://kimi.com/*",
+    "https://kimi.moonshot.cn/*",
+    "https://yuanbao.tencent.com/*",
   ],
   run_at: "document_idle",
   all_frames: false,
@@ -97,6 +101,10 @@ const PRIMARY_ROLLOUT_HOSTS = new Set([
   "chat.deepseek.com",
   "chat.qwen.ai",
   "www.doubao.com",
+  "www.kimi.com",
+  "kimi.com",
+  "kimi.moonshot.cn",
+  "yuanbao.tencent.com",
 ]);
 
 interface PlatformTone {
@@ -113,6 +121,10 @@ const PLATFORM_BY_HOST: Record<string, Platform> = {
   "chat.deepseek.com": "DeepSeek",
   "chat.qwen.ai": "Qwen",
   "www.doubao.com": "Doubao",
+  "www.kimi.com": "Kimi",
+  "kimi.com": "Kimi",
+  "kimi.moonshot.cn": "Kimi",
+  "yuanbao.tencent.com": "YUANBAO",
 };
 
 const PLATFORM_TONE: Record<UiThemeMode, Record<Platform, PlatformTone>> = {
@@ -147,6 +159,16 @@ const PLATFORM_TONE: Record<UiThemeMode, Record<Platform, PlatformTone>> = {
       text: "hsl(212 66% 44%)",
       border: "hsl(211 69% 81%)",
     },
+    Kimi: {
+      bg: "hsl(222 20% 93%)",
+      text: "hsl(222 15% 28%)",
+      border: "hsl(222 12% 74%)",
+    },
+    YUANBAO: {
+      bg: "hsl(173 62% 93%)",
+      text: "hsl(173 58% 26%)",
+      border: "hsl(173 35% 75%)",
+    },
   },
   dark: {
     ChatGPT: {
@@ -178,6 +200,16 @@ const PLATFORM_TONE: Record<UiThemeMode, Record<Platform, PlatformTone>> = {
       bg: "hsl(211 46% 20%)",
       text: "hsl(211 90% 76%)",
       border: "hsl(211 37% 35%)",
+    },
+    Kimi: {
+      bg: "hsl(222 20% 16%)",
+      text: "hsl(222 18% 68%)",
+      border: "hsl(222 14% 32%)",
+    },
+    YUANBAO: {
+      bg: "hsl(173 30% 16%)",
+      text: "hsl(173 52% 62%)",
+      border: "hsl(173 28% 31%)",
     },
   },
 };

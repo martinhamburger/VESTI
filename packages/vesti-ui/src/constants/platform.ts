@@ -9,6 +9,8 @@ export const PLATFORM_COLORS: Record<Platform, string> = {
   DeepSeek: "#0D28F3",
   Qwen: "#615CED",
   Doubao: "#1E6FFF",
+  Kimi: "#181C28",
+  YUANBAO: "#00C5A3",
 };
 
 const DARK_TEXT = "#1A1A1A";
