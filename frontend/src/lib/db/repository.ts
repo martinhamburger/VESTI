@@ -103,11 +103,147 @@ function normalizeExploreAgentMeta(
     : undefined;
 
   const toolCalls = Array.isArray(meta.toolCalls)
-    ? meta.toolCalls.filter((toolCall) => toolCall && typeof toolCall === "object")
+    ? meta.toolCalls
+        .filter((toolCall) => toolCall && typeof toolCall === "object")
+        .map((toolCall) => ({
+          ...toolCall,
+          description:
+            typeof toolCall.description === "string" ? toolCall.description : undefined,
+        }))
     : [];
+
+  const searchScope =
+    meta.searchScope && typeof meta.searchScope === "object"
+      ? {
+          mode:
+            meta.searchScope.mode === "selected"
+              ? ("selected" as const)
+              : ("all" as const),
+          conversationIds: Array.isArray(meta.searchScope.conversationIds)
+            ? meta.searchScope.conversationIds.filter(
+                (id): id is number => typeof id === "number" && Number.isFinite(id)
+              )
+            : undefined,
+        }
+      : undefined;
+
+  const requestedTimeScope =
+    meta.plan?.requestedTimeScope && typeof meta.plan.requestedTimeScope === "object"
+      ? {
+          preset:
+            meta.plan.requestedTimeScope.preset === "current_week_to_date" ||
+            meta.plan.requestedTimeScope.preset === "last_7_days" ||
+            meta.plan.requestedTimeScope.preset === "last_full_week" ||
+            meta.plan.requestedTimeScope.preset === "custom"
+              ? meta.plan.requestedTimeScope.preset
+              : ("none" as const),
+          label:
+            typeof meta.plan.requestedTimeScope.label === "string"
+              ? meta.plan.requestedTimeScope.label
+              : undefined,
+          startDate:
+            typeof meta.plan.requestedTimeScope.startDate === "string"
+              ? meta.plan.requestedTimeScope.startDate
+              : undefined,
+          endDate:
+            typeof meta.plan.requestedTimeScope.endDate === "string"
+              ? meta.plan.requestedTimeScope.endDate
+              : undefined,
+        }
+      : undefined;
+
+  const resolvedTimeScope =
+    meta.plan?.resolvedTimeScope && typeof meta.plan.resolvedTimeScope === "object"
+      ? {
+          preset:
+            meta.plan.resolvedTimeScope.preset === "current_week_to_date" ||
+            meta.plan.resolvedTimeScope.preset === "last_7_days" ||
+            meta.plan.resolvedTimeScope.preset === "last_full_week" ||
+            meta.plan.resolvedTimeScope.preset === "custom"
+              ? meta.plan.resolvedTimeScope.preset
+              : ("last_7_days" as const),
+          label:
+            typeof meta.plan.resolvedTimeScope.label === "string"
+              ? meta.plan.resolvedTimeScope.label
+              : "Resolved range",
+          rangeStart:
+            typeof meta.plan.resolvedTimeScope.rangeStart === "number" &&
+            Number.isFinite(meta.plan.resolvedTimeScope.rangeStart)
+              ? meta.plan.resolvedTimeScope.rangeStart
+              : 0,
+          rangeEnd:
+            typeof meta.plan.resolvedTimeScope.rangeEnd === "number" &&
+            Number.isFinite(meta.plan.resolvedTimeScope.rangeEnd)
+              ? meta.plan.resolvedTimeScope.rangeEnd
+              : 0,
+          startDate:
+            typeof meta.plan.resolvedTimeScope.startDate === "string"
+              ? meta.plan.resolvedTimeScope.startDate
+              : "",
+          endDate:
+            typeof meta.plan.resolvedTimeScope.endDate === "string"
+              ? meta.plan.resolvedTimeScope.endDate
+              : "",
+        }
+      : undefined;
+
+  const plan =
+    meta.plan && typeof meta.plan === "object"
+      ? {
+          intent:
+            meta.plan.intent === "cross_conversation_summary" ||
+            meta.plan.intent === "weekly_review" ||
+            meta.plan.intent === "timeline" ||
+            meta.plan.intent === "clarification_needed"
+              ? meta.plan.intent
+              : ("fact_lookup" as const),
+          reason:
+            typeof meta.plan.reason === "string" ? meta.plan.reason : "UNSPECIFIED_REASON",
+          preferredPath:
+            meta.plan.preferredPath === "weekly_summary" ||
+            meta.plan.preferredPath === "clarify"
+              ? meta.plan.preferredPath
+              : ("rag" as const),
+          sourceLimit:
+            typeof meta.plan.sourceLimit === "number" && Number.isFinite(meta.plan.sourceLimit)
+              ? meta.plan.sourceLimit
+              : 5,
+          summaryTargetCount:
+            typeof meta.plan.summaryTargetCount === "number" &&
+            Number.isFinite(meta.plan.summaryTargetCount)
+              ? meta.plan.summaryTargetCount
+              : 0,
+          answerGoal:
+            typeof meta.plan.answerGoal === "string" ? meta.plan.answerGoal : undefined,
+          needsClarification:
+            typeof meta.plan.needsClarification === "boolean"
+              ? meta.plan.needsClarification
+              : undefined,
+          clarifyingQuestion:
+            typeof meta.plan.clarifyingQuestion === "string"
+              ? meta.plan.clarifyingQuestion
+              : undefined,
+          requestedTimeScope,
+          resolvedTimeScope:
+            resolvedTimeScope &&
+            resolvedTimeScope.rangeStart > 0 &&
+            resolvedTimeScope.rangeEnd >= resolvedTimeScope.rangeStart
+              ? resolvedTimeScope
+              : undefined,
+          toolPlan: Array.isArray(meta.plan.toolPlan)
+            ? meta.plan.toolPlan.filter(
+                (toolName): toolName is NonNullable<typeof meta.plan>["toolPlan"][number] =>
+                  typeof toolName === "string"
+              )
+            : undefined,
+        }
+      : undefined;
 
   return {
     ...meta,
+    query: typeof meta.query === "string" ? meta.query : undefined,
+    searchScope,
+    plan,
     toolCalls,
     contextCandidates: normalizedCandidates,
     selectedContextConversationIds,

@@ -141,7 +141,8 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
           message.payload.query,
           message.payload.sessionId,
           message.payload.limit,
-          message.payload.mode
+          message.payload.mode,
+          message.payload.options
         );
         return { ok: true, type: messageType, data };
       }

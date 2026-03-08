@@ -10,11 +10,14 @@ import {
   Clipboard,
   Download,
   FileText,
+  Filter,
   Loader2,
   MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  RotateCcw,
+  Search,
   Send,
   Square,
   Trash2,
@@ -22,18 +25,26 @@ import {
   X,
 } from "lucide-react";
 import type {
+  Conversation,
+  ExploreAgentPlan,
+  ExploreAskOptions,
+  ExploreContextCandidate,
   ExploreMessage,
   ExploreMode,
+  ExploreSearchScope,
+  ExploreSearchScopeMode,
   ExploreSession,
   ExploreToolCall,
+  ExploreToolName,
   StorageApi,
   UiThemeMode,
 } from "../types";
 
 const MODE_STAGES: Record<ExploreMode, string[]> = {
   agent: [
-    "Planning tools...",
-    "Searching conversations...",
+    "Planning with model...",
+    "Resolving scope and route...",
+    "Collecting evidence...",
     "Compiling context draft...",
     "Synthesizing answer...",
   ],
@@ -41,6 +52,7 @@ const MODE_STAGES: Record<ExploreMode, string[]> = {
 };
 
 const sampleQuestions = [
+  "What did I do this week?",
   "What React performance optimization techniques have I discussed?",
   "Summarize all conversations about database architecture",
   "Find all discussions involving TypeScript type system",
@@ -52,8 +64,52 @@ type ExploreTabProps = {
   onOpenConversation?: (conversationId: number) => void;
 };
 
-type DrawerTab = "tool_calls" | "context_draft";
+type DrawerTab = "plan" | "tool_calls" | "sources" | "context_draft";
 type ContextSaveStatus = "idle" | "saving" | "saved" | "error";
+
+const TOOL_LABELS: Record<ExploreToolName, string> = {
+  intent_planner: "Intent Planner",
+  time_scope_resolver: "Time Scope Resolver",
+  weekly_summary_tool: "Weekly Summary Tool",
+  query_planner: "Query Planner (Legacy)",
+  search_rag: "Semantic Search",
+  summary_tool: "Summary Tool",
+  context_compiler: "Context Compiler",
+  answer_synthesizer: "Answer Synthesizer",
+};
+
+const TOOL_EXPLANATIONS: Record<ExploreToolName, string> = {
+  intent_planner:
+    "Uses the model to decide what the user is asking for, which route to run, and whether a time window is required.",
+  time_scope_resolver:
+    "Turns phrases like 'this week' into a concrete date range so the answer is auditable.",
+  weekly_summary_tool:
+    "Finds the conversations in that period, then reuses or generates a week-level digest.",
+  query_planner:
+    "Legacy fixed planning step from the earlier Explore pipeline.",
+  search_rag:
+    "Searches the knowledge base by semantic similarity to retrieve the most relevant conversations.",
+  summary_tool:
+    "Fills in missing conversation summaries so multi-source answers are easier to synthesize and inspect.",
+  context_compiler:
+    "Builds the editable context draft and source set shown in the drawer.",
+  answer_synthesizer:
+    "Produces the final answer from the collected evidence and tells the user where to inspect the result.",
+};
+
+const INTENT_LABELS: Record<ExploreAgentPlan["intent"], string> = {
+  fact_lookup: "Fact Lookup",
+  cross_conversation_summary: "Cross-Conversation Summary",
+  weekly_review: "Weekly Review",
+  timeline: "Timeline",
+  clarification_needed: "Clarification Needed",
+};
+
+const PATH_LABELS: Record<ExploreAgentPlan["preferredPath"], string> = {
+  rag: "Semantic Search",
+  weekly_summary: "Weekly Summary",
+  clarify: "Clarify First",
+};
 
 function generateId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -97,6 +153,68 @@ function summarizeToolCalls(toolCalls: ExploreToolCall[]): string {
   return `${toolCalls.length} steps · ${(totalMs / 1000).toFixed(1)}s`;
 }
 
+function buildSearchScope(
+  mode: ExploreSearchScopeMode,
+  conversationIds: number[]
+): ExploreSearchScope {
+  if (mode === "selected" && conversationIds.length > 0) {
+    return {
+      mode: "selected",
+      conversationIds,
+    };
+  }
+
+  return { mode: "all" };
+}
+
+function getSearchScopeSummary(searchScope?: ExploreSearchScope): string {
+  if (searchScope?.mode === "selected") {
+    const count = searchScope.conversationIds?.length ?? 0;
+    return count > 0 ? `${count} selected` : "Selected";
+  }
+  return "All conversations";
+}
+
+function getIntentLabel(plan?: ExploreAgentPlan): string {
+  if (!plan) return "Unknown";
+  return INTENT_LABELS[plan.intent];
+}
+
+function getPathLabel(plan?: ExploreAgentPlan): string {
+  if (!plan) return "Unknown";
+  return PATH_LABELS[plan.preferredPath];
+}
+
+function getResolvedTimeScopeLabel(plan?: ExploreAgentPlan): string | null {
+  if (plan?.resolvedTimeScope) {
+    return `${plan.resolvedTimeScope.label} (${plan.resolvedTimeScope.startDate} to ${plan.resolvedTimeScope.endDate})`;
+  }
+  if (plan?.requestedTimeScope?.label) {
+    return plan.requestedTimeScope.label;
+  }
+  if (
+    plan?.requestedTimeScope?.preset &&
+    plan.requestedTimeScope.preset !== "none"
+  ) {
+    return plan.requestedTimeScope.preset.replaceAll("_", " ");
+  }
+  return null;
+}
+
+function isTimeScopedPlan(plan?: ExploreAgentPlan): boolean {
+  return plan?.preferredPath === "weekly_summary";
+}
+
+function getSourceBadgeLabel(
+  candidateOrSource: Pick<ExploreContextCandidate, "similarity" | "matchType">,
+  plan?: ExploreAgentPlan
+): string {
+  if (candidateOrSource.matchType === "time_scope" || isTimeScopedPlan(plan)) {
+    return "In range";
+  }
+  return `${candidateOrSource.similarity}%`;
+}
+
 function triggerTxtDownload(content: string, filename: string): void {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -124,8 +242,16 @@ export function ExploreTab({
 
   const [inputValue, setInputValue] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRegeneratingSources, setIsRegeneratingSources] = useState(false);
   const [searchStageIndex, setSearchStageIndex] = useState(0);
   const [submitMode, setSubmitMode] = useState<ExploreMode>("agent");
+  const [searchScopeMode, setSearchScopeMode] = useState<ExploreSearchScopeMode>("all");
+  const [selectedScopeConversationIds, setSelectedScopeConversationIds] = useState<number[]>([]);
+  const [scopeChooserOpen, setScopeChooserOpen] = useState(false);
+  const [scopeSearchQuery, setScopeSearchQuery] = useState("");
+  const [scopeResults, setScopeResults] = useState<Conversation[]>([]);
+  const [scopeLoading, setScopeLoading] = useState(false);
+  const [scopeError, setScopeError] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<ExploreSession | null>(null);
@@ -145,8 +271,13 @@ export function ExploreTab({
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const groupedSessions = useMemo(() => groupSessionsByTime(sessions), [sessions]);
+  const activeSearchScope = useMemo(
+    () => buildSearchScope(searchScopeMode, selectedScopeConversationIds),
+    [searchScopeMode, selectedScopeConversationIds]
+  );
   const currentSession = sessions.find((session) => session.id === currentSessionId);
   const drawerMessage = messages.find((message) => message.id === drawerMessageId) ?? null;
+  const drawerPlan = drawerMessage?.agentMeta?.plan;
   const drawerCandidates = drawerMessage?.agentMeta?.contextCandidates ?? [];
   const drawerToolCalls = drawerMessage?.agentMeta?.toolCalls ?? [];
 
@@ -191,6 +322,38 @@ export function ExploreTab({
     return () => clearInterval(timer);
   }, [isSubmitting, submitMode]);
 
+  useEffect(() => {
+    if (!scopeChooserOpen) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setScopeLoading(true);
+        setScopeError(null);
+        try {
+          const data = await storage.getConversations({
+            search: scopeSearchQuery.trim() || undefined,
+          });
+          if (cancelled) return;
+          setScopeResults(data.slice(0, 80));
+        } catch (err) {
+          if (cancelled) return;
+          console.error("[Explore] Failed to load scope conversations:", err);
+          setScopeError((err as Error)?.message ?? "Failed to load conversations.");
+        } finally {
+          if (!cancelled) {
+            setScopeLoading(false);
+          }
+        }
+      })();
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [scopeChooserOpen, scopeSearchQuery, storage]);
+
   const loadSessions = async () => {
     if (!storage.listExploreSessions) return;
     setSessionsLoading(true);
@@ -215,6 +378,47 @@ export function ExploreTab({
     } finally {
       setMessagesLoading(false);
     }
+  };
+
+  const toggleScopeConversation = (conversationId: number) => {
+    setSelectedScopeConversationIds((prev) => {
+      if (prev.includes(conversationId)) {
+        return prev.filter((id) => id !== conversationId);
+      }
+      return [...prev, conversationId];
+    });
+  };
+
+  const applySelectedScope = () => {
+    if (selectedScopeConversationIds.length > 0) {
+      setSearchScopeMode("selected");
+    } else {
+      setSearchScopeMode("all");
+    }
+    setScopeChooserOpen(false);
+  };
+
+  const resetSearchScope = () => {
+    setSearchScopeMode("all");
+    setSelectedScopeConversationIds([]);
+    setScopeChooserOpen(false);
+  };
+
+  const getAssistantQuery = (message: ExploreMessage): string => {
+    const agentQuery = message.agentMeta?.query?.trim();
+    if (agentQuery) {
+      return agentQuery;
+    }
+
+    const index = messages.findIndex((item) => item.id === message.id);
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      const candidate = messages[cursor];
+      if (candidate.role === "user" && candidate.content.trim()) {
+        return candidate.content.trim();
+      }
+    }
+
+    return "";
   };
 
   const handleNewChat = () => {
@@ -251,9 +455,22 @@ export function ExploreTab({
       return;
     }
 
+    if (searchScopeMode === "selected" && selectedScopeConversationIds.length === 0) {
+      setError("Choose at least one conversation before using Selected scope.");
+      setScopeChooserOpen(true);
+      return;
+    }
+
     setSubmitMode(mode);
     setIsSubmitting(true);
     setError(null);
+    const requestOptions: ExploreAskOptions = {
+      searchScope: activeSearchScope,
+    };
+    const requestLimit =
+      activeSearchScope.mode === "selected"
+        ? Math.max(5, activeSearchScope.conversationIds?.length ?? 0)
+        : 5;
 
     const optimisticUserMessage: ExploreMessage = {
       id: generateId(),
@@ -269,8 +486,9 @@ export function ExploreTab({
       const result = await storage.askKnowledgeBase(
         trimmed,
         currentSessionId || undefined,
-        5,
-        mode
+        requestLimit,
+        mode,
+        requestOptions
       );
 
       if (!currentSessionId) {
@@ -429,6 +647,66 @@ export function ExploreTab({
     setDrawerNotice(null);
     textareaRef.current?.focus();
   };
+
+  const handleRegenerateWithSelectedSources = async () => {
+    if (!drawerMessage || !currentSessionId || !storage.askKnowledgeBase) return;
+
+    const normalizedIds = selectedContextConversationIds.filter((id) =>
+      drawerCandidates.some((candidate) => candidate.conversationId === id)
+    );
+
+    if (normalizedIds.length === 0) {
+      setDrawerNotice("Select at least one source before regenerating.");
+      return;
+    }
+
+    const query = getAssistantQuery(drawerMessage);
+    if (!query) {
+      setDrawerNotice("Could not determine the query for this answer.");
+      return;
+    }
+
+    setIsRegeneratingSources(true);
+    setDrawerNotice(null);
+
+    try {
+      if (storage.updateExploreMessageContext) {
+        await storage.updateExploreMessageContext(
+          drawerMessage.id,
+          contextDraft,
+          normalizedIds
+        );
+      }
+
+      await storage.askKnowledgeBase(
+        query,
+        currentSessionId,
+        Math.max(normalizedIds.length, 1),
+        "agent",
+        {
+          searchScope: {
+            mode: "selected",
+            conversationIds: normalizedIds,
+          },
+        }
+      );
+
+      setDrawerMessageId(null);
+      await loadMessages(currentSessionId);
+      await loadSessions();
+      setDrawerNotice(
+        `Regenerated as a new turn using ${normalizedIds.length} selected source${
+          normalizedIds.length === 1 ? "" : "s"
+        }.`
+      );
+    } catch (err) {
+      console.error("[Explore] Failed to regenerate from selected sources:", err);
+      setDrawerNotice((err as Error)?.message ?? "Failed to regenerate answer.");
+    } finally {
+      setIsRegeneratingSources(false);
+    }
+  };
+
   const renderSessionItem = (session: ExploreSession) => {
     const isActive = session.id === currentSessionId;
     const isRenaming = renameTarget?.id === session.id;
@@ -496,12 +774,13 @@ export function ExploreTab({
         : toolCall.status === "completed"
           ? "text-success"
           : "text-text-tertiary";
+    const description = toolCall.description || TOOL_EXPLANATIONS[toolCall.name];
 
     return (
       <div key={toolCall.id} className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
         <div className="mb-1 flex items-center justify-between">
           <p className="text-[13px] font-medium text-text-primary">
-            {index + 1}. {toolCall.name}
+            {index + 1}. {TOOL_LABELS[toolCall.name]}
           </p>
           <span className={`text-[11px] font-sans uppercase ${statusTone}`}>
             {toolCall.status}
@@ -510,6 +789,9 @@ export function ExploreTab({
         <p className="mb-2 text-[11px] font-sans text-text-tertiary">
           {(toolCall.durationMs / 1000).toFixed(2)}s
         </p>
+        {description && (
+          <p className="mb-2 text-xs font-sans text-text-secondary">{description}</p>
+        )}
         {toolCall.inputSummary && (
           <p className="mb-1 text-xs font-sans text-text-secondary">
             <span className="font-medium text-text-primary">Input:</span> {toolCall.inputSummary}
@@ -539,6 +821,9 @@ export function ExploreTab({
       const hasSources = message.sources && message.sources.length > 0;
       const toolCalls = message.agentMeta?.toolCalls ?? [];
       const hasToolCalls = message.agentMeta?.mode === "agent" && toolCalls.length > 0;
+      const scopeSummary = getSearchScopeSummary(message.agentMeta?.searchScope);
+      const plan = message.agentMeta?.plan;
+      const timeScopeLabel = getResolvedTimeScopeLabel(plan);
 
       return (
         <div key={message.id} className={`py-4 ${isUser ? "bg-bg-tertiary/50" : ""}`}>
@@ -575,16 +860,54 @@ export function ExploreTab({
                 {!isUser && hasToolCalls && (
                   <div className="mt-3 rounded-lg border border-border-subtle bg-bg-surface-card px-3 py-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <button
-                        onClick={() => openDrawer(message, "tool_calls")}
-                        className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
-                      >
-                        <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
-                        Tool Calls
-                      </button>
+                      <div className="flex flex-wrap items-center gap-3">
+                        {plan && (
+                          <button
+                            onClick={() => openDrawer(message, "plan")}
+                            className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
+                          >
+                            <FileText className="h-3.5 w-3.5" strokeWidth={1.75} />
+                            Plan
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openDrawer(message, "tool_calls")}
+                          className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
+                        >
+                          <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Tool Calls
+                        </button>
+                      </div>
                       <p className="text-xs font-sans text-text-tertiary">
                         {summarizeToolCalls(toolCalls)}
                       </p>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      {plan && (
+                        <>
+                          <p className="text-[11px] font-sans text-text-tertiary">
+                            Intent: {getIntentLabel(plan)}
+                          </p>
+                          <p className="text-[11px] font-sans text-text-tertiary">
+                            Route: {getPathLabel(plan)}
+                          </p>
+                        </>
+                      )}
+                      {timeScopeLabel && (
+                        <p className="text-[11px] font-sans text-text-tertiary">
+                          Time: {timeScopeLabel}
+                        </p>
+                      )}
+                      <p className="text-[11px] font-sans text-text-tertiary">
+                        Scope: {scopeSummary}
+                      </p>
+                      <button
+                        onClick={() => openDrawer(message, "sources")}
+                        className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
+                      >
+                        <Filter className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Source Controls
+                      </button>
                     </div>
                     {message.agentMeta?.contextDraft && (
                       <button
@@ -612,7 +935,9 @@ export function ExploreTab({
                             className="inline-flex items-center gap-1.5 rounded-full bg-bg-surface-card px-2.5 py-1 text-xs font-sans text-text-secondary transition-colors hover:bg-bg-surface-card-hover"
                           >
                             <span className="max-w-[120px] truncate">{source.title}</span>
-                            <span className="text-accent-primary">{source.similarity}%</span>
+                            <span className="text-accent-primary">
+                              {getSourceBadgeLabel(source, plan)}
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -772,6 +1097,41 @@ export function ExploreTab({
                 Classic
               </button>
             </div>
+            <div className="inline-flex rounded-md border border-border-subtle bg-bg-surface-card p-0.5">
+              <button
+                onClick={() => setSearchScopeMode("all")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  activeSearchScope.mode === "all"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedScopeConversationIds.length === 0) {
+                    setScopeChooserOpen(true);
+                  } else {
+                    setSearchScopeMode("selected");
+                  }
+                }}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  activeSearchScope.mode === "selected"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Selected
+              </button>
+            </div>
+            <button
+              onClick={() => setScopeChooserOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-surface-card px-3 py-1.5 text-xs font-sans text-text-secondary transition-colors hover:bg-bg-surface-card-hover hover:text-text-primary"
+            >
+              <Filter className="h-3.5 w-3.5" strokeWidth={1.7} />
+              {getSearchScopeSummary(activeSearchScope)}
+            </button>
             {currentSessionId && (
               <button
                 onClick={handleNewChat}
@@ -866,11 +1226,14 @@ export function ExploreTab({
                 </button>
               </div>
             </div>
-            <p className="mt-2 text-center text-xs font-sans text-text-tertiary">
-              {mode === "agent"
-                ? "Agent mode shows tool calls and lets you edit/export context drafts."
-                : "Classic mode searches your history and returns concise source-grounded answers."}
-            </p>
+            <div className="mt-2 text-center text-xs font-sans text-text-tertiary">
+              <p>
+                {mode === "agent"
+                  ? "Agent mode shows the planner route, tool calls, source controls, and editable context drafts."
+                  : "Classic mode searches your history and returns concise source-grounded answers."}
+              </p>
+              <p className="mt-1">Current scope: {getSearchScopeSummary(activeSearchScope)}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -893,6 +1256,16 @@ export function ExploreTab({
           <div className="border-b border-border-subtle px-3 py-2">
             <div className="inline-flex rounded-md border border-border-subtle bg-bg-surface-card p-0.5">
               <button
+                onClick={() => setDrawerTab("plan")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  drawerTab === "plan"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Plan
+              </button>
+              <button
                 onClick={() => setDrawerTab("tool_calls")}
                 className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
                   drawerTab === "tool_calls"
@@ -901,6 +1274,16 @@ export function ExploreTab({
                 }`}
               >
                 Tool Calls
+              </button>
+              <button
+                onClick={() => setDrawerTab("sources")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  drawerTab === "sources"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Sources
               </button>
               <button
                 onClick={() => setDrawerTab("context_draft")}
@@ -916,7 +1299,74 @@ export function ExploreTab({
           </div>
 
           <div className="flex-1 overflow-y-auto p-3">
-            {drawerTab === "tool_calls" ? (
+            {drawerTab === "plan" ? (
+              <div className="space-y-4">
+                {drawerPlan ? (
+                  <>
+                    <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
+                      <p className="mb-1 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                        Planner Decision
+                      </p>
+                      <div className="space-y-1.5 text-sm font-sans text-text-primary">
+                        <p>Intent: {getIntentLabel(drawerPlan)}</p>
+                        <p>Route: {getPathLabel(drawerPlan)}</p>
+                        <p>Source limit: {drawerPlan.sourceLimit}</p>
+                        <p>Summary target: {drawerPlan.summaryTargetCount}</p>
+                        {getResolvedTimeScopeLabel(drawerPlan) && (
+                          <p>Time scope: {getResolvedTimeScopeLabel(drawerPlan)}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
+                      <p className="mb-1 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                        Why This Route
+                      </p>
+                      <p className="text-sm font-sans text-text-primary">
+                        {drawerPlan.reason}
+                      </p>
+                      {drawerPlan.answerGoal && (
+                        <p className="mt-2 text-xs font-sans text-text-secondary">
+                          Goal: {drawerPlan.answerGoal}
+                        </p>
+                      )}
+                      {drawerPlan.clarifyingQuestion && (
+                        <p className="mt-2 text-xs font-sans text-text-secondary">
+                          Clarification: {drawerPlan.clarifyingQuestion}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
+                      <p className="mb-2 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                        Planned Tools
+                      </p>
+                      <div className="space-y-2">
+                        {(drawerPlan.toolPlan ?? []).map((toolName, index) => (
+                          <div key={`${toolName}-${index}`} className="rounded-md bg-bg-primary p-2">
+                            <p className="text-sm font-sans text-text-primary">
+                              {index + 1}. {TOOL_LABELS[toolName]}
+                            </p>
+                            <p className="mt-1 text-xs font-sans text-text-secondary">
+                              {TOOL_EXPLANATIONS[toolName]}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] font-sans text-text-tertiary">
+                      The planner chooses the high-level route with the model. Tool execution stays
+                      bounded and inspectable in the app.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm font-sans text-text-tertiary">
+                    No planner metadata was recorded for this answer.
+                  </p>
+                )}
+              </div>
+            ) : drawerTab === "tool_calls" ? (
               <div className="space-y-3">
                 {drawerToolCalls.length > 0 ? (
                   drawerToolCalls.map(renderToolCallItem)
@@ -926,8 +1376,28 @@ export function ExploreTab({
                   </p>
                 )}
               </div>
-            ) : (
+            ) : drawerTab === "sources" ? (
               <div className="space-y-4">
+                <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
+                  <p className="mb-1 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                    Active Query
+                  </p>
+                  <p className="text-sm font-sans text-text-primary">
+                    {getAssistantQuery(drawerMessage) || "Unavailable"}
+                  </p>
+                  <p className="mt-2 text-xs font-sans text-text-tertiary">
+                    Scope: {getSearchScopeSummary(drawerMessage.agentMeta?.searchScope)}
+                  </p>
+                  {getResolvedTimeScopeLabel(drawerPlan) && (
+                    <p className="mt-1 text-xs font-sans text-text-tertiary">
+                      Time scope: {getResolvedTimeScopeLabel(drawerPlan)}
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs font-sans text-text-tertiary">
+                    Selected sources: {selectedContextConversationIds.length} / {drawerCandidates.length}
+                  </p>
+                </div>
+
                 <div>
                   <p className="mb-2 text-xs font-sans uppercase tracking-wider text-text-tertiary">
                     Candidate Sources
@@ -955,13 +1425,26 @@ export function ExploreTab({
                                 )}
                                 <span className="line-clamp-2">{candidate.title}</span>
                               </button>
-                              <span className="text-[11px] font-sans text-accent-primary">
-                                {candidate.similarity}%
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-sans text-accent-primary">
+                                  {getSourceBadgeLabel(candidate, drawerPlan)}
+                                </span>
+                                <button
+                                  onClick={() => onOpenConversation?.(candidate.conversationId)}
+                                  className="text-[11px] font-sans text-text-secondary hover:text-text-primary"
+                                >
+                                  Open
+                                </button>
+                              </div>
                             </div>
                             {candidate.summarySnippet && (
                               <p className="mb-1 text-xs font-sans text-text-secondary">
                                 {candidate.summarySnippet}
+                              </p>
+                            )}
+                            {candidate.selectionReason && (
+                              <p className="mb-1 text-[11px] font-sans text-text-tertiary">
+                                {candidate.selectionReason}
                               </p>
                             )}
                             {candidate.excerpt && (
@@ -980,6 +1463,51 @@ export function ExploreTab({
                   )}
                 </div>
 
+                {drawerNotice && (
+                  <p
+                    className={`text-xs font-sans ${
+                      contextSaveStatus === "error" ? "text-danger" : "text-text-secondary"
+                    }`}
+                  >
+                    {drawerNotice}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleSaveContextDraft}
+                    disabled={contextSaveStatus === "saving"}
+                    className="rounded-md bg-accent-primary px-3 py-1.5 text-xs font-sans text-white transition-colors hover:bg-accent-primary/90 disabled:opacity-50"
+                  >
+                    {contextSaveStatus === "saving" ? "Saving..." : "Save Selection"}
+                  </button>
+                  <button
+                    onClick={handleRegenerateWithSelectedSources}
+                    disabled={isRegeneratingSources}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card disabled:opacity-50"
+                  >
+                    {isRegeneratingSources ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Regenerate Answer
+                  </button>
+                  <button
+                    onClick={() => setDrawerTab("context_draft")}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Open Draft
+                  </button>
+                </div>
+
+                <p className="text-[11px] font-sans text-text-tertiary">
+                  Regeneration appends a new turn using only the selected conversations.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
                 <div>
                   <p className="mb-2 text-xs font-sans uppercase tracking-wider text-text-tertiary">
                     Draft (Editable)
@@ -1039,6 +1567,117 @@ export function ExploreTab({
             )}
           </div>
         </aside>
+      )}
+
+      {scopeChooserOpen && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/30 p-4">
+          <div className="flex h-[min(720px,90vh)] w-full max-w-3xl flex-col rounded-2xl border border-border-subtle bg-bg-primary shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+              <div>
+                <p className="text-sm font-sans font-medium text-text-primary">
+                  Choose Conversations
+                </p>
+                <p className="mt-1 text-xs font-sans text-text-tertiary">
+                  Search, preview, and pick the conversations the agent is allowed to use.
+                </p>
+              </div>
+              <button
+                onClick={() => setScopeChooserOpen(false)}
+                className="rounded-md p-1 text-text-tertiary hover:bg-bg-surface-card hover:text-text-primary"
+              >
+                <X className="h-4 w-4" strokeWidth={1.8} />
+              </button>
+            </div>
+
+            <div className="border-b border-border-subtle px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[260px] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
+                  <input
+                    value={scopeSearchQuery}
+                    onChange={(event) => setScopeSearchQuery(event.target.value)}
+                    placeholder="Search by title or snippet..."
+                    className="w-full rounded-lg border border-border-default bg-bg-primary py-2 pl-9 pr-3 text-sm font-sans text-text-primary focus:border-accent-primary focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setSearchScopeMode("selected");
+                    applySelectedScope();
+                  }}
+                  className="rounded-md bg-accent-primary px-3 py-2 text-xs font-sans text-white transition-colors hover:bg-accent-primary/90"
+                >
+                  Apply Selected
+                </button>
+                <button
+                  onClick={resetSearchScope}
+                  className="rounded-md border border-border-default px-3 py-2 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
+                >
+                  Use All
+                </button>
+              </div>
+              <p className="mt-2 text-xs font-sans text-text-tertiary">
+                {selectedScopeConversationIds.length} conversation
+                {selectedScopeConversationIds.length === 1 ? "" : "s"} selected
+              </p>
+              {scopeError && <p className="mt-2 text-xs font-sans text-danger">{scopeError}</p>}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {scopeLoading ? (
+                <div className="py-10 text-center">
+                  <Loader2 className="mx-auto h-5 w-5 animate-spin text-accent-primary" />
+                </div>
+              ) : scopeResults.length === 0 ? (
+                <div className="py-10 text-center text-sm font-sans text-text-tertiary">
+                  No conversations match this search.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {scopeResults.map((conversation) => {
+                    const selected = selectedScopeConversationIds.includes(conversation.id);
+                    return (
+                      <div
+                        key={conversation.id}
+                        className="rounded-xl border border-border-subtle bg-bg-surface-card p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <button
+                            onClick={() => toggleScopeConversation(conversation.id)}
+                            className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                          >
+                            {selected ? (
+                              <CheckSquare className="mt-0.5 h-4 w-4 flex-shrink-0 text-accent-primary" />
+                            ) : (
+                              <Square className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-tertiary" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-sans text-text-primary">
+                                {conversation.title}
+                              </p>
+                              <p className="mt-1 text-xs font-sans text-text-tertiary">
+                                {conversation.platform} · {new Date(conversation.updated_at).toLocaleDateString()}
+                              </p>
+                              <p className="mt-2 line-clamp-2 text-xs font-sans text-text-secondary">
+                                {conversation.snippet || "No preview available"}
+                              </p>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => onOpenConversation?.(conversation.id)}
+                            className="text-xs font-sans text-text-secondary hover:text-text-primary"
+                          >
+                            Open
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

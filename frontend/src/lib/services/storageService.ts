@@ -12,6 +12,7 @@ import type {
   RelatedConversation,
   RagResponse,
   ExploreMode,
+  ExploreAskOptions,
   StorageUsageSnapshot,
   SummaryRecord,
   WeeklyReportRecord,
@@ -251,13 +252,14 @@ export async function askKnowledgeBase(
   query: string,
   sessionId?: string,
   limit?: number,
-  mode?: ExploreMode
+  mode?: ExploreMode,
+  options?: ExploreAskOptions
 ): Promise<RagResponse & { sessionId: string }> {
   return sendRequest(
     {
       type: "ASK_KNOWLEDGE_BASE",
       target: "offscreen",
-      payload: { query, sessionId, limit, mode },
+      payload: { query, sessionId, limit, mode, options },
     },
     LONG_RUNNING_TIMEOUT_MS
   ) as Promise<RagResponse & { sessionId: string }>;

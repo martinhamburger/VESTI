@@ -434,7 +434,8 @@ async function handleOffscreenRequest(message: RequestMessage): Promise<Response
           message.payload.query,
           message.payload.sessionId,
           message.payload.limit,
-          message.payload.mode
+          message.payload.mode,
+          message.payload.options
         );
         return { ok: true, type: messageType, data };
       }

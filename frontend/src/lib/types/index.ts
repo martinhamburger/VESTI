@@ -74,7 +74,53 @@ export interface RelatedConversation {
 
 export type ExploreMode = "agent" | "classic";
 
+export type ExploreSearchScopeMode = "all" | "selected";
+
+export interface ExploreSearchScope {
+  mode: ExploreSearchScopeMode;
+  conversationIds?: number[];
+}
+
+export interface ExploreAskOptions {
+  searchScope?: ExploreSearchScope;
+}
+
+export type ExploreIntentType =
+  | "fact_lookup"
+  | "cross_conversation_summary"
+  | "weekly_review"
+  | "timeline"
+  | "clarification_needed";
+
+export type ExploreRequestedTimeScopePreset =
+  | "none"
+  | "current_week_to_date"
+  | "last_7_days"
+  | "last_full_week"
+  | "custom";
+
+export interface ExploreRequestedTimeScope {
+  preset: ExploreRequestedTimeScopePreset;
+  label?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface ExploreResolvedTimeScope {
+  preset: Exclude<ExploreRequestedTimeScopePreset, "none">;
+  label: string;
+  rangeStart: number;
+  rangeEnd: number;
+  startDate: string;
+  endDate: string;
+}
+
+export type ExplorePlannerPath = "rag" | "weekly_summary" | "clarify";
+
 export type ExploreToolName =
+  | "intent_planner"
+  | "time_scope_resolver"
+  | "weekly_summary_tool"
   | "query_planner"
   | "search_rag"
   | "summary_tool"
@@ -90,6 +136,7 @@ export interface ExploreToolCall {
   startedAt: number;
   endedAt: number;
   durationMs: number;
+  description?: string;
   inputSummary?: string;
   outputSummary?: string;
   error?: string;
@@ -100,12 +147,31 @@ export interface ExploreContextCandidate {
   title: string;
   platform: Platform;
   similarity: number;
+  matchType?: "semantic" | "time_scope";
+  selectionReason?: string;
   summarySnippet?: string;
   excerpt?: string;
 }
 
+export interface ExploreAgentPlan {
+  intent: ExploreIntentType;
+  reason: string;
+  preferredPath: ExplorePlannerPath;
+  sourceLimit: number;
+  summaryTargetCount: number;
+  answerGoal?: string;
+  needsClarification?: boolean;
+  clarifyingQuestion?: string;
+  requestedTimeScope?: ExploreRequestedTimeScope;
+  resolvedTimeScope?: ExploreResolvedTimeScope;
+  toolPlan?: ExploreToolName[];
+}
+
 export interface ExploreAgentMeta {
   mode: ExploreMode;
+  query?: string;
+  searchScope?: ExploreSearchScope;
+  plan?: ExploreAgentPlan;
   toolCalls: ExploreToolCall[];
   contextDraft?: string;
   contextCandidates?: ExploreContextCandidate[];

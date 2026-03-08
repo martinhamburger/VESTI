@@ -18,6 +18,7 @@ import type {
   RelatedConversation,
   RagResponse,
   ExploreMode,
+  ExploreAskOptions,
   Note,
 } from "../types";
 import type { ExploreSession, ExploreMessage } from "../db/repository";
@@ -199,7 +200,13 @@ export type RequestMessage =
       target?: "offscreen";
       via?: "background";
       requestId?: string;
-      payload: { query: string; limit?: number; sessionId?: string; mode?: ExploreMode };
+      payload: {
+        query: string;
+        limit?: number;
+        sessionId?: string;
+        mode?: ExploreMode;
+        options?: ExploreAskOptions;
+      };
     }
   | {
       type: "CREATE_EXPLORE_SESSION";
