@@ -38,7 +38,21 @@ const LANGUAGE_NOISE_TOKENS = new Set([
   "plain",
   "plaintext",
   "text",
+  "run",
+  "running",
+  "done",
+  "share",
+  "retry",
+  "regenerate",
 ]);
+const LANGUAGE_HINT_EXCLUDE_SELECTOR = [
+  "button",
+  "[role='button']",
+  "pre",
+  "code",
+  ".cm-content",
+  "[class*='cm-content']",
+].join(", ");
 
 export interface AstExtractionOptions {
   platform: Platform;
@@ -183,10 +197,11 @@ function collectLanguageHintFromElement(element: Element): string | null {
 
   const textHint = normalizeInlineText(element.textContent ?? "").trim();
   if (
-    element.children.length === 0 &&
     textHint.length > 0 &&
     textHint.length <= 24 &&
-    !textHint.includes(" ")
+    !textHint.includes(" ") &&
+    !element.matches(LANGUAGE_HINT_EXCLUDE_SELECTOR) &&
+    element.querySelector(LANGUAGE_HINT_EXCLUDE_SELECTOR) === null
   ) {
     const token = normalizeLanguageToken(textHint);
     if (token) return token;
@@ -246,6 +261,54 @@ function inferCodeLanguage(preEl: Element, codeEl: Element | null): string | nul
   }
 
   return null;
+}
+
+function collectTextWithBreaks(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.nodeValue ?? "";
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return "";
+  }
+
+  const element = node as Element;
+  if (element.tagName.toLowerCase() === "br") {
+    return "\n";
+  }
+
+  const parts = Array.from(element.childNodes).map((child) => collectTextWithBreaks(child));
+  const joined = parts.join("");
+  if (element.classList.contains("cm-line")) {
+    return `${joined}\n`;
+  }
+  return joined;
+}
+
+function extractCodeTextFromElement(element: Element): string {
+  const cmLines = element.matches(".cm-line")
+    ? [element]
+    : Array.from(element.querySelectorAll(".cm-line"));
+  if (cmLines.length > 0) {
+    const joined = cmLines
+      .map((line) => collectTextWithBreaks(line).replace(/\n+$/g, ""))
+      .join("\n");
+    return normalizeCodeText(joined);
+  }
+
+  const withBreaks = collectTextWithBreaks(element);
+  if (withBreaks.trim()) {
+    return normalizeCodeText(withBreaks);
+  }
+
+  if (element instanceof HTMLElement) {
+    const innerText = element.innerText || "";
+    if (innerText.trim()) {
+      return normalizeCodeText(innerText);
+    }
+  }
+
+  return normalizeCodeText(element.textContent ?? "");
 }
 
 function getLanguageLeakToken(node: AstNode): string | null {
@@ -380,15 +443,15 @@ class AstExtractor {
   private parseElement(element: Element): AstNode[] {
     const tag = element.tagName.toLowerCase();
 
-    if (this.p1Enabled && !this.isInsideCode(element) && isLikelyMathElement(element, this.options.platform)) {
-      return this.extractMathNode(element);
-    }
-
     if (tag === "table") {
       if (this.p1Enabled) {
         return this.extractTable(element);
       }
       return this.fallbackToText(element, true);
+    }
+
+    if (this.p1Enabled && !this.isInsideCode(element) && isLikelyMathElement(element, this.options.platform)) {
+      return this.extractMathNode(element);
     }
 
     if (!this.p1Enabled && !this.isInsideCode(element) && isLikelyMathElement(element, this.options.platform)) {
@@ -539,9 +602,11 @@ class AstExtractor {
 
   private extractCodeBlock(element: Element): AstNode[] {
     try {
-      const codeEl = element.querySelector("code");
+      const codeEl =
+        element.querySelector("code") ??
+        element.querySelector(".cm-content, [class*='cm-content']");
       const source = codeEl ?? element;
-      const code = normalizeCodeText(source.textContent ?? "");
+      const code = extractCodeTextFromElement(source);
       if (!code.trim()) {
         return [];
       }

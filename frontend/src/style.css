@@ -2864,6 +2864,37 @@
   line-height: 1.35;
 }
 
+.reader-ast-list {
+  margin: 7px 0;
+  padding-left: 20px;
+}
+
+.reader-ast-list-ul {
+  list-style: disc;
+}
+
+.reader-ast-list-ol {
+  list-style: decimal;
+}
+
+.reader-ast-list-item {
+  margin: 4px 0;
+}
+
+.reader-ast-list-item > p {
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
+.reader-ast-list-item > p:last-child {
+  margin-bottom: 0;
+}
+
+.reader-ast-list-item > .reader-ast-list {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
 .reader-ast-content strong {
   font-weight: 700;
 }
@@ -2975,6 +3006,44 @@
   line-height: 1.56;
   color: hsl(var(--text-primary));
   white-space: pre;
+}
+
+.reader-ast-table-wrap {
+  margin: 7px 0;
+  overflow-x: auto;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border-subtle));
+}
+
+.reader-ast-table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  background-color: hsl(var(--bg-surface));
+  color: inherit;
+}
+
+.reader-ast-table th,
+.reader-ast-table td {
+  border: 1px solid hsl(var(--border-subtle));
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.reader-ast-table th {
+  background-color: hsl(var(--bg-secondary));
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: hsl(var(--text-secondary));
+}
+
+.reader-ast-table td {
+  background-color: hsl(var(--bg-surface));
 }
 
 .reader-ast-math-inline {
