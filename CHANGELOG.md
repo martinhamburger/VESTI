@@ -27,6 +27,19 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ---
 
+## [1.2.0-rc.8] - 2026-03-08
+
+### Changed
+- Updated the internal `GET_ALL_EDGES` contract so Network can request edge computation for its current node set instead of relying on previously opened Library conversations.
+
+### Fixed
+- Restored Network graph edges by lazily ensuring vectors for the active node set when opening the Network view, removing the hidden dependency on Library detail opens.
+
+### Chore
+- Bumped extension release metadata to `1.2.0-rc.8` for tagging and distribution alignment.
+
+---
+
 ## [1.2.0-rc.7] - 2026-03-07
 
 ### Added
