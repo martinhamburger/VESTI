@@ -115,7 +115,7 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
         return { ok: true, type: messageType, data };
       }
       case "GET_ALL_EDGES": {
-        const data = await findAllEdges(message.payload?.threshold ?? 0.3);
+        const data = await findAllEdges(message.payload);
         return { ok: true, type: messageType, data };
       }
       case "RENAME_FOLDER_TAG": {

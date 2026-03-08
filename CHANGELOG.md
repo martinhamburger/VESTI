@@ -27,6 +27,19 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ---
 
+## [1.2.0-rc.8] - 2026-03-08
+
+### Changed
+- Updated the internal `GET_ALL_EDGES` contract so Network can request edge computation for its current node set instead of relying on previously opened Library conversations.
+
+### Fixed
+- Restored Network graph edges by lazily ensuring vectors for the active node set when opening the Network view, removing the hidden dependency on Library detail opens.
+
+### Chore
+- Bumped extension release metadata to `1.2.0-rc.8` for tagging and distribution alignment.
+
+---
+
 ## [1.2.0-rc.7] - 2026-03-07
 
 ### Added
@@ -42,15 +55,20 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 ### Fixed
 - Realigned Kimi capture to the current DOM structure, excluded `chat-header` pollution, and restored cold-start transient availability.
 - Realigned Yuanbao capture to the current `hyc-*` DOM and merged CoT + final response into a single archived AI turn without doc-title noise.
+- Hardened ChatGPT capture with selector+anchor extraction, startup warm capture, and content cleaning for noisy toolbars and controls.
+- Fixed reader AST rendering so structured math, tables, lists, and code blocks preserve their intended layout instead of collapsing into plain paragraphs.
+- Hardened Qwen capture for Monaco code blocks and custom markdown paragraph spacing so code and flowing prose render cleanly in Threads Reader.
+- Declared a local `@vesti/ui` dashboard type shim to unblock rc7 typecheck/build on the current mainline.
 - Fixed Kimi web badge contrast so light mode uses dark text and dark mode uses white text.
 - Fixed web dashboard theme refresh so dock-initiated appearance changes propagate without reopening the page.
 
 ### Docs
 - Updated Kimi / Yuanbao Phase 3 capture docs and execution notes.
 - Updated the UI refactor spec to document web-vs-dock badge decoupling and dashboard theme sync.
+- Added the rc7 engineering handoff for the Yuanbao web dashboard and capture-engine follow-up context.
 
 ### Chore
-- Prepared release metadata for `v1.2.0-rc.7`.
+- Prepared release metadata and mirror packaging for `v1.2.0-rc.7`.
 
 ---
 

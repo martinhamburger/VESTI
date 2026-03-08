@@ -91,21 +91,7 @@ export function NetworkTab({
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
   const platforms: (Platform | "all")[] = ["all", ...PLATFORM_FILTER_OPTIONS];
-
-  useEffect(() => {
-    if (!storage.getAllEdges) return;
-    setGraphLoading(true);
-    storage
-      .getAllEdges(0.4)
-      .then((edges) => {
-        setApiEdges(edges ?? []);
-      })
-      .catch((err) => {
-        console.error("[Network] getAllEdges error:", err);
-        setApiEdges([]);
-      })
-      .finally(() => setGraphLoading(false));
-  }, [storage]);
+  const useRealGraph = conversations.length >= 3;
 
   const topicMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -120,9 +106,8 @@ export function NetworkTab({
   }, [topics]);
 
   const baseNodes = useMemo<Node[]>(() => {
-    const source = conversations.length >= 3 ? conversations : null;
-    if (!source) return mockNodes;
-    return source.slice(0, 30).map((conv) => ({
+    if (!useRealGraph) return mockNodes;
+    return conversations.slice(0, 30).map((conv) => ({
       id: conv.id,
       x: 0,
       y: 0,
@@ -134,7 +119,45 @@ export function NetworkTab({
       isStarred: conv.is_starred,
       created_at: conv.created_at,
     }));
-  }, [conversations, topicMap]);
+  }, [conversations, topicMap, useRealGraph]);
+
+  const baseNodeIds = useMemo(() => baseNodes.map((node) => node.id), [baseNodes]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!storage.getAllEdges || !useRealGraph || baseNodeIds.length === 0) {
+      setApiEdges([]);
+      setGraphLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setGraphLoading(true);
+    storage
+      .getAllEdges({ threshold: 0.4, conversationIds: baseNodeIds })
+      .then((edges) => {
+        if (!cancelled) {
+          setApiEdges(edges ?? []);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error("[Network] getAllEdges error:", err);
+          setApiEdges([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setGraphLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseNodeIds, storage, useRealGraph]);
 
   const visibleNodes = useMemo(() => {
     if (selectedPlatform === "all") return baseNodes;
@@ -147,8 +170,8 @@ export function NetworkTab({
   );
 
   const baseEdges = useMemo<Edge[]>(() => {
-    return conversations.length >= 3 ? apiEdges.filter((edge) => edge.weight >= 0.4) : mockEdges;
-  }, [conversations.length, apiEdges]);
+    return useRealGraph ? apiEdges.filter((edge) => edge.weight >= 0.4) : mockEdges;
+  }, [apiEdges, useRealGraph]);
 
   const visibleEdges = useMemo(
     () =>

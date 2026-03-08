@@ -112,10 +112,7 @@ function extractRegexTex(rawText: string): string | null {
 }
 
 function matchesAnyMathMarker(element: Element, selectors: string[]): boolean {
-  return selectors.some(
-    (selector) =>
-      element.matches(selector) || element.querySelector(selector) !== null,
-  );
+  return selectors.some((selector) => element.matches(selector));
 }
 
 export function isLikelyMathElement(element: Element, platform: Platform): boolean {

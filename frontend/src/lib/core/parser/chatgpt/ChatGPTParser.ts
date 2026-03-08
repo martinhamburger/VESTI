@@ -1,7 +1,9 @@
 import type { IParser, ParsedMessage } from "../IParser";
 import type { Platform } from "../../../types";
 import {
+  closestAnySelector,
   extractEarliestTimeFromSelectors,
+  hasAnySelector,
   normalizeCandidateNodes,
   queryAllUnique,
   queryAllWithinUnique,
@@ -15,14 +17,34 @@ import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
 import { logger } from "../../../utils/logger";
 
 const SELECTORS = {
-  roleAnchors: [
+  userRoleAnchors: [
     "[data-message-author-role='user']",
+    "[data-testid*='user-message']",
+    "[data-testid*='user']",
+  ],
+  assistantRoleAnchors: [
     "[data-message-author-role='assistant']",
+    "[data-testid*='assistant-message']",
+    "[data-testid*='assistant']",
+    "[data-testid*='chatgpt-message']",
+    "[data-testid*='model-message']",
   ],
   turnBlocks: [
     "[data-testid^='conversation-turn']",
     "[data-testid*='conversation-turn']",
     "[data-message-id]",
+  ],
+  preferredMessageContent: [
+    "[data-message-content]",
+    "[data-testid*='message-content']",
+    ".markdown",
+    ".prose",
+    "div[class*='markdown']",
+  ],
+  userMessageContent: [
+    "[data-message-content]",
+    "[class*='whitespace-pre-wrap']",
+    "[dir='auto']",
   ],
   messageContent: [
     ".markdown",
@@ -30,6 +52,32 @@ const SELECTORS = {
     "[data-testid*='message-content']",
     "[data-message-content]",
     "div[class*='markdown']",
+  ],
+  copyActionAnchors: [
+    "[data-testid='action-bar-copy']",
+    "[data-testid*='action-copy']",
+    "[data-testid*='copy']",
+    "[aria-label*='copy' i]",
+  ],
+  removableContentSelectors: [
+    "form",
+    "footer",
+    "nav",
+    "button",
+    "svg",
+    "[role='navigation']",
+    "[role='button']",
+    "[data-testid*='composer']",
+    "[data-testid*='action-bar']",
+    "[data-testid*='copy']",
+    "[data-testid*='retry']",
+    "[data-testid*='regenerate']",
+    "[data-testid*='share']",
+    "[class*='action-bar']",
+    "[class*='toolbar']",
+    "[contenteditable='true']",
+    "[aria-label*='copy' i]",
+    "[aria-label*='read aloud' i]",
   ],
   title: ["nav h1", "title"],
   generating: [
@@ -53,12 +101,131 @@ const SELECTORS = {
     /^chatgpt can make mistakes\.?/i,
     /^upgrade plan$/i,
   ],
+  roleAncestorHints: [
+    "[data-message-author-role]",
+    "[data-testid]",
+    "[data-message-id]",
+    "[class*='user']",
+    "[class*='assistant']",
+    "[class*='chatgpt']",
+    "[class*='model']",
+  ],
   sourceTimes: ["main time[datetime]", "article time[datetime]"],
 };
 
+const LANGUAGE_TOKEN_PATTERN = /^[a-z0-9+#.-]{1,24}$/i;
+const LANGUAGE_NOISE_TOKENS = new Set([
+  "copy",
+  "copied",
+  "code",
+  "plain",
+  "plaintext",
+  "text",
+  "run",
+  "running",
+  "done",
+  "share",
+  "retry",
+  "regenerate",
+]);
+const CODE_BLOCK_CONTENT_SELECTORS = [
+  "code",
+  "#code-block-viewer .cm-content",
+  ".cm-editor .cm-content",
+  ".cm-content",
+  "[class*='cm-content']",
+];
+const CODE_BLOCK_HINT_EXCLUDE_SELECTOR = [
+  "button",
+  "[role='button']",
+  "pre",
+  "code",
+  "#code-block-viewer",
+  ".cm-editor",
+  ".cm-content",
+  "[class*='cm-content']",
+].join(", ");
+
+function parseLanguageFromClassName(value: string): string | null {
+  const classTokens = value.split(/\s+/).filter(Boolean);
+  for (const token of classTokens) {
+    const normalized = token.toLowerCase();
+    const languageMatch = normalized.match(/(?:^|[-_])(language|lang)[-_]?([a-z0-9+#.-]+)/i);
+    if (languageMatch?.[2]) {
+      return languageMatch[2];
+    }
+  }
+  return null;
+}
+
+function normalizeLanguageToken(value: string | null | undefined): string | null {
+  if (!value) return null;
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const prefixed = normalized.match(/^(?:language|lang)[:_\-\s]*([a-z0-9+#.-]{1,24})$/i);
+  if (prefixed?.[1]) {
+    const token = prefixed[1].toLowerCase();
+    return LANGUAGE_NOISE_TOKENS.has(token) ? null : token;
+  }
+
+  if (!LANGUAGE_TOKEN_PATTERN.test(normalized)) {
+    return null;
+  }
+
+  return LANGUAGE_NOISE_TOKENS.has(normalized) ? null : normalized;
+}
+
+function normalizeCodeText(value: string): string {
+  return value.replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ").trimEnd();
+}
+
+function collectTextWithBreaks(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.nodeValue ?? "";
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return "";
+  }
+
+  const element = node as Element;
+  if (element.tagName.toLowerCase() === "br") {
+    return "\n";
+  }
+
+  const parts = Array.from(element.childNodes).map((child) => collectTextWithBreaks(child));
+  const joined = parts.join("");
+  if (element.classList.contains("cm-line")) {
+    return `${joined}\n`;
+  }
+  return joined;
+}
+
+function extractLanguageTextHint(element: Element): string | null {
+  if (element.matches(CODE_BLOCK_HINT_EXCLUDE_SELECTOR)) {
+    return null;
+  }
+
+  if (element.querySelector(CODE_BLOCK_HINT_EXCLUDE_SELECTOR)) {
+    return null;
+  }
+
+  const text = (element.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (!text || text.length > 24 || text.includes(" ")) {
+    return null;
+  }
+
+  return normalizeLanguageToken(text);
+}
+
 type MessageRole = "user" | "ai";
 
+type ExtractionSource = "selector" | "anchor";
+
 interface ParserStats {
+  source: ExtractionSource;
   totalCandidates: number;
   keptMessages: number;
   roleDistribution: Record<MessageRole, number>;
@@ -71,6 +238,16 @@ interface ParserStats {
   ast_node_count: number;
   message_count: number;
   platform: Platform;
+}
+
+interface ExtractionResult {
+  source: ExtractionSource;
+  messages: ParsedMessage[];
+  totalCandidates: number;
+  droppedUnknownRole: number;
+  droppedNoise: number;
+  degradedNodesCount: number;
+  astNodeCount: number;
 }
 
 interface ParsedNodeResult {
@@ -98,53 +275,29 @@ export class ChatGPTParser implements IParser {
   getMessages(): ParsedMessage[] {
     const startedAt = performance.now();
     const perfMode = astPerfModeController.getMode("ChatGPT");
-    const rawCandidates = this.collectMessageCandidates();
-    const normalized = normalizeCandidateNodes(rawCandidates, {
-      minTextLength: 2,
-      noiseContainerSelectors: SELECTORS.noiseContainers,
-      noiseTextPatterns: SELECTORS.noiseTextPatterns,
-    });
-
-    const stats: ParserStats = {
-      totalCandidates: rawCandidates.length,
-      keptMessages: 0,
-      roleDistribution: { user: 0, ai: 0 },
-      droppedUnknownRole: 0,
-      droppedNoise: normalized.droppedNoise,
-      parse_duration_ms: 0,
-      perf_mode: perfMode,
-      next_perf_mode: perfMode,
-      degraded_nodes_count: 0,
-      ast_node_count: 0,
-      message_count: 0,
-      platform: "ChatGPT",
-    };
-
-    const messages: ParsedMessage[] = [];
-    for (const node of normalized.nodes) {
-      const parsed = this.parseMessageNode(node, perfMode);
-      if (!parsed) {
-        stats.droppedUnknownRole += 1;
-        continue;
-      }
-      if (!parsed.message.textContent.trim()) {
-        stats.droppedNoise += 1;
-        continue;
-      }
-
-      messages.push(parsed.message);
-      stats.keptMessages += 1;
-      stats.roleDistribution[parsed.message.role] += 1;
-      stats.degraded_nodes_count += parsed.degradedNodesCount;
-      stats.ast_node_count += parsed.astNodeCount;
-    }
+    const selectorResult = this.extractUsingSelectorStrategy(perfMode);
+    const anchorResult = this.extractUsingAnchorStrategy(perfMode);
+    const chosen = this.chooseBestExtraction(selectorResult, anchorResult);
+    const dedupedMessages = this.dedupeNearDuplicates(chosen.messages);
 
     const parseDurationMs = Math.round(performance.now() - startedAt);
     const modeUpdate = astPerfModeController.record("ChatGPT", parseDurationMs);
 
-    stats.parse_duration_ms = parseDurationMs;
-    stats.next_perf_mode = modeUpdate.mode;
-    stats.message_count = messages.length;
+    const stats: ParserStats = {
+      source: chosen.source,
+      totalCandidates: chosen.totalCandidates,
+      keptMessages: dedupedMessages.length,
+      roleDistribution: { user: 0, ai: 0 },
+      droppedUnknownRole: chosen.droppedUnknownRole,
+      droppedNoise: chosen.droppedNoise + (chosen.messages.length - dedupedMessages.length),
+      parse_duration_ms: parseDurationMs,
+      perf_mode: perfMode,
+      next_perf_mode: modeUpdate.mode,
+      degraded_nodes_count: chosen.degradedNodesCount,
+      ast_node_count: chosen.astNodeCount,
+      message_count: dedupedMessages.length,
+      platform: "ChatGPT",
+    };
 
     if (modeUpdate.switched) {
       logger.warn("parser", "ChatGPT AST perf mode switched", {
@@ -152,12 +305,16 @@ export class ChatGPTParser implements IParser {
         from: modeUpdate.previousMode,
         to: modeUpdate.mode,
         parse_duration_ms: parseDurationMs,
-        message_count: messages.length,
+        message_count: dedupedMessages.length,
       });
     }
 
-    this.logStats(stats, messages);
-    return messages;
+    for (const message of dedupedMessages) {
+      stats.roleDistribution[message.role] += 1;
+    }
+
+    this.logStats(stats, dedupedMessages);
+    return dedupedMessages;
   }
 
   isGenerating(): boolean {
@@ -174,11 +331,117 @@ export class ChatGPTParser implements IParser {
     return extractEarliestTimeFromSelectors(SELECTORS.sourceTimes);
   }
 
-  private collectMessageCandidates(): Element[] {
-    const combinedCandidates: Element[] = [...queryAllUnique(SELECTORS.roleAnchors)];
+  private extractUsingSelectorStrategy(perfMode: AstPerfMode): ExtractionResult {
+    const rawCandidates = this.collectSelectorCandidates();
+    const normalized = normalizeCandidateNodes(rawCandidates, {
+      minTextLength: 2,
+      noiseContainerSelectors: SELECTORS.noiseContainers,
+      noiseTextPatterns: SELECTORS.noiseTextPatterns,
+    });
+
+    let droppedUnknownRole = 0;
+    let droppedNoise = normalized.droppedNoise;
+    let degradedNodesCount = 0;
+    let astNodeCount = 0;
+    const messages: ParsedMessage[] = [];
+
+    for (const node of normalized.nodes) {
+      const parsed = this.parseMessageNode(node, perfMode);
+      if (!parsed) {
+        droppedUnknownRole += 1;
+        continue;
+      }
+
+      if (!parsed.message.textContent.trim()) {
+        droppedNoise += 1;
+        continue;
+      }
+
+      messages.push(parsed.message);
+      degradedNodesCount += parsed.degradedNodesCount;
+      astNodeCount += parsed.astNodeCount;
+    }
+
+    return {
+      source: "selector",
+      messages,
+      totalCandidates: rawCandidates.length,
+      droppedUnknownRole,
+      droppedNoise,
+      degradedNodesCount,
+      astNodeCount,
+    };
+  }
+
+  private extractUsingAnchorStrategy(perfMode: AstPerfMode): ExtractionResult {
+    const mainRoot = document.querySelector("main");
+    if (!mainRoot) {
+      return {
+        source: "anchor",
+        messages: [],
+        totalCandidates: 0,
+        droppedUnknownRole: 0,
+        droppedNoise: 0,
+        degradedNodesCount: 0,
+        astNodeCount: 0,
+      };
+    }
+
+    const rawCandidates = uniqueNodesInDocumentOrder([
+      ...queryAllWithinUnique(mainRoot, SELECTORS.userRoleAnchors),
+      ...this.collectCopyActionCandidates(mainRoot),
+    ]);
+
+    const normalized = normalizeCandidateNodes(rawCandidates, {
+      minTextLength: 2,
+      noiseContainerSelectors: SELECTORS.noiseContainers,
+      noiseTextPatterns: SELECTORS.noiseTextPatterns,
+    });
+
+    let droppedUnknownRole = 0;
+    let droppedNoise = normalized.droppedNoise;
+    let degradedNodesCount = 0;
+    let astNodeCount = 0;
+    const messages: ParsedMessage[] = [];
+
+    for (const node of normalized.nodes) {
+      const parsed = this.parseMessageNode(node, perfMode);
+      if (!parsed) {
+        droppedUnknownRole += 1;
+        continue;
+      }
+
+      if (!parsed.message.textContent.trim()) {
+        droppedNoise += 1;
+        continue;
+      }
+
+      messages.push(parsed.message);
+      degradedNodesCount += parsed.degradedNodesCount;
+      astNodeCount += parsed.astNodeCount;
+    }
+
+    return {
+      source: "anchor",
+      messages,
+      totalCandidates: rawCandidates.length,
+      droppedUnknownRole,
+      droppedNoise,
+      degradedNodesCount,
+      astNodeCount,
+    };
+  }
+
+  private collectSelectorCandidates(): Element[] {
+    const combinedCandidates: Element[] = [
+      ...queryAllUnique([...SELECTORS.userRoleAnchors, ...SELECTORS.assistantRoleAnchors]),
+    ];
 
     for (const turnNode of queryAllUnique(SELECTORS.turnBlocks)) {
-      const splitNodes = queryAllWithinUnique(turnNode, SELECTORS.roleAnchors);
+      const splitNodes = queryAllWithinUnique(turnNode, [
+        ...SELECTORS.userRoleAnchors,
+        ...SELECTORS.assistantRoleAnchors,
+      ]);
       if (splitNodes.length > 0) {
         combinedCandidates.push(...splitNodes);
         continue;
@@ -189,13 +452,70 @@ export class ChatGPTParser implements IParser {
     return uniqueNodesInDocumentOrder(combinedCandidates);
   }
 
+  private collectCopyActionCandidates(root: Element): Element[] {
+    const actionAnchors = queryAllWithinUnique(root, SELECTORS.copyActionAnchors);
+    const resolvedNodes: Element[] = [];
+
+    for (const anchor of actionAnchors) {
+      const resolved = this.resolveActionAnchorMessageNode(anchor, root);
+      if (resolved) {
+        resolvedNodes.push(resolved);
+      }
+    }
+
+    const nodesBySignature = new Map<string, Element>();
+    for (const node of uniqueNodesInDocumentOrder(resolvedNodes)) {
+      const text = this.extractSanitizedText(node, "ai");
+      if (!text) {
+        continue;
+      }
+
+      const signature = `${text.slice(0, 220)}::${text.length}`;
+      if (!nodesBySignature.has(signature)) {
+        nodesBySignature.set(signature, node);
+      }
+    }
+
+    return uniqueNodesInDocumentOrder(nodesBySignature.values());
+  }
+
+  private resolveActionAnchorMessageNode(anchor: Element, root: Element): Element | null {
+    let current: Element | null = anchor;
+
+    while (current && root.contains(current)) {
+      if (SELECTORS.noiseContainers.some((selector) => current?.matches(selector))) {
+        return null;
+      }
+
+      const text = this.extractSanitizedText(current, "ai");
+      if (text.length < 12 || text.length > 20000) {
+        current = current.parentElement;
+        continue;
+      }
+
+      if (this.hasUserMarker(current)) {
+        current = current.parentElement;
+        continue;
+      }
+
+      if (this.hasCopyAction(current)) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
   private parseMessageNode(node: Element, perfMode: AstPerfMode): ParsedNodeResult | null {
     const role = this.inferRole(node);
     if (!role) return null;
 
-    const contentEl = queryFirstWithin(node, SELECTORS.messageContent);
-    const textContent = safeTextContent(contentEl ?? node);
-    const ast = extractAstFromElement(contentEl ?? node, {
+    const contentEl = this.resolveContentElement(node, role);
+    const sanitizedContent = this.sanitizeContentElement(contentEl);
+    const textContent = this.cleanExtractedText(this.extractVisibleText(sanitizedContent));
+    const ast = extractAstFromElement(sanitizedContent, {
       platform: "ChatGPT",
       perfMode,
     });
@@ -207,66 +527,360 @@ export class ChatGPTParser implements IParser {
         contentAst: ast.root,
         contentAstVersion: ast.root ? "ast_v1" : null,
         degradedNodesCount: ast.degradedNodesCount,
-        htmlContent: contentEl ? contentEl.innerHTML : undefined,
+        htmlContent: sanitizedContent.innerHTML,
       },
       astNodeCount: ast.astNodeCount,
       degradedNodesCount: ast.degradedNodesCount,
     };
   }
 
-  private inferRole(node: Element): MessageRole | null {
-    const ownRole = this.roleFromAttribute(node.getAttribute("data-message-author-role"));
-    if (ownRole) return ownRole;
+  private resolveContentElement(node: Element, role: MessageRole): Element {
+    const preferredSelectors =
+      role === "user" ? SELECTORS.userMessageContent : SELECTORS.preferredMessageContent;
+    const preferred = queryFirstWithin(node, preferredSelectors);
+    if (preferred) {
+      return preferred;
+    }
 
-    const ownTestId = this.roleFromTestId(node.getAttribute("data-testid"));
-    if (ownTestId) return ownTestId;
+    return queryFirstWithin(node, SELECTORS.messageContent) ?? node;
+  }
 
-    const roleAncestor = node.parentElement?.closest("[data-message-author-role], [data-testid]");
-    if (roleAncestor) {
-      const ancestorRole = this.roleFromAttribute(
-        roleAncestor.getAttribute("data-message-author-role"),
-      );
-      if (ancestorRole) return ancestorRole;
+  private sanitizeContentElement(source: Element): Element {
+    const clone = source.cloneNode(true) as Element;
+    const selector = SELECTORS.removableContentSelectors.join(", ");
+    clone.querySelectorAll(selector).forEach((node) => node.remove());
+    this.normalizeCodeBlocks(clone);
+    return clone;
+  }
 
-      const ancestorTestId = this.roleFromTestId(roleAncestor.getAttribute("data-testid"));
-      if (ancestorTestId) return ancestorTestId;
+  private extractSanitizedText(node: Element, role: MessageRole): string {
+    const contentEl = this.resolveContentElement(node, role);
+    const sanitized = this.sanitizeContentElement(contentEl);
+    return this.cleanExtractedText(this.extractVisibleText(sanitized));
+  }
+
+  private normalizeCodeBlocks(root: Element): void {
+    const preBlocks = Array.from(root.querySelectorAll("pre"));
+
+    for (const preBlock of preBlocks) {
+      const contentElement = queryFirstWithin(preBlock, CODE_BLOCK_CONTENT_SELECTORS);
+      if (!contentElement) {
+        continue;
+      }
+
+      const codeText = this.extractCodeBlockText(contentElement);
+      if (!codeText.trim()) {
+        continue;
+      }
+
+      const language = this.inferCodeBlockLanguage(preBlock, contentElement);
+      const normalizedCode = document.createElement("code");
+      normalizedCode.textContent = codeText;
+
+      if (language) {
+        normalizedCode.setAttribute("data-language", language);
+        preBlock.setAttribute("data-language", language);
+      } else {
+        preBlock.removeAttribute("data-language");
+      }
+
+      preBlock.replaceChildren(normalizedCode);
+    }
+  }
+
+  private extractCodeBlockText(contentElement: Element): string {
+    const cmLines = contentElement.matches(".cm-line")
+      ? [contentElement]
+      : Array.from(contentElement.querySelectorAll(".cm-line"));
+    if (cmLines.length > 0) {
+      const joined = cmLines
+        .map((line) => collectTextWithBreaks(line).replace(/\n+$/g, ""))
+        .join("\n");
+      return normalizeCodeText(joined);
+    }
+
+    const withBreaks = collectTextWithBreaks(contentElement);
+    if (withBreaks.trim()) {
+      return normalizeCodeText(withBreaks);
+    }
+
+    if (contentElement instanceof HTMLElement) {
+      const innerText = contentElement.innerText || "";
+      if (innerText.trim()) {
+        return normalizeCodeText(innerText);
+      }
+    }
+
+    return normalizeCodeText(contentElement.textContent ?? "");
+  }
+
+  private inferCodeBlockLanguage(preBlock: Element, contentElement: Element): string | null {
+    const attrCandidates = [
+      contentElement.getAttribute("data-language"),
+      contentElement.getAttribute("data-lang"),
+      preBlock.getAttribute("data-language"),
+      preBlock.getAttribute("data-lang"),
+    ];
+
+    for (const candidate of attrCandidates) {
+      const token = normalizeLanguageToken(candidate);
+      if (token) return token;
+    }
+
+    const classCandidates = [contentElement.className?.toString() ?? "", preBlock.className?.toString() ?? ""];
+    for (const candidate of classCandidates) {
+      const language = parseLanguageFromClassName(candidate);
+      const token = normalizeLanguageToken(language);
+      if (token) return token;
+    }
+
+    const nearby = new Set<Element>();
+    for (const element of Array.from(preBlock.querySelectorAll("*"))) {
+      if (element === contentElement || contentElement.contains(element)) {
+        continue;
+      }
+      nearby.add(element);
+    }
+
+    const parent = preBlock.parentElement;
+    if (parent) {
+      for (const sibling of Array.from(parent.children)) {
+        if (sibling !== preBlock) {
+          nearby.add(sibling);
+        }
+      }
+    }
+
+    for (const element of nearby) {
+      const token = extractLanguageTextHint(element);
+      if (token) return token;
     }
 
     return null;
   }
 
+  private extractVisibleText(element: Element): string {
+    if (element instanceof HTMLElement) {
+      const innerText = (element.innerText || "").trim();
+      if (innerText) {
+        return innerText;
+      }
+    }
+    return safeTextContent(element);
+  }
+
+  private inferRole(node: Element): MessageRole | null {
+    if (this.hasConflictingExplicitMarkers(node)) {
+      return null;
+    }
+
+    const directRole = this.roleFromAttribute(node.getAttribute("data-message-author-role"));
+    if (directRole) return directRole;
+
+    const directTestIdRole = this.roleFromTestId(node.getAttribute("data-testid"));
+    if (directTestIdRole) return directTestIdRole;
+
+    const descendantRole = this.roleFromDescendants(node);
+    if (descendantRole) return descendantRole;
+
+    if (this.hasCopyAction(node) && !this.hasUserMarker(node)) {
+      return "ai";
+    }
+
+    const ancestor = node.parentElement
+      ? closestAnySelector(node.parentElement, SELECTORS.roleAncestorHints)
+      : null;
+    if (!ancestor) {
+      return null;
+    }
+
+    const ancestorRole = this.roleFromAttribute(ancestor.getAttribute("data-message-author-role"));
+    if (ancestorRole) return ancestorRole;
+
+    const ancestorTestIdRole = this.roleFromTestId(ancestor.getAttribute("data-testid"));
+    if (ancestorTestIdRole) return ancestorTestIdRole;
+
+    return this.roleFromHint(ancestor.className?.toString() ?? "");
+  }
+
   private roleFromAttribute(value: string | null): MessageRole | null {
     if (!value) return null;
     const normalized = value.toLowerCase();
-    if (normalized === "user") return "user";
-    if (normalized === "assistant") return "ai";
+    if (normalized === "user" || normalized === "human") return "user";
+    if (normalized === "assistant" || normalized === "chatgpt" || normalized === "model") {
+      return "ai";
+    }
     return null;
   }
 
   private roleFromTestId(value: string | null): MessageRole | null {
     if (!value) return null;
     const normalized = value.toLowerCase();
-    if (normalized.includes("user") || normalized.includes("human")) return "user";
+
+    if (/(^|[-_:])(user|human|prompt|query|question)([-_:]|$)/.test(normalized)) {
+      return "user";
+    }
+
+    if (/(^|[-_:])(assistant|chatgpt|model|ai|answer|reply|response)([-_:]|$)/.test(normalized)) {
+      return "ai";
+    }
+
+    return this.roleFromHint(normalized);
+  }
+
+  private roleFromHint(value: string | null): MessageRole | null {
+    if (!value) return null;
+    const normalized = value.toLowerCase();
+
+    if (/(^|[-_:])(user|human|prompt|query|question)([-_:]|$)/.test(normalized)) {
+      return "user";
+    }
+
+    if (/(^|[-_:])(assistant|chatgpt|model|ai|answer|reply|response)([-_:]|$)/.test(normalized)) {
+      return "ai";
+    }
+
+    if (
+      normalized.includes("user") ||
+      normalized.includes("human") ||
+      normalized.includes("prompt") ||
+      normalized.includes("query")
+    ) {
+      return "user";
+    }
+
     if (
       normalized.includes("assistant") ||
       normalized.includes("chatgpt") ||
-      normalized.includes("model")
+      normalized.includes("model") ||
+      normalized.includes("response")
     ) {
       return "ai";
     }
+
     return null;
+  }
+
+  private hasUserMarker(node: Element): boolean {
+    return hasAnySelector(node, SELECTORS.userRoleAnchors);
+  }
+
+  private hasAssistantMarker(node: Element): boolean {
+    return hasAnySelector(node, SELECTORS.assistantRoleAnchors);
+  }
+
+  private hasCopyAction(node: Element): boolean {
+    return hasAnySelector(node, SELECTORS.copyActionAnchors);
+  }
+
+  private hasConflictingExplicitMarkers(node: Element): boolean {
+    return this.hasUserMarker(node) && this.hasAssistantMarker(node);
+  }
+
+  private roleFromDescendants(node: Element): MessageRole | null {
+    const hasUserDescendant = this.hasUserMarker(node);
+    const hasAssistantDescendant = this.hasAssistantMarker(node);
+
+    if (hasUserDescendant && hasAssistantDescendant) return null;
+    if (hasUserDescendant) return "user";
+    if (hasAssistantDescendant) return "ai";
+    return null;
+  }
+
+  private cleanExtractedText(rawText: string): string {
+    let text = rawText.replace(/\r/g, "");
+
+    text = text
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t\f\v]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    text = text
+      .replace(/^(?:copy|edit|retry|regenerate|share|read aloud)\s+/i, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    text = text
+      .replace(
+        /(?:^|\n)\s*(?:copy|edit|retry|regenerate|share|read aloud|show more|done)\s*(?=\n|$)/gi,
+        "\n",
+      )
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    return text;
+  }
+
+  private dedupeNearDuplicates(messages: ParsedMessage[]): ParsedMessage[] {
+    const deduped: ParsedMessage[] = [];
+
+    for (const message of messages) {
+      const signature = `${message.role}|${message.textContent.replace(/\s+/g, " ").trim()}`;
+      const isDuplicate = deduped.slice(Math.max(0, deduped.length - 2)).some((existing) => {
+        const existingSignature = `${existing.role}|${existing.textContent
+          .replace(/\s+/g, " ")
+          .trim()}`;
+        return existingSignature === signature;
+      });
+
+      if (!isDuplicate) {
+        deduped.push(message);
+      }
+    }
+
+    return deduped;
+  }
+
+  private chooseBestExtraction(
+    selectorResult: ExtractionResult,
+    anchorResult: ExtractionResult,
+  ): ExtractionResult {
+    const selectorScore = this.scoreExtraction(selectorResult);
+    const anchorScore = this.scoreExtraction(anchorResult);
+
+    if (selectorScore > anchorScore) return selectorResult;
+    if (anchorScore > selectorScore) return anchorResult;
+    return selectorResult.messages.length >= anchorResult.messages.length
+      ? selectorResult
+      : anchorResult;
+  }
+
+  private scoreExtraction(result: ExtractionResult): number {
+    if (result.messages.length === 0) return 0;
+
+    const userCount = result.messages.filter((message) => message.role === "user").length;
+    const aiCount = result.messages.length - userCount;
+    const balancedPairs = Math.min(userCount, aiCount);
+
+    return balancedPairs * 8 + aiCount * 4 + userCount * 2 + result.messages.length;
   }
 
   private logStats(stats: ParserStats, messages: ParsedMessage[]): void {
     logger.info("parser", "ChatGPT parse stats", stats);
 
-    if (messages.length === 0) return;
+    if (stats.source === "anchor") {
+      logger.warn("parser", "ChatGPT parser used anchor fallback", {
+        totalCandidates: stats.totalCandidates,
+        keptMessages: stats.keptMessages,
+        roleDistribution: stats.roleDistribution,
+      });
+    }
 
-    const hasSingleRole =
-      stats.roleDistribution.user === 0 || stats.roleDistribution.ai === 0;
+    if (stats.totalCandidates > 0 && stats.keptMessages === 0) {
+      logger.warn("parser", "ChatGPT parser kept zero messages", {
+        source: stats.source,
+        totalCandidates: stats.totalCandidates,
+        droppedNoise: stats.droppedNoise,
+        droppedUnknownRole: stats.droppedUnknownRole,
+      });
+      return;
+    }
 
+    const hasSingleRole = stats.roleDistribution.user === 0 || stats.roleDistribution.ai === 0;
     if (hasSingleRole) {
       logger.warn("parser", "ChatGPT parser captured only one role", {
+        source: stats.source,
         roleDistribution: stats.roleDistribution,
         samples: messages
           .slice(0, 3)

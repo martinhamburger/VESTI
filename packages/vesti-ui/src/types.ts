@@ -226,9 +226,10 @@ export type StorageApi = {
     conversationId: number,
     limit?: number
   ) => Promise<RelatedConversation[]>;
-  getAllEdges?: (
-    threshold?: number
-  ) => Promise<Array<{ source: number; target: number; weight: number }>>;
+  getAllEdges?: (options?: {
+    threshold?: number;
+    conversationIds?: number[];
+  }) => Promise<Array<{ source: number; target: number; weight: number }>>;
   getMessages?: (conversationId: number) => Promise<Message[]>;
   updateConversation?: (
     id: number,

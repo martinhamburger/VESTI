@@ -23,6 +23,11 @@ interface CodeBlockViewProps {
   language?: string | null;
 }
 
+interface TableNodeViewProps {
+  headers: string[];
+  rows: string[][];
+}
+
 function MathNodeView({ tex, display }: MathNodeViewProps) {
   const html = useMemo(() => {
     try {
@@ -78,6 +83,40 @@ function CodeBlockView({ code, language }: CodeBlockViewProps) {
       <pre className="reader-ast-code-pre">
         <code>{code}</code>
       </pre>
+    </div>
+  );
+}
+
+function TableNodeView({ headers, rows }: TableNodeViewProps) {
+  const columnCount = Math.max(headers.length, ...rows.map((row) => row.length), 1);
+  const normalizedHeaders =
+    headers.length > 0
+      ? headers
+      : Array.from({ length: columnCount }, (_, index) => `Column ${index + 1}`);
+  const normalizedRows = rows.map((row) =>
+    Array.from({ length: normalizedHeaders.length }, (_, index) => row[index] ?? ""),
+  );
+
+  return (
+    <div className="reader-ast-table-wrap">
+      <table className="reader-ast-table">
+        <thead>
+          <tr>
+            {normalizedHeaders.map((header, index) => (
+              <th key={`header-${index}`}>{header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {normalizedRows.map((row, rowIndex) => (
+            <tr key={`row-${rowIndex}`}>
+              {row.map((cell, cellIndex) => (
+                <td key={`cell-${rowIndex}-${cellIndex}`}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -204,32 +243,8 @@ function toParagraphNode(key: string, text: string): ReactNode {
 }
 
 function renderUnsupportedAsParagraphs(node: AstNode, key: string): ReactNode {
-  if (
-    node.type === "li" ||
-    node.type === "attachment"
-  ) {
+  if (node.type === "attachment") {
     return toParagraphNode(key, astNodeToPlainText(node));
-  }
-
-  if (node.type === "ul" || node.type === "ol") {
-    return (
-      <Fragment key={key}>
-        {node.children.map((item, index) =>
-          toParagraphNode(`${key}-item-${index}`, astNodeToPlainText(item)),
-        )}
-      </Fragment>
-    );
-  }
-
-  if (node.type === "table") {
-    const lines = [node.headers.join(" | "), ...node.rows.map((row) => row.join(" | "))]
-      .map((line) => line.trim())
-      .filter(Boolean);
-    return (
-      <Fragment key={key}>
-        {lines.map((line, index) => toParagraphNode(`${key}-line-${index}`, line))}
-      </Fragment>
-    );
   }
 
   return null;
@@ -358,6 +373,32 @@ function renderNode(node: AstNode, key: string): ReactNode {
           display={Boolean(node.display)}
         />
       );
+    case "table":
+      return (
+        <TableNodeView
+          key={key}
+          headers={node.headers}
+          rows={node.rows}
+        />
+      );
+    case "ul":
+      return (
+        <ul key={key} className="reader-ast-list reader-ast-list-ul">
+          {renderNodes(node.children, key)}
+        </ul>
+      );
+    case "ol":
+      return (
+        <ol key={key} className="reader-ast-list reader-ast-list-ol">
+          {renderNodes(node.children, key)}
+        </ol>
+      );
+    case "li":
+      return (
+        <li key={key} className="reader-ast-list-item">
+          {renderNodes(node.children, key)}
+        </li>
+      );
     case "blockquote": {
       const { bodyChildren, citationChildren } = splitBlockquoteChildrenForCitation(node.children);
       return (
@@ -371,10 +412,6 @@ function renderNode(node: AstNode, key: string): ReactNode {
         </blockquote>
       );
     }
-    case "ul":
-    case "ol":
-    case "li":
-    case "table":
     case "attachment":
       return renderUnsupportedAsParagraphs(node, key);
     default: {

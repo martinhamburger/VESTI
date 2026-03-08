@@ -122,12 +122,12 @@ export async function getRelatedConversations(
 }
 
 export async function getAllEdges(
-  threshold = 0.3
+  options: { threshold?: number; conversationIds?: number[] } = {}
 ): Promise<Array<{ source: number; target: number; weight: number }>> {
   return sendRequest({
     type: "GET_ALL_EDGES",
     target: "offscreen",
-    payload: { threshold },
+    payload: options,
   }, LONG_RUNNING_TIMEOUT_MS) as Promise<Array<{ source: number; target: number; weight: number }>>;
 }
 

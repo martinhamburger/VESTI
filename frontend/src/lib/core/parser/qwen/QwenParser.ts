@@ -258,6 +258,84 @@ const INVALID_SESSION_IDS = new Set([
 const INVALID_TITLES = new Set(["qwen chat", "qwen", "download app", "qwen3-max"]);
 const MAX_TITLE_LENGTH = 120;
 const TITLE_BOUNDARY_CHARS = ["\u3002", "\uff01", "\uff1f", "!", "?", "."];
+const MONACO_CODE_WRAPPER_SELECTORS = [
+  ".qwen-markdown-code-body",
+  "[class*='markdown-code-body']",
+  "[class*='markdown-code-block']",
+  "[class*='code-block']",
+  "[class*='codeBlock']",
+  "[class*='monaco-wrapper']",
+  "figure",
+];
+const MONACO_LANGUAGE_NOISE_TOKENS = new Set([
+  "copy",
+  "copied",
+  "run",
+  "running",
+  "done",
+  "share",
+  "retry",
+  "regenerate",
+  "code",
+  "editor",
+  "monaco",
+  "plain",
+  "plaintext",
+  "text",
+]);
+const MONACO_LANGUAGE_HINT_TOKENS = new Set([
+  "python",
+  "javascript",
+  "typescript",
+  "jsx",
+  "tsx",
+  "java",
+  "go",
+  "rust",
+  "sql",
+  "html",
+  "css",
+  "scss",
+  "sass",
+  "json",
+  "yaml",
+  "yml",
+  "xml",
+  "markdown",
+  "md",
+  "bash",
+  "shell",
+  "sh",
+  "powershell",
+  "ps1",
+  "c",
+  "cpp",
+  "c++",
+  "csharp",
+  "cs",
+  "php",
+  "ruby",
+  "swift",
+  "kotlin",
+  "scala",
+  "r",
+  "lua",
+  "perl",
+  "dockerfile",
+  "makefile",
+]);
+const MONACO_LANGUAGE_EXCLUDE_SELECTORS = [
+  "button",
+  "[role='button']",
+  "pre",
+  "code",
+  ".monaco-editor",
+  ".view-lines",
+  ".view-line",
+  ".margin",
+  ".margin-view-overlays",
+  "[aria-hidden='true']",
+].join(", ");
 
 type MessageRole = "user" | "ai";
 type ExtractionSource = "selector" | "anchor";
@@ -783,6 +861,9 @@ export class QwenParser implements IParser {
       clone.querySelectorAll(selector).forEach((node) => node.remove());
     }
 
+    this.normalizeMonacoCodeBlocks(clone);
+    this.normalizeQwenMarkdownBlocks(clone);
+
     for (const selector of SELECTORS.dividerSelectors) {
       clone.querySelectorAll(selector).forEach((divider) => {
         divider.replaceWith(document.createTextNode("\n"));
@@ -790,6 +871,185 @@ export class QwenParser implements IParser {
     }
 
     return clone;
+  }
+
+  private normalizeMonacoCodeBlocks(root: Element): void {
+    const editors = Array.from(root.querySelectorAll(".monaco-editor"));
+    const processedTargets = new Set<Element>();
+
+    for (const editor of editors) {
+      const target = this.resolveMonacoCodeReplacementTarget(editor, root);
+      if (processedTargets.has(target)) {
+        continue;
+      }
+
+      const normalizedBlock = this.buildNormalizedMonacoCodeBlock(target, editor);
+      if (!normalizedBlock) {
+        continue;
+      }
+
+      processedTargets.add(target);
+      target.replaceWith(normalizedBlock);
+    }
+  }
+
+  private normalizeQwenMarkdownBlocks(root: Element): void {
+    root.querySelectorAll("div.qwen-markdown-space").forEach((node) => node.remove());
+
+    root.querySelectorAll("div.qwen-markdown-paragraph").forEach((paragraph) => {
+      const normalizedParagraph = document.createElement("p");
+
+      while (paragraph.firstChild) {
+        normalizedParagraph.appendChild(paragraph.firstChild);
+      }
+
+      paragraph.replaceWith(normalizedParagraph);
+    });
+  }
+
+  private resolveMonacoCodeReplacementTarget(editor: Element, root: Element): Element {
+    let current: Element | null = editor.parentElement;
+
+    while (current && current !== root) {
+      if (MONACO_CODE_WRAPPER_SELECTORS.some((selector) => current?.matches(selector))) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return editor;
+  }
+
+  private buildNormalizedMonacoCodeBlock(target: Element, editor: Element): HTMLElement | null {
+    const code = this.extractMonacoCodeText(editor);
+    if (!code.trim()) {
+      return null;
+    }
+
+    const language = this.inferMonacoLanguage(target, editor);
+    const pre = document.createElement("pre");
+    const codeElement = document.createElement("code");
+
+    if (language) {
+      pre.setAttribute("data-language", language);
+      codeElement.setAttribute("data-language", language);
+      codeElement.classList.add(`language-${language}`);
+    }
+
+    codeElement.textContent = code;
+    pre.appendChild(codeElement);
+    return pre;
+  }
+
+  private extractMonacoCodeText(editor: Element): string {
+    const lineNodes = Array.from(editor.querySelectorAll(".view-lines .view-line"));
+    const lines = (lineNodes.length > 0 ? lineNodes : Array.from(editor.querySelectorAll(".view-line")))
+      .map((line) => this.extractMonacoLineText(line));
+
+    if (lines.length === 0) {
+      return "";
+    }
+
+    return lines.join("\n").replace(/\r/g, "").replace(/[\u200b-\u200d\ufeff]/g, "").trimEnd();
+  }
+
+  private extractMonacoLineText(line: Element): string {
+    const raw = line instanceof HTMLElement ? line.innerText || "" : safeTextContent(line);
+    return raw.replace(/\r?\n/g, "").replace(/\u00a0/g, " ").replace(/[\u200b-\u200d\ufeff]/g, "");
+  }
+
+  private inferMonacoLanguage(target: Element, editor: Element): string | null {
+    const attrCandidates = [
+      target.getAttribute("data-language"),
+      target.getAttribute("data-lang"),
+      editor.getAttribute("data-language"),
+      editor.getAttribute("data-lang"),
+    ];
+
+    for (const candidate of attrCandidates) {
+      const token = this.normalizeMonacoLanguageToken(candidate);
+      if (token) {
+        return token;
+      }
+    }
+
+    const classCandidates = [target.className?.toString() ?? "", editor.className?.toString() ?? ""];
+    for (const candidate of classCandidates) {
+      const token = this.extractMonacoLanguageFromClassName(candidate);
+      if (token) {
+        return token;
+      }
+    }
+
+    return this.collectMonacoLanguageFromNearbyLabel(target, editor);
+  }
+
+  private extractMonacoLanguageFromClassName(value: string): string | null {
+    const classTokens = value.split(/\s+/).filter(Boolean);
+
+    for (const token of classTokens) {
+      const normalized = token.toLowerCase();
+      const explicit = normalized.match(/(?:^|[-_])(language|lang)[-_]?([a-z0-9+#.-]+)/i);
+      if (explicit?.[2]) {
+        const resolved = this.normalizeMonacoLanguageToken(explicit[2]);
+        if (resolved) {
+          return resolved;
+        }
+      }
+
+      if (MONACO_LANGUAGE_HINT_TOKENS.has(normalized)) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private collectMonacoLanguageFromNearbyLabel(target: Element, editor: Element): string | null {
+    const candidates = Array.from(target.querySelectorAll("*"));
+
+    for (const candidate of candidates) {
+      if (candidate === editor || candidate.closest(".monaco-editor") !== null) {
+        continue;
+      }
+      if (candidate.matches(MONACO_LANGUAGE_EXCLUDE_SELECTORS)) {
+        continue;
+      }
+
+      const text = (candidate.textContent ?? "").trim();
+      if (!text || text.length > 24 || /\s/.test(text)) {
+        continue;
+      }
+
+      const token = this.normalizeMonacoLanguageToken(text);
+      if (token) {
+        return token;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeMonacoLanguageToken(value: string | null | undefined): string | null {
+    if (!value) {
+      return null;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (!normalized || normalized.length > 24) {
+      return null;
+    }
+
+    const prefixed = normalized.match(/^(?:language|lang)[:_\-\s]*([a-z0-9+#.-]{1,24})$/i);
+    const token = (prefixed?.[1] ?? normalized).toLowerCase();
+
+    if (!/^[a-z0-9+#.-]{1,24}$/i.test(token)) {
+      return null;
+    }
+    if (MONACO_LANGUAGE_NOISE_TOKENS.has(token)) {
+      return null;
+    }
+    return token;
   }
 
   private extractVisibleText(element: Element): string {

@@ -33,6 +33,7 @@ import {
 import { callInference } from "./llmService";
 import { getEffectiveModelId, getLlmAccessMode } from "./llmConfig";
 import { getLlmSettings } from "./llmSettingsService";
+import { logger } from "../utils/logger";
 
 const MAX_MESSAGE_COUNT = 12;
 const MAX_TEXT_LENGTH = 4000;
@@ -1690,6 +1691,44 @@ async function getConversationText(
   return { conversation: conversation as Conversation, text };
 }
 
+type EdgeQueryOptions = {
+  threshold?: number;
+  conversationIds?: number[];
+};
+
+function normalizeConversationIds(conversationIds?: number[]): number[] {
+  if (!Array.isArray(conversationIds)) {
+    return [];
+  }
+
+  const seen = new Set<number>();
+  const normalizedIds: number[] = [];
+
+  conversationIds.forEach((value) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return;
+    const normalized = Math.floor(value);
+    if (normalized <= 0 || seen.has(normalized)) return;
+    seen.add(normalized);
+    normalizedIds.push(normalized);
+  });
+
+  return normalizedIds;
+}
+
+async function ensureVectorsForConversations(conversationIds: number[]): Promise<void> {
+  for (const conversationId of conversationIds) {
+    try {
+      const { text } = await getConversationText(conversationId);
+      await ensureVectorForConversation(conversationId, text);
+    } catch (error) {
+      logger.warn("service", "Failed to ensure vector for network conversation", {
+        conversationId,
+        error: (error as Error)?.message ?? String(error),
+      });
+    }
+  }
+}
+
 export async function ensureVectorForConversation(
   conversationId: number,
   text: string
@@ -1780,9 +1819,20 @@ export async function findRelatedConversations(
 }
 
 export async function findAllEdges(
-  threshold = 0.3
+  options: EdgeQueryOptions = {}
 ): Promise<Array<{ source: number; target: number; weight: number }>> {
-  const vectors = await db.vectors.toArray();
+  const threshold = options.threshold ?? 0.3;
+  const targetConversationIds = normalizeConversationIds(options.conversationIds);
+
+  const vectors = Array.isArray(options.conversationIds)
+    ? targetConversationIds.length === 0
+      ? []
+      : await (async () => {
+          await ensureVectorsForConversations(targetConversationIds);
+          return db.vectors.where("conversation_id").anyOf(targetConversationIds).toArray();
+        })()
+    : await db.vectors.toArray();
+
   const edges: Array<{ source: number; target: number; weight: number }> = [];
   const seen = new Set<string>();
 
