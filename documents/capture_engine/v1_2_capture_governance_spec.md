@@ -1,4 +1,4 @@
-# Vesti v1.2 Capture Governance Engineering Spec
+﻿# Vesti v1.2 Capture Governance Engineering Spec
 
 Version: v1.2  
 Status: Decision Complete (implementation baseline)  
@@ -352,9 +352,10 @@ If active tab is unsupported domain:
 
 ## 13. Cross-Document Reference
 
-- Existing legacy parser SOP remains at `documents/parser_debug_playbook.md`.
+- Existing legacy parser SOP remains at `documents/capture_engine/parser_debug_playbook_legacy.md`.
 - New governance-specific operational baseline is in:
   - `capture_debugging_playbook.md`
   - `manual_sampling_and_acceptance.md`
 
 When conflicts exist, this v1.2 spec is source of truth for capture governance behavior.
+

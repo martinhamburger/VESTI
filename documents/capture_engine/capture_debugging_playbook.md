@@ -1,4 +1,4 @@
-# Vesti Capture Debugging Playbook (v1.2/v1.3)
+﻿# Vesti Capture Debugging Playbook (v1.2/v1.3)
 
 Version: v1.0  
 Status: Operational SOP  
@@ -15,7 +15,7 @@ This playbook focuses on:
 - force-archive chain reliability
 
 Reference relationship:
-- Legacy parser-only playbook: `documents/parser_debug_playbook.md`
+- Legacy parser-only playbook: `documents/capture_engine/parser_debug_playbook_legacy.md`
 - This file is governance-aware and should be used for v1.2+ releases.
 
 ---
@@ -40,11 +40,11 @@ Collect evidence before code changes:
 ## Step 3: Root-Cause Classification
 
 Classify issue into one primary bucket:
-- `parser_miss` (漏抓)
-- `parser_noise` (误抓/污染)
-- `gate_misdecision` (拦截规则误判)
-- `transient_chain_failure` (force archive 链路失败)
-- `storage_persist_failure` (写库失败)
+- `parser_miss` (婕忔姄)
+- `parser_noise` (璇姄/姹℃煋)
+- `gate_misdecision` (鎷︽埅瑙勫垯璇垽)
+- `transient_chain_failure` (force archive 閾捐矾澶辫触)
+- `storage_persist_failure` (鍐欏簱澶辫触)
 
 ## Step 4: Minimal Fix Scope
 
@@ -218,3 +218,4 @@ File naming:
 - `YYYYMMDD-<platform>-<mode>-<issue-key>.md`
 
 This keeps debugging trace auditable for release postmortem.
+

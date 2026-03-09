@@ -1,7 +1,7 @@
-# Vesti v1.2 Data Management Engineering Spec
+﻿# Vesti v1.2 Data Management Engineering Spec
 
 Version: v1.2  
-Status: Implementation baseline (decision complete)  
+Status: Transitional canonical (implementation baseline, decision complete)  
 Scope: Sidepanel settings + storage/messaging/data layer; no backend/cloud sync work
 
 ---
@@ -282,7 +282,7 @@ Scope:
 
 Header title:
 
-- `# vesti心迹 | 思想档案导出 (Digital Dialogue Archive)`
+- `# vesti蹇冭抗 | 鎬濇兂妗ｆ瀵煎嚭 (Digital Dialogue Archive)`
 
 System metadata keys (stable, non-localized):
 
@@ -294,10 +294,10 @@ System metadata keys (stable, non-localized):
 
 Overview block:
 
-- `时间跨度 (Date Range)`
-- `收录平台 (Platforms)`
-- `对话总数 (Total Threads)`
-- `核心线索 (Key Topics): TBD` (placeholder; NLP extraction deferred)
+- `鏃堕棿璺ㄥ害 (Date Range)`
+- `鏀跺綍骞冲彴 (Platforms)`
+- `瀵硅瘽鎬绘暟 (Total Threads)`
+- `鏍稿績绾跨储 (Key Topics): TBD` (placeholder; NLP extraction deferred)
 
 Thread block format:
 
@@ -317,3 +317,4 @@ Encoding and compatibility:
 - UTF-8 required
 - Structure optimized for both human scanning and LLM key-value extraction
 - Existing summary/weekly content sections remain compatible
+

@@ -1,4 +1,4 @@
----
+﻿---
 name: vesti-parser-debugging
 description: Parser and capture-governance debugging SOP for Vesti. Use when capture issues involve role mismatch, response loss, duplicate/order problems, smart/manual interception decisions, transient force-archive failures, or release sampling evidence for v1.2/v1.3.
 ---
@@ -24,7 +24,7 @@ Use this skill when Vesti capture behavior is incorrect in parser or governance 
   - `documents/capture_engine/v1_2_capture_governance_spec.md`
   - `documents/capture_engine/capture_debugging_playbook.md`
   - `documents/capture_engine/manual_sampling_and_acceptance.md`
-- Use `documents/parser_debug_playbook.md` as legacy parser-only supplement.
+- Use `documents/capture_engine/parser_debug_playbook_legacy.md` as legacy parser-only supplement.
 
 ## Step-by-step
 
@@ -89,3 +89,4 @@ Use this skill when Vesti capture behavior is incorrect in parser or governance 
 - [ ] `VESTI_DATA_UPDATED` fires only on real successful writes
 - [ ] `FORCE_ARCHIVE_TRANSIENT` persists reliably when transient exists
 - [ ] Sampling deliverables satisfy `manual_sampling_and_acceptance.md`
+
