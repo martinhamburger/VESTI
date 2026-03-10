@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Database, Moon, Settings, Sun, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Database, Moon, Settings, Sun, X } from "lucide-react";
 import { DataManagementPanel } from "./components/DataManagementPanel";
 import { LibraryDataProvider } from "./contexts/library-data";
 import { ExploreTab } from "./tabs/explore-tab";
@@ -11,6 +11,7 @@ import type { StorageApi, UiThemeMode } from "./types";
 
 type Tab = "library" | "explore" | "network";
 type DrawerView = "settings" | "data";
+type ReturnTab = Exclude<Tab, "library">;
 type DashboardNavRequest = {
   tab?: unknown;
   requestedAt?: unknown;
@@ -57,7 +58,23 @@ export function VestiDashboard({
   );
   const [settingsAvailable, setSettingsAvailable] = useState(true);
   const [openConversationId, setOpenConversationId] = useState<number | null>(null);
+  const [returnTab, setReturnTab] = useState<ReturnTab | null>(null);
+  const [mountedTabs, setMountedTabs] = useState<Record<Tab, boolean>>(() => ({
+    library: activeTab === "library",
+    explore: activeTab === "explore",
+    network: activeTab === "network",
+  }));
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setMountedTabs((prev) => {
+      if (prev[activeTab]) return prev;
+      return {
+        ...prev,
+        [activeTab]: true,
+      };
+    });
+  }, [activeTab]);
 
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.local) return;
@@ -146,9 +163,28 @@ export function VestiDashboard({
     });
   };
 
+  const handleSelectTab = (tab: Tab) => {
+    setActiveTab(tab);
+    if (tab !== "library") {
+      setReturnTab(null);
+      setOpenConversationId(null);
+      return;
+    }
+    setReturnTab(null);
+  };
+
   const handleOpenConversation = (conversationId: number) => {
+    const originTab = activeTab === "explore" || activeTab === "network" ? activeTab : null;
+    setReturnTab(originTab);
     setActiveTab("library");
     setOpenConversationId(conversationId);
+  };
+
+  const handleReturnToSource = () => {
+    if (!returnTab) return;
+    setActiveTab(returnTab);
+    setOpenConversationId(null);
+    setReturnTab(null);
   };
 
   const openDrawer = (view: DrawerView) => {
@@ -217,10 +253,11 @@ export function VestiDashboard({
         </header>
 
         <div className="border-b border-border-subtle bg-bg-tertiary px-6">
-          <div className="flex gap-1">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex gap-1">
             <button
               type="button"
-              onClick={() => setActiveTab("library")}
+              onClick={() => handleSelectTab("library")}
               className={`relative px-4 py-2.5 text-sm font-sans font-medium transition-all ${
                 activeTab === "library"
                   ? "text-text-primary"
@@ -234,7 +271,7 @@ export function VestiDashboard({
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("explore")}
+              onClick={() => handleSelectTab("explore")}
               className={`relative px-4 py-2.5 text-sm font-sans font-medium transition-all ${
                 activeTab === "explore"
                   ? "text-text-primary"
@@ -248,7 +285,7 @@ export function VestiDashboard({
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("network")}
+              onClick={() => handleSelectTab("network")}
               className={`relative px-4 py-2.5 text-sm font-sans font-medium transition-all ${
                 activeTab === "network"
                   ? "text-text-primary"
@@ -260,31 +297,49 @@ export function VestiDashboard({
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-primary" />
               )}
             </button>
+            </div>
+
+            {activeTab === "library" && returnTab && (
+              <button
+                type="button"
+                onClick={handleReturnToSource}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-primary px-3 py-1.5 text-xs font-sans text-text-secondary transition-colors hover:bg-bg-surface-card hover:text-text-primary"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.7} />
+                {returnTab === "explore" ? "Back to Explore" : "Back to Network"}
+              </button>
+            )}
           </div>
         </div>
 
         <div className="flex-1 overflow-hidden">
-          {activeTab === "library" && (
-            <LibraryTab
-              storage={storage}
-              themeMode={themeMode}
-              openConversationId={openConversationId}
-              onConversationOpened={() => setOpenConversationId(null)}
-            />
+          {mountedTabs.library && (
+            <div className={`h-full ${activeTab === "library" ? "block" : "hidden"}`}>
+              <LibraryTab
+                storage={storage}
+                themeMode={themeMode}
+                openConversationId={openConversationId}
+                onConversationOpened={() => setOpenConversationId(null)}
+              />
+            </div>
           )}
-          {activeTab === "explore" && (
-            <ExploreTab
-              storage={storage}
-              themeMode={themeMode}
-              onOpenConversation={handleOpenConversation}
-            />
+          {mountedTabs.explore && (
+            <div className={`h-full ${activeTab === "explore" ? "block" : "hidden"}`}>
+              <ExploreTab
+                storage={storage}
+                themeMode={themeMode}
+                onOpenConversation={handleOpenConversation}
+              />
+            </div>
           )}
-          {activeTab === "network" && (
-            <NetworkTab
-              storage={storage}
-              themeMode={themeMode}
-              onSelectConversation={handleOpenConversation}
-            />
+          {mountedTabs.network && (
+            <div className={`h-full ${activeTab === "network" ? "block" : "hidden"}`}>
+              <NetworkTab
+                storage={storage}
+                themeMode={themeMode}
+                onSelectConversation={handleOpenConversation}
+              />
+            </div>
           )}
         </div>
 

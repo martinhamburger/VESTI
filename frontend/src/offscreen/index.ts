@@ -33,6 +33,7 @@ import {
   getExploreMessages,
   deleteExploreSession,
   updateExploreSession,
+  updateExploreMessageContext,
 } from "../lib/db/repository";
 import { runGardener } from "../lib/services/gardenerService";
 import {
@@ -139,7 +140,9 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
         const data = await askKnowledgeBase(
           message.payload.query,
           message.payload.sessionId,
-          message.payload.limit
+          message.payload.limit,
+          message.payload.mode,
+          message.payload.options
         );
         return { ok: true, type: messageType, data };
       }
@@ -167,6 +170,14 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
         await updateExploreSession(message.payload.sessionId, {
           title: message.payload.title,
         });
+        return { ok: true, type: messageType, data: { updated: true } };
+      }
+      case "UPDATE_EXPLORE_MESSAGE_CONTEXT": {
+        await updateExploreMessageContext(
+          message.payload.messageId,
+          message.payload.contextDraft,
+          message.payload.selectedContextConversationIds
+        );
         return { ok: true, type: messageType, data: { updated: true } };
       }
       case "GET_MESSAGES": {

@@ -1,36 +1,58 @@
+﻿
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import {
-  ArrowRight,
+  CheckSquare,
+  ChevronRight,
+  Clipboard,
+  Download,
+  FileText,
+  Filter,
   Loader2,
   MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
-  Trash2,
   Pencil,
-  X,
-  ChevronRight,
-  MoreHorizontal,
+  RotateCcw,
+  Search,
   Send,
+  Square,
+  Trash2,
+  Wrench,
+  X,
 } from "lucide-react";
 import type {
-  ExploreSession,
+  Conversation,
+  ExploreAgentPlan,
+  ExploreAskOptions,
+  ExploreContextCandidate,
   ExploreMessage,
-  RelatedConversation,
+  ExploreMode,
+  ExploreSearchScope,
+  ExploreSearchScopeMode,
+  ExploreSession,
+  ExploreToolCall,
+  ExploreToolName,
   StorageApi,
   UiThemeMode,
 } from "../types";
 
-const SEARCH_STAGES = [
-  "Understanding query...",
-  "Searching conversations...",
-  "Synthesizing answer...",
-];
+const MODE_STAGES: Record<ExploreMode, string[]> = {
+  agent: [
+    "Planning with model...",
+    "Resolving scope and route...",
+    "Collecting evidence...",
+    "Compiling context draft...",
+    "Synthesizing answer...",
+  ],
+  classic: ["Understanding query...", "Searching conversations...", "Synthesizing answer..."],
+};
 
 const sampleQuestions = [
+  "What did I do this week?",
   "What React performance optimization techniques have I discussed?",
   "Summarize all conversations about database architecture",
   "Find all discussions involving TypeScript type system",
@@ -42,22 +64,55 @@ type ExploreTabProps = {
   onOpenConversation?: (conversationId: number) => void;
 };
 
+type DrawerTab = "plan" | "tool_calls" | "sources" | "context_draft";
+type ContextSaveStatus = "idle" | "saving" | "saved" | "error";
+
+const TOOL_LABELS: Record<ExploreToolName, string> = {
+  intent_planner: "Intent Planner",
+  time_scope_resolver: "Time Scope Resolver",
+  weekly_summary_tool: "Weekly Summary Tool",
+  query_planner: "Query Planner (Legacy)",
+  search_rag: "Semantic Search",
+  summary_tool: "Summary Tool",
+  context_compiler: "Context Compiler",
+  answer_synthesizer: "Answer Synthesizer",
+};
+
+const TOOL_EXPLANATIONS: Record<ExploreToolName, string> = {
+  intent_planner:
+    "Uses the model to decide what the user is asking for, which route to run, and whether a time window is required.",
+  time_scope_resolver:
+    "Turns phrases like 'this week' into a concrete date range so the answer is auditable.",
+  weekly_summary_tool:
+    "Finds the conversations in that period, then reuses or generates a week-level digest.",
+  query_planner:
+    "Legacy fixed planning step from the earlier Explore pipeline.",
+  search_rag:
+    "Searches the knowledge base by semantic similarity to retrieve the most relevant conversations.",
+  summary_tool:
+    "Fills in missing conversation summaries so multi-source answers are easier to synthesize and inspect.",
+  context_compiler:
+    "Builds the editable context draft and source set shown in the drawer.",
+  answer_synthesizer:
+    "Produces the final answer from the collected evidence and tells the user where to inspect the result.",
+};
+
+const INTENT_LABELS: Record<ExploreAgentPlan["intent"], string> = {
+  fact_lookup: "Fact Lookup",
+  cross_conversation_summary: "Cross-Conversation Summary",
+  weekly_review: "Weekly Review",
+  timeline: "Timeline",
+  clarification_needed: "Clarification Needed",
+};
+
+const PATH_LABELS: Record<ExploreAgentPlan["preferredPath"], string> = {
+  rag: "Semantic Search",
+  weekly_summary: "Weekly Summary",
+  clarify: "Clarify First",
+};
+
 function generateId(): string {
-  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
-function formatTimeAgo(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString();
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function groupSessionsByTime(sessions: ExploreSession[]): {
@@ -88,46 +143,150 @@ function groupSessionsByTime(sessions: ExploreSession[]): {
   );
 }
 
+function summarizeToolCalls(toolCalls: ExploreToolCall[]): string {
+  if (!toolCalls.length) return "No tool calls";
+  const failed = toolCalls.filter((toolCall) => toolCall.status === "failed").length;
+  const totalMs = toolCalls.reduce((sum, toolCall) => sum + (toolCall.durationMs || 0), 0);
+  if (failed > 0) {
+    return `${toolCalls.length} steps · ${failed} failed · ${(totalMs / 1000).toFixed(1)}s`;
+  }
+  return `${toolCalls.length} steps · ${(totalMs / 1000).toFixed(1)}s`;
+}
+
+function buildSearchScope(
+  mode: ExploreSearchScopeMode,
+  conversationIds: number[]
+): ExploreSearchScope {
+  if (mode === "selected" && conversationIds.length > 0) {
+    return {
+      mode: "selected",
+      conversationIds,
+    };
+  }
+
+  return { mode: "all" };
+}
+
+function getSearchScopeSummary(searchScope?: ExploreSearchScope): string {
+  if (searchScope?.mode === "selected") {
+    const count = searchScope.conversationIds?.length ?? 0;
+    return count > 0 ? `${count} selected` : "Selected";
+  }
+  return "All conversations";
+}
+
+function getIntentLabel(plan?: ExploreAgentPlan): string {
+  if (!plan) return "Unknown";
+  return INTENT_LABELS[plan.intent];
+}
+
+function getPathLabel(plan?: ExploreAgentPlan): string {
+  if (!plan) return "Unknown";
+  return PATH_LABELS[plan.preferredPath];
+}
+
+function getResolvedTimeScopeLabel(plan?: ExploreAgentPlan): string | null {
+  if (plan?.resolvedTimeScope) {
+    return `${plan.resolvedTimeScope.label} (${plan.resolvedTimeScope.startDate} to ${plan.resolvedTimeScope.endDate})`;
+  }
+  if (plan?.requestedTimeScope?.label) {
+    return plan.requestedTimeScope.label;
+  }
+  if (
+    plan?.requestedTimeScope?.preset &&
+    plan.requestedTimeScope.preset !== "none"
+  ) {
+    return plan.requestedTimeScope.preset.replaceAll("_", " ");
+  }
+  return null;
+}
+
+function isTimeScopedPlan(plan?: ExploreAgentPlan): boolean {
+  return plan?.preferredPath === "weekly_summary";
+}
+
+function getSourceBadgeLabel(
+  candidateOrSource: Pick<ExploreContextCandidate, "similarity" | "matchType">,
+  plan?: ExploreAgentPlan
+): string {
+  if (candidateOrSource.matchType === "time_scope" || isTimeScopedPlan(plan)) {
+    return "In range";
+  }
+  return `${candidateOrSource.similarity}%`;
+}
+
+function triggerTxtDownload(content: string, filename: string): void {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function ExploreTab({
   storage,
   themeMode = "light",
   onOpenConversation,
 }: ExploreTabProps) {
-  // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mode, setMode] = useState<ExploreMode>("agent");
   const [sessions, setSessions] = useState<ExploreSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
 
-  // Current session state
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ExploreMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
-  // Ref to track if we just created this session (to avoid double loading)
   const justCreatedSessionRef = useRef<string | null>(null);
 
-  // Input state
   const [inputValue, setInputValue] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRegeneratingSources, setIsRegeneratingSources] = useState(false);
   const [searchStageIndex, setSearchStageIndex] = useState(0);
+  const [submitMode, setSubmitMode] = useState<ExploreMode>("agent");
+  const [searchScopeMode, setSearchScopeMode] = useState<ExploreSearchScopeMode>("all");
+  const [selectedScopeConversationIds, setSelectedScopeConversationIds] = useState<number[]>([]);
+  const [scopeChooserOpen, setScopeChooserOpen] = useState(false);
+  const [scopeSearchQuery, setScopeSearchQuery] = useState("");
+  const [scopeResults, setScopeResults] = useState<Conversation[]>([]);
+  const [scopeLoading, setScopeLoading] = useState(false);
+  const [scopeError, setScopeError] = useState<string | null>(null);
 
-  // UI state
   const [error, setError] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<ExploreSession | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  const [drawerMessageId, setDrawerMessageId] = useState<string | null>(null);
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("tool_calls");
+  const [contextDraft, setContextDraft] = useState("");
+  const [selectedContextConversationIds, setSelectedContextConversationIds] = useState<
+    number[]
+  >([]);
+  const [contextSaveStatus, setContextSaveStatus] = useState<ContextSaveStatus>("idle");
+  const [drawerNotice, setDrawerNotice] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // Load sessions on mount
+  const groupedSessions = useMemo(() => groupSessionsByTime(sessions), [sessions]);
+  const activeSearchScope = useMemo(
+    () => buildSearchScope(searchScopeMode, selectedScopeConversationIds),
+    [searchScopeMode, selectedScopeConversationIds]
+  );
+  const currentSession = sessions.find((session) => session.id === currentSessionId);
+  const drawerMessage = messages.find((message) => message.id === drawerMessageId) ?? null;
+  const drawerPlan = drawerMessage?.agentMeta?.plan;
+  const drawerCandidates = drawerMessage?.agentMeta?.contextCandidates ?? [];
+  const drawerToolCalls = drawerMessage?.agentMeta?.toolCalls ?? [];
+
   useEffect(() => {
     loadSessions();
   }, []);
 
-  // Load messages when session changes
   useEffect(() => {
     if (currentSessionId) {
-      // Skip loading if we just created this session (messages already in state)
       if (justCreatedSessionRef.current === currentSessionId) {
         justCreatedSessionRef.current = null;
         return;
@@ -138,14 +297,12 @@ export function ExploreTab({
     }
   }, [currentSessionId]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  // Focus rename input
   useEffect(() => {
     if (renameTarget && renameInputRef.current) {
       renameInputRef.current.focus();
@@ -153,17 +310,49 @@ export function ExploreTab({
     }
   }, [renameTarget]);
 
-  // Loading animation
   useEffect(() => {
     if (!isSubmitting) {
       setSearchStageIndex(0);
       return;
     }
+    const stages = MODE_STAGES[submitMode];
     const timer = setInterval(() => {
-      setSearchStageIndex((prev) => (prev + 1) % SEARCH_STAGES.length);
+      setSearchStageIndex((prev) => (prev + 1) % stages.length);
     }, 900);
     return () => clearInterval(timer);
-  }, [isSubmitting]);
+  }, [isSubmitting, submitMode]);
+
+  useEffect(() => {
+    if (!scopeChooserOpen) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setScopeLoading(true);
+        setScopeError(null);
+        try {
+          const data = await storage.getConversations({
+            search: scopeSearchQuery.trim() || undefined,
+          });
+          if (cancelled) return;
+          setScopeResults(data.slice(0, 80));
+        } catch (err) {
+          if (cancelled) return;
+          console.error("[Explore] Failed to load scope conversations:", err);
+          setScopeError((err as Error)?.message ?? "Failed to load conversations.");
+        } finally {
+          if (!cancelled) {
+            setScopeLoading(false);
+          }
+        }
+      })();
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [scopeChooserOpen, scopeSearchQuery, storage]);
 
   const loadSessions = async () => {
     if (!storage.listExploreSessions) return;
@@ -191,11 +380,70 @@ export function ExploreTab({
     }
   };
 
+  const toggleScopeConversation = (conversationId: number) => {
+    setSelectedScopeConversationIds((prev) => {
+      if (prev.includes(conversationId)) {
+        return prev.filter((id) => id !== conversationId);
+      }
+      return [...prev, conversationId];
+    });
+  };
+
+  const applySelectedScope = () => {
+    if (selectedScopeConversationIds.length > 0) {
+      setSearchScopeMode("selected");
+    } else {
+      setSearchScopeMode("all");
+    }
+    setScopeChooserOpen(false);
+  };
+
+  const resetSearchScope = () => {
+    setSearchScopeMode("all");
+    setSelectedScopeConversationIds([]);
+    setScopeChooserOpen(false);
+  };
+
+  const getAssistantQuery = (message: ExploreMessage): string => {
+    const agentQuery = message.agentMeta?.query?.trim();
+    if (agentQuery) {
+      return agentQuery;
+    }
+
+    const index = messages.findIndex((item) => item.id === message.id);
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      const candidate = messages[cursor];
+      if (candidate.role === "user" && candidate.content.trim()) {
+        return candidate.content.trim();
+      }
+    }
+
+    return "";
+  };
+
   const handleNewChat = () => {
     setCurrentSessionId(null);
     setMessages([]);
     setInputValue("");
     setError(null);
+    setDrawerMessageId(null);
+    setDrawerNotice(null);
+  };
+
+  const openDrawer = (message: ExploreMessage, tab: DrawerTab) => {
+    setDrawerMessageId(message.id);
+    setDrawerTab(tab);
+    setDrawerNotice(null);
+    setContextSaveStatus("idle");
+    const nextDraft = message.agentMeta?.contextDraft ?? "";
+    const candidates = message.agentMeta?.contextCandidates ?? [];
+    const selectedFromMessage = message.agentMeta?.selectedContextConversationIds ?? [];
+    const selected =
+      selectedFromMessage.length > 0
+        ? selectedFromMessage
+        : candidates.map((candidate) => candidate.conversationId);
+    setContextDraft(nextDraft);
+    setSelectedContextConversationIds(selected);
   };
 
   const handleSubmit = async () => {
@@ -207,10 +455,23 @@ export function ExploreTab({
       return;
     }
 
+    if (searchScopeMode === "selected" && selectedScopeConversationIds.length === 0) {
+      setError("Choose at least one conversation before using Selected scope.");
+      setScopeChooserOpen(true);
+      return;
+    }
+
+    setSubmitMode(mode);
     setIsSubmitting(true);
     setError(null);
+    const requestOptions: ExploreAskOptions = {
+      searchScope: activeSearchScope,
+    };
+    const requestLimit =
+      activeSearchScope.mode === "selected"
+        ? Math.max(5, activeSearchScope.conversationIds?.length ?? 0)
+        : 5;
 
-    // Optimistically add user message
     const optimisticUserMessage: ExploreMessage = {
       id: generateId(),
       sessionId: currentSessionId || "temp",
@@ -222,47 +483,47 @@ export function ExploreTab({
     setInputValue("");
 
     try {
-      const result = await storage.askKnowledgeBase(trimmed, currentSessionId || undefined, 5);
+      const result = await storage.askKnowledgeBase(
+        trimmed,
+        currentSessionId || undefined,
+        requestLimit,
+        mode,
+        requestOptions
+      );
 
-      // If this was a new session, update currentSessionId and mark as just created
       if (!currentSessionId) {
         justCreatedSessionRef.current = result.sessionId;
         setCurrentSessionId(result.sessionId);
-        await loadSessions();
       }
 
-      // Add AI response (for new session, this sets initial messages; for existing, appends)
       const aiMessage: ExploreMessage = {
         id: generateId(),
         sessionId: result.sessionId,
         role: "assistant",
         content: result.answer,
         sources: result.sources,
+        agentMeta: result.agent,
         timestamp: Date.now(),
       };
-      
+
       if (!currentSessionId) {
-        // New session: set both messages (avoid useEffect loading)
         setMessages([optimisticUserMessage, aiMessage]);
       } else {
-        // Existing session: append AI message
         setMessages((prev) => [...prev, aiMessage]);
       }
 
-      // Update sessions list to reflect new preview
       await loadSessions();
     } catch (err) {
       console.error("[Explore] Submit error:", err);
       setError((err as Error)?.message ?? "Failed to retrieve answer.");
-      // Remove optimistic message on error
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMessage.id));
+      setMessages((prev) => prev.filter((message) => message.id !== optimisticUserMessage.id));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteSession = async (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
     if (!storage.deleteExploreSession) return;
     if (!confirm("Delete this conversation?")) return;
 
@@ -277,8 +538,8 @@ export function ExploreTab({
     }
   };
 
-  const handleStartRename = (session: ExploreSession, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleStartRename = (session: ExploreSession, event: React.MouseEvent) => {
+    event.stopPropagation();
     setRenameTarget(session);
     setRenameValue(session.title);
   };
@@ -300,15 +561,151 @@ export function ExploreTab({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
       handleSubmit();
     }
   };
 
-  const groupedSessions = useMemo(() => groupSessionsByTime(sessions), [sessions]);
-  const currentSession = sessions.find((s) => s.id === currentSessionId);
+  const toggleContextSelection = (conversationId: number) => {
+    setSelectedContextConversationIds((prev) => {
+      if (prev.includes(conversationId)) {
+        return prev.filter((id) => id !== conversationId);
+      }
+      return [...prev, conversationId];
+    });
+  };
+
+  const handleSaveContextDraft = async () => {
+    if (!drawerMessage) return;
+    const agentMeta = drawerMessage.agentMeta;
+    if (!agentMeta) return;
+
+    const normalizedIds = selectedContextConversationIds.filter((id) =>
+      drawerCandidates.some((candidate) => candidate.conversationId === id)
+    );
+
+    setContextSaveStatus("saving");
+    setDrawerNotice(null);
+    try {
+      if (storage.updateExploreMessageContext) {
+        await storage.updateExploreMessageContext(
+          drawerMessage.id,
+          contextDraft,
+          normalizedIds
+        );
+      }
+
+      setMessages((prev) =>
+        prev.map((message) => {
+          if (message.id !== drawerMessage.id) return message;
+          return {
+            ...message,
+            agentMeta: {
+              ...agentMeta,
+              contextDraft,
+              selectedContextConversationIds: normalizedIds,
+            },
+          };
+        })
+      );
+
+      setContextSaveStatus("saved");
+      setDrawerNotice(
+        storage.updateExploreMessageContext
+          ? "Context draft saved."
+          : "Saved locally for this view (storage adapter unavailable)."
+      );
+    } catch (err) {
+      console.error("[Explore] Failed to save context draft:", err);
+      setContextSaveStatus("error");
+      setDrawerNotice((err as Error)?.message ?? "Failed to save context draft.");
+    }
+  };
+
+  const handleCopyContextDraft = async () => {
+    if (!contextDraft.trim()) return;
+    try {
+      await navigator.clipboard.writeText(contextDraft);
+      setDrawerNotice("Copied to clipboard.");
+    } catch {
+      setDrawerNotice("Clipboard is unavailable in this environment.");
+    }
+  };
+
+  const handleDownloadContextDraft = () => {
+    if (!contextDraft.trim()) return;
+    const filename = `explore-context-${Date.now()}.txt`;
+    triggerTxtDownload(contextDraft, filename);
+    setDrawerNotice(`Downloaded ${filename}.`);
+  };
+
+  const handleStartChatWithContext = () => {
+    handleNewChat();
+    setInputValue(contextDraft);
+    setDrawerNotice(null);
+    textareaRef.current?.focus();
+  };
+
+  const handleRegenerateWithSelectedSources = async () => {
+    if (!drawerMessage || !currentSessionId || !storage.askKnowledgeBase) return;
+
+    const normalizedIds = selectedContextConversationIds.filter((id) =>
+      drawerCandidates.some((candidate) => candidate.conversationId === id)
+    );
+
+    if (normalizedIds.length === 0) {
+      setDrawerNotice("Select at least one source before regenerating.");
+      return;
+    }
+
+    const query = getAssistantQuery(drawerMessage);
+    if (!query) {
+      setDrawerNotice("Could not determine the query for this answer.");
+      return;
+    }
+
+    setIsRegeneratingSources(true);
+    setDrawerNotice(null);
+
+    try {
+      if (storage.updateExploreMessageContext) {
+        await storage.updateExploreMessageContext(
+          drawerMessage.id,
+          contextDraft,
+          normalizedIds
+        );
+      }
+
+      await storage.askKnowledgeBase(
+        query,
+        currentSessionId,
+        Math.max(normalizedIds.length, 1),
+        "agent",
+        {
+          searchScope: {
+            mode: "selected",
+            conversationIds: normalizedIds,
+          },
+        }
+      );
+
+      setDrawerMessageId(null);
+      await loadMessages(currentSessionId);
+      await loadSessions();
+      setDrawerNotice(
+        `Regenerated as a new turn using ${normalizedIds.length} selected source${
+          normalizedIds.length === 1 ? "" : "s"
+        }.`
+      );
+    } catch (err) {
+      console.error("[Explore] Failed to regenerate from selected sources:", err);
+      setDrawerNotice((err as Error)?.message ?? "Failed to regenerate answer.");
+    } finally {
+      setIsRegeneratingSources(false);
+    }
+  };
 
   const renderSessionItem = (session: ExploreSession) => {
     const isActive = session.id === currentSessionId;
@@ -318,37 +715,30 @@ export function ExploreTab({
       <div
         key={session.id}
         onClick={() => setCurrentSessionId(session.id)}
-        className={`group relative flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all ${
-          isActive
-            ? "bg-bg-surface-card-active"
-            : "hover:bg-bg-surface-card"
+        className={`group relative flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
+          isActive ? "bg-bg-surface-card-active" : "cursor-pointer hover:bg-bg-surface-card"
         }`}
       >
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           {isRenaming ? (
-            <div
-              className="flex items-center gap-2"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
               <input
                 ref={renameInputRef}
                 type="text"
                 value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSubmitRename();
-                  if (e.key === "Escape") setRenameTarget(null);
+                onChange={(event) => setRenameValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") handleSubmitRename();
+                  if (event.key === "Escape") setRenameTarget(null);
                 }}
                 onBlur={handleSubmitRename}
-                className="flex-1 px-2 py-1 text-sm font-sans text-text-primary bg-bg-primary rounded border border-border-default focus:outline-none focus:border-accent-primary"
+                className="flex-1 rounded border border-border-default bg-bg-primary px-2 py-1 text-sm font-sans text-text-primary focus:border-accent-primary focus:outline-none"
               />
             </div>
           ) : (
             <>
-              <p className="text-sm font-sans text-text-primary truncate">
-                {session.title || "Untitled"}
-              </p>
-              <p className="text-xs font-sans text-text-tertiary truncate">
+              <p className="truncate text-sm font-sans text-text-primary">{session.title || "Untitled"}</p>
+              <p className="truncate text-xs font-sans text-text-tertiary">
                 {session.preview || "No messages"}
               </p>
             </>
@@ -356,20 +746,20 @@ export function ExploreTab({
         </div>
 
         {!isRenaming && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
-              onClick={(e) => handleStartRename(session, e)}
-              className="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-card"
+              onClick={(event) => handleStartRename(session, event)}
+              className="rounded p-1 text-text-tertiary hover:bg-bg-surface-card hover:text-text-primary"
               title="Rename"
             >
-              <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
             </button>
             <button
-              onClick={(e) => handleDeleteSession(session.id, e)}
-              className="p-1 rounded text-text-tertiary hover:text-[#B42318] hover:bg-bg-surface-card"
+              onClick={(event) => handleDeleteSession(session.id, event)}
+              className="rounded p-1 text-text-tertiary hover:bg-bg-surface-card hover:text-[#B42318]"
               title="Delete"
             >
-              <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
             </button>
           </div>
         )}
@@ -377,111 +767,219 @@ export function ExploreTab({
     );
   };
 
-  const renderMessage = useCallback((message: ExploreMessage) => {
-    const isUser = message.role === "user";
-    const html = isUser
-      ? null
-      : DOMPurify.sanitize(marked.parse(message.content, { gfm: true, breaks: false }) as string);
-
-    // AI 消息始终显示 Sources 区域（即使没有结果）
-    const hasSources = message.sources && message.sources.length > 0;
+  const renderToolCallItem = (toolCall: ExploreToolCall, index: number) => {
+    const statusTone =
+      toolCall.status === "failed"
+        ? "text-danger"
+        : toolCall.status === "completed"
+          ? "text-success"
+          : "text-text-tertiary";
+    const description = toolCall.description || TOOL_EXPLANATIONS[toolCall.name];
 
     return (
-      <div
-        key={message.id}
-        className={`py-4 ${isUser ? "bg-bg-tertiary/50" : ""}`}
-      >
-        <div className="max-w-3xl mx-auto px-4">
-          <div className="flex gap-4">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                isUser
-                  ? "bg-accent-primary text-white"
-                  : "bg-bg-surface-card border border-border-subtle"
-              }`}
-            >
-              {isUser ? (
-                <span className="text-sm font-sans font-medium">U</span>
-              ) : (
-                <span className="text-sm">✦</span>
-              )}
-            </div>
+      <div key={toolCall.id} className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
+        <div className="mb-1 flex items-center justify-between">
+          <p className="text-[13px] font-medium text-text-primary">
+            {index + 1}. {TOOL_LABELS[toolCall.name]}
+          </p>
+          <span className={`text-[11px] font-sans uppercase ${statusTone}`}>
+            {toolCall.status}
+          </span>
+        </div>
+        <p className="mb-2 text-[11px] font-sans text-text-tertiary">
+          {(toolCall.durationMs / 1000).toFixed(2)}s
+        </p>
+        {description && (
+          <p className="mb-2 text-xs font-sans text-text-secondary">{description}</p>
+        )}
+        {toolCall.inputSummary && (
+          <p className="mb-1 text-xs font-sans text-text-secondary">
+            <span className="font-medium text-text-primary">Input:</span> {toolCall.inputSummary}
+          </p>
+        )}
+        {toolCall.outputSummary && (
+          <p className="text-xs font-sans text-text-secondary">
+            <span className="font-medium text-text-primary">Output:</span> {toolCall.outputSummary}
+          </p>
+        )}
+        {toolCall.error && (
+          <p className="mt-1 text-xs font-sans text-danger">
+            <span className="font-medium">Error:</span> {toolCall.error}
+          </p>
+        )}
+      </div>
+    );
+  };
 
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-sans text-text-tertiary mb-1">
-                {isUser ? "You" : "Vesti"}
-              </p>
+  const renderMessage = useCallback(
+    (message: ExploreMessage) => {
+      const isUser = message.role === "user";
+      const html = isUser
+        ? null
+        : DOMPurify.sanitize(marked.parse(message.content, { gfm: true, breaks: false }) as string);
 
-              {isUser ? (
-                <p className="text-base font-sans text-text-primary whitespace-pre-wrap">
-                  {message.content}
-                </p>
-              ) : (
-                <div
-                  className="prose prose-slate max-w-none prose-p:text-text-primary prose-li:text-text-primary prose-p:leading-relaxed prose-li:leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: html || "" }}
-                />
-              )}
+      const hasSources = message.sources && message.sources.length > 0;
+      const toolCalls = message.agentMeta?.toolCalls ?? [];
+      const hasToolCalls = message.agentMeta?.mode === "agent" && toolCalls.length > 0;
+      const scopeSummary = getSearchScopeSummary(message.agentMeta?.searchScope);
+      const plan = message.agentMeta?.plan;
+      const timeScopeLabel = getResolvedTimeScopeLabel(plan);
 
-              {!isUser && (
-                <div className="mt-4 pt-4 border-t border-border-subtle">
-                  <p className="text-[11px] font-sans text-text-tertiary uppercase tracking-wider mb-2">
-                    Sources
+      return (
+        <div key={message.id} className={`py-4 ${isUser ? "bg-bg-tertiary/50" : ""}`}>
+          <div className="mx-auto max-w-3xl px-4">
+            <div className="flex gap-4">
+              <div
+                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
+                  isUser
+                    ? "bg-accent-primary text-white"
+                    : "border border-border-subtle bg-bg-surface-card"
+                }`}
+              >
+                {isUser ? (
+                  <span className="text-sm font-sans font-medium">U</span>
+                ) : (
+                  <span className="text-sm">V</span>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="mb-1 text-xs font-sans text-text-tertiary">{isUser ? "You" : "Vesti"}</p>
+
+                {isUser ? (
+                  <p className="whitespace-pre-wrap text-base font-sans text-text-primary">
+                    {message.content}
                   </p>
-                  {hasSources ? (
-                    <div className="flex flex-wrap gap-2">
-                      {message.sources!.map((source) => (
+                ) : (
+                  <div
+                    className="prose prose-slate max-w-none prose-p:leading-relaxed prose-p:text-text-primary prose-li:leading-relaxed prose-li:text-text-primary"
+                    dangerouslySetInnerHTML={{ __html: html || "" }}
+                  />
+                )}
+
+                {!isUser && hasToolCalls && (
+                  <div className="mt-3 rounded-lg border border-border-subtle bg-bg-surface-card px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-3">
+                        {plan && (
+                          <button
+                            onClick={() => openDrawer(message, "plan")}
+                            className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
+                          >
+                            <FileText className="h-3.5 w-3.5" strokeWidth={1.75} />
+                            Plan
+                          </button>
+                        )}
                         <button
-                          key={source.id}
-                          onClick={() => onOpenConversation?.(source.id)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bg-surface-card hover:bg-bg-surface-card-hover text-xs font-sans text-text-secondary transition-colors"
+                          onClick={() => openDrawer(message, "tool_calls")}
+                          className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
                         >
-                          <span className="truncate max-w-[120px]">
-                            {source.title}
-                          </span>
-                          <span className="text-accent-primary">
-                            {source.similarity}%
-                          </span>
+                          <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Tool Calls
                         </button>
-                      ))}
+                      </div>
+                      <p className="text-xs font-sans text-text-tertiary">
+                        {summarizeToolCalls(toolCalls)}
+                      </p>
                     </div>
-                  ) : (
-                    <p className="text-xs font-sans text-text-tertiary italic">
-                      No relevant conversations found
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      {plan && (
+                        <>
+                          <p className="text-[11px] font-sans text-text-tertiary">
+                            Intent: {getIntentLabel(plan)}
+                          </p>
+                          <p className="text-[11px] font-sans text-text-tertiary">
+                            Route: {getPathLabel(plan)}
+                          </p>
+                        </>
+                      )}
+                      {timeScopeLabel && (
+                        <p className="text-[11px] font-sans text-text-tertiary">
+                          Time: {timeScopeLabel}
+                        </p>
+                      )}
+                      <p className="text-[11px] font-sans text-text-tertiary">
+                        Scope: {scopeSummary}
+                      </p>
+                      <button
+                        onClick={() => openDrawer(message, "sources")}
+                        className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
+                      >
+                        <Filter className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Source Controls
+                      </button>
+                    </div>
+                    {message.agentMeta?.contextDraft && (
+                      <button
+                        onClick={() => openDrawer(message, "context_draft")}
+                        className="mt-2 inline-flex items-center gap-1.5 text-xs font-sans text-accent-primary hover:text-accent-primary/80"
+                      >
+                        <FileText className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Open Context Draft
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {!isUser && (
+                  <div className="mt-4 border-t border-border-subtle pt-4">
+                    <p className="mb-2 text-[11px] font-sans uppercase tracking-wider text-text-tertiary">
+                      Sources
                     </p>
-                  )}
-                </div>
-              )}
+                    {hasSources ? (
+                      <div className="flex flex-wrap gap-2">
+                        {message.sources!.map((source) => (
+                          <button
+                            key={source.id}
+                            onClick={() => onOpenConversation?.(source.id)}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-bg-surface-card px-2.5 py-1 text-xs font-sans text-text-secondary transition-colors hover:bg-bg-surface-card-hover"
+                          >
+                            <span className="max-w-[120px] truncate">{source.title}</span>
+                            <span className="text-accent-primary">
+                              {getSourceBadgeLabel(source, plan)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs font-sans italic text-text-tertiary">
+                        No relevant conversations found
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    );
-  }, [onOpenConversation]);
+      );
+    },
+    [onOpenConversation]
+  );
 
   const renderEmptyState = () => (
-    <div className="flex-1 flex items-center justify-center p-8">
+    <div className="flex flex-1 items-center justify-center p-8">
       <div className="w-full max-w-2xl text-center">
-        <h1 className="text-[32px] font-serif font-normal text-text-primary mb-4">
+        <h1 className="mb-4 text-[32px] font-serif font-normal text-text-primary">
           What do you want to explore?
         </h1>
-        <p className="text-text-secondary font-sans mb-8">
+        <p className="mb-8 font-sans text-text-secondary">
           Ask questions about your conversation history
         </p>
 
-        <div className="space-y-3 text-left max-w-lg mx-auto">
-          {sampleQuestions.map((q) => (
+        <div className="mx-auto max-w-lg space-y-3 text-left">
+          {sampleQuestions.map((question) => (
             <button
-              key={q}
+              key={question}
               onClick={() => {
-                setInputValue(q);
+                setInputValue(question);
                 textareaRef.current?.focus();
               }}
-              className="w-full text-left px-4 py-3 rounded-lg bg-bg-surface-card hover:bg-bg-surface-card-hover text-[14px] font-sans text-text-secondary hover:text-text-primary transition-all"
+              className="w-full rounded-lg bg-bg-surface-card px-4 py-3 text-left text-[14px] font-sans text-text-secondary transition-all hover:bg-bg-surface-card-hover hover:text-text-primary"
             >
               <div className="flex items-center gap-2">
-                <ChevronRight className="w-4 h-4 text-accent-primary" />
-                {q}
+                <ChevronRight className="h-4 w-4 text-accent-primary" />
+                {question}
               </div>
             </button>
           ))}
@@ -491,54 +989,49 @@ export function ExploreTab({
   );
 
   return (
-    <div className="h-full flex">
-      {/* Sidebar */}
+    <div className="relative flex h-full">
       <div
         className={`border-r border-border-subtle bg-bg-tertiary transition-all duration-200 ${
           sidebarOpen ? "w-64" : "w-0 overflow-hidden"
         }`}
       >
-        <div className="h-full flex flex-col">
-          {/* Sidebar Header */}
-          <div className="p-3 border-b border-border-subtle">
+        <div className="flex h-full flex-col">
+          <div className="border-b border-border-subtle p-3">
             <button
               onClick={handleNewChat}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 transition-colors ${
                 themeMode === "dark"
                   ? "bg-bg-secondary text-text-primary hover:bg-bg-surface-card-hover"
                   : "bg-accent-primary text-white hover:bg-accent-primary/90"
               }`}
             >
-              <MessageSquarePlus className="w-4 h-4" strokeWidth={1.5} />
+              <MessageSquarePlus className="h-4 w-4" strokeWidth={1.5} />
               <span className="text-sm font-sans font-medium">New Chat</span>
             </button>
           </div>
 
-          {/* Sessions List */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-4">
+          <div className="flex-1 space-y-4 overflow-y-auto p-2">
             {sessionsLoading ? (
-              <div className="text-center py-4">
-                <Loader2 className="w-5 h-5 animate-spin text-accent-primary mx-auto" />
+              <div className="py-4 text-center">
+                <Loader2 className="mx-auto h-5 w-5 animate-spin text-accent-primary" />
               </div>
             ) : sessions.length === 0 ? (
-              <div className="text-center py-4 text-xs font-sans text-text-tertiary">
+              <div className="py-4 text-center text-xs font-sans text-text-tertiary">
                 No conversations yet
               </div>
             ) : (
               <>
                 {groupedSessions.today.length > 0 && (
                   <div>
-                    <p className="px-3 py-1 text-[10px] font-sans text-text-tertiary uppercase tracking-wider">
+                    <p className="px-3 py-1 text-[10px] font-sans uppercase tracking-wider text-text-tertiary">
                       Today
                     </p>
-                    <div className="space-y-0.5">
-                      {groupedSessions.today.map(renderSessionItem)}
-                    </div>
+                    <div className="space-y-0.5">{groupedSessions.today.map(renderSessionItem)}</div>
                   </div>
                 )}
                 {groupedSessions.yesterday.length > 0 && (
                   <div>
-                    <p className="px-3 py-1 text-[10px] font-sans text-text-tertiary uppercase tracking-wider">
+                    <p className="px-3 py-1 text-[10px] font-sans uppercase tracking-wider text-text-tertiary">
                       Yesterday
                     </p>
                     <div className="space-y-0.5">
@@ -548,12 +1041,10 @@ export function ExploreTab({
                 )}
                 {groupedSessions.earlier.length > 0 && (
                   <div>
-                    <p className="px-3 py-1 text-[10px] font-sans text-text-tertiary uppercase tracking-wider">
+                    <p className="px-3 py-1 text-[10px] font-sans uppercase tracking-wider text-text-tertiary">
                       Earlier
                     </p>
-                    <div className="space-y-0.5">
-                      {groupedSessions.earlier.map(renderSessionItem)}
-                    </div>
+                    <div className="space-y-0.5">{groupedSessions.earlier.map(renderSessionItem)}</div>
                   </div>
                 )}
               </>
@@ -562,34 +1053,89 @@ export function ExploreTab({
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-bg-primary min-w-0">
-        {/* Header */}
-        <div className="h-12 border-b border-border-subtle flex items-center justify-between px-4">
+      <div className={`flex min-w-0 flex-1 flex-col bg-bg-primary ${drawerMessage ? "pr-[390px]" : ""}`}>
+        <div className="flex h-12 items-center justify-between border-b border-border-subtle px-4">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-card transition-colors"
+              className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-bg-surface-card hover:text-text-primary"
               title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
             >
               {sidebarOpen ? (
-                <PanelLeftClose className="w-4 h-4" strokeWidth={1.5} />
+                <PanelLeftClose className="h-4 w-4" strokeWidth={1.5} />
               ) : (
-                <PanelLeftOpen className="w-4 h-4" strokeWidth={1.5} />
+                <PanelLeftOpen className="h-4 w-4" strokeWidth={1.5} />
               )}
             </button>
             {currentSession && (
-              <h2 className="text-sm font-sans text-text-primary truncate max-w-[200px]">
+              <h2 className="max-w-[200px] truncate text-sm font-sans text-text-primary">
                 {currentSession.title}
               </h2>
             )}
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-md border border-border-subtle bg-bg-surface-card p-0.5">
+              <button
+                onClick={() => setMode("agent")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  mode === "agent"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Agent
+              </button>
+              <button
+                onClick={() => setMode("classic")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  mode === "classic"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Classic
+              </button>
+            </div>
+            <div className="inline-flex rounded-md border border-border-subtle bg-bg-surface-card p-0.5">
+              <button
+                onClick={() => setSearchScopeMode("all")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  activeSearchScope.mode === "all"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedScopeConversationIds.length === 0) {
+                    setScopeChooserOpen(true);
+                  } else {
+                    setSearchScopeMode("selected");
+                  }
+                }}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  activeSearchScope.mode === "selected"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Selected
+              </button>
+            </div>
+            <button
+              onClick={() => setScopeChooserOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-surface-card px-3 py-1.5 text-xs font-sans text-text-secondary transition-colors hover:bg-bg-surface-card-hover hover:text-text-primary"
+            >
+              <Filter className="h-3.5 w-3.5" strokeWidth={1.7} />
+              {getSearchScopeSummary(activeSearchScope)}
+            </button>
             {currentSessionId && (
               <button
                 onClick={handleNewChat}
-                className="px-3 py-1.5 rounded-lg bg-bg-surface-card hover:bg-bg-surface-card-hover text-sm font-sans text-text-primary transition-colors"
+                className="rounded-lg bg-bg-surface-card px-3 py-1.5 text-sm font-sans text-text-primary transition-colors hover:bg-bg-surface-card-hover"
               >
                 New Chat
               </button>
@@ -597,102 +1143,542 @@ export function ExploreTab({
           </div>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto">
           {messages.length === 0 && !currentSessionId ? (
             renderEmptyState()
+          ) : messagesLoading && messages.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-accent-primary" />
+            </div>
           ) : (
             <>
-              {messagesLoading && messages.length === 0 ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+              {messages.map(renderMessage)}
+
+              {isSubmitting && (
+                <div className="py-4">
+                  <div className="mx-auto max-w-3xl px-4">
+                    <div className="flex gap-4">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border-subtle bg-bg-surface-card">
+                        <span className="text-sm">V</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="mb-1 text-xs font-sans text-text-tertiary">Vesti</p>
+                        <div className="flex items-center gap-2 text-text-primary">
+                          <Loader2 className="h-4 w-4 animate-spin text-accent-primary" />
+                          <span className="text-sm font-sans">
+                            {MODE_STAGES[submitMode][searchStageIndex]}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <>
-                  {messages.map(renderMessage)}
-
-                  {/* Loading indicator for AI response */}
-                  {isSubmitting && (
-                    <div className="py-4">
-                      <div className="max-w-3xl mx-auto px-4">
-                        <div className="flex gap-4">
-                          <div className="w-8 h-8 rounded-full bg-bg-surface-card border border-border-subtle flex items-center justify-center">
-                            <span className="text-sm">✦</span>
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-xs font-sans text-text-tertiary mb-1">
-                              Vesti
-                            </p>
-                            <div className="flex items-center gap-2 text-text-primary">
-                              <Loader2 className="w-4 h-4 animate-spin text-accent-primary" />
-                              <span className="text-sm font-sans">
-                                {SEARCH_STAGES[searchStageIndex]}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Error message */}
-                  {error && (
-                    <div className="py-4">
-                      <div className="max-w-3xl mx-auto px-4">
-                        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-                          <p className="text-sm font-sans text-red-700">{error}</p>
-                          <button
-                            onClick={() => setError(null)}
-                            className="mt-2 text-xs font-sans text-red-600 hover:text-red-800"
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={messagesEndRef} />
-                </>
               )}
+
+              {error && (
+                <div className="py-4">
+                  <div className="mx-auto max-w-3xl px-4">
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                      <p className="text-sm font-sans text-red-700">{error}</p>
+                      <button
+                        onClick={() => setError(null)}
+                        className="mt-2 text-xs font-sans text-red-600 hover:text-red-800"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
             </>
           )}
         </div>
-
-        {/* Input Area */}
         <div className="border-t border-border-subtle p-4">
-          <div className="max-w-3xl mx-auto">
-            <div className="relative flex items-end gap-2 rounded-lg border border-border-default bg-bg-primary focus-within:border-accent-primary focus-within:ring-2 focus-within:ring-accent-primary/20 transition-all">
+          <div className="mx-auto max-w-3xl">
+            <div className="relative flex items-end gap-2 rounded-lg border border-border-default bg-bg-primary transition-all focus-within:border-accent-primary focus-within:ring-2 focus-within:ring-accent-primary/20">
               <textarea
                 ref={textareaRef}
                 value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                onChange={(event) => setInputValue(event.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask your knowledge base..."
+                placeholder={
+                  mode === "agent"
+                    ? "Ask your knowledge base (Agent mode)..."
+                    : "Ask your knowledge base (Classic mode)..."
+                }
                 rows={1}
-                className="flex-1 px-4 py-3 max-h-32 resize-none bg-transparent text-base font-sans text-text-primary placeholder:text-text-tertiary focus:outline-none"
+                className="max-h-32 flex-1 resize-none bg-transparent px-4 py-3 text-base font-sans text-text-primary placeholder:text-text-tertiary focus:outline-none"
                 style={{ minHeight: "48px" }}
               />
               <div className="p-2">
                 <button
                   onClick={handleSubmit}
                   disabled={!inputValue.trim() || isSubmitting}
-                  className="p-2 rounded-md bg-accent-primary text-white hover:bg-accent-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  className="rounded-md bg-accent-primary p-2 text-white transition-all hover:bg-accent-primary/90 disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {isSubmitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Send className="w-4 h-4" strokeWidth={1.5} />
+                    <Send className="h-4 w-4" strokeWidth={1.5} />
                   )}
                 </button>
               </div>
             </div>
-            <p className="mt-2 text-xs font-sans text-text-tertiary text-center">
-              Vesti will search your conversation history and provide answers with sources
-            </p>
+            <div className="mt-2 text-center text-xs font-sans text-text-tertiary">
+              <p>
+                {mode === "agent"
+                  ? "Agent mode shows the planner route, tool calls, source controls, and editable context drafts."
+                  : "Classic mode searches your history and returns concise source-grounded answers."}
+              </p>
+              <p className="mt-1">Current scope: {getSearchScopeSummary(activeSearchScope)}</p>
+            </div>
           </div>
         </div>
       </div>
+
+      {drawerMessage && (
+        <aside className="absolute bottom-0 right-0 top-0 z-20 flex w-[390px] flex-col border-l border-border-subtle bg-bg-primary shadow-[0_0_24px_rgba(0,0,0,0.12)]">
+          <div className="flex h-12 items-center justify-between border-b border-border-subtle px-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Wrench className="h-4 w-4 text-text-secondary" strokeWidth={1.7} />
+              <p className="truncate text-sm font-sans text-text-primary">Execution Details</p>
+            </div>
+            <button
+              onClick={() => setDrawerMessageId(null)}
+              className="rounded-md p-1 text-text-tertiary hover:bg-bg-surface-card hover:text-text-primary"
+            >
+              <X className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+          </div>
+
+          <div className="border-b border-border-subtle px-3 py-2">
+            <div className="inline-flex rounded-md border border-border-subtle bg-bg-surface-card p-0.5">
+              <button
+                onClick={() => setDrawerTab("plan")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  drawerTab === "plan"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Plan
+              </button>
+              <button
+                onClick={() => setDrawerTab("tool_calls")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  drawerTab === "tool_calls"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Tool Calls
+              </button>
+              <button
+                onClick={() => setDrawerTab("sources")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  drawerTab === "sources"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Sources
+              </button>
+              <button
+                onClick={() => setDrawerTab("context_draft")}
+                className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
+                  drawerTab === "context_draft"
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Context Draft
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3">
+            {drawerTab === "plan" ? (
+              <div className="space-y-4">
+                {drawerPlan ? (
+                  <>
+                    <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
+                      <p className="mb-1 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                        Planner Decision
+                      </p>
+                      <div className="space-y-1.5 text-sm font-sans text-text-primary">
+                        <p>Intent: {getIntentLabel(drawerPlan)}</p>
+                        <p>Route: {getPathLabel(drawerPlan)}</p>
+                        <p>Source limit: {drawerPlan.sourceLimit}</p>
+                        <p>Summary target: {drawerPlan.summaryTargetCount}</p>
+                        {getResolvedTimeScopeLabel(drawerPlan) && (
+                          <p>Time scope: {getResolvedTimeScopeLabel(drawerPlan)}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
+                      <p className="mb-1 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                        Why This Route
+                      </p>
+                      <p className="text-sm font-sans text-text-primary">
+                        {drawerPlan.reason}
+                      </p>
+                      {drawerPlan.answerGoal && (
+                        <p className="mt-2 text-xs font-sans text-text-secondary">
+                          Goal: {drawerPlan.answerGoal}
+                        </p>
+                      )}
+                      {drawerPlan.clarifyingQuestion && (
+                        <p className="mt-2 text-xs font-sans text-text-secondary">
+                          Clarification: {drawerPlan.clarifyingQuestion}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
+                      <p className="mb-2 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                        Planned Tools
+                      </p>
+                      <div className="space-y-2">
+                        {(drawerPlan.toolPlan ?? []).map((toolName, index) => (
+                          <div key={`${toolName}-${index}`} className="rounded-md bg-bg-primary p-2">
+                            <p className="text-sm font-sans text-text-primary">
+                              {index + 1}. {TOOL_LABELS[toolName]}
+                            </p>
+                            <p className="mt-1 text-xs font-sans text-text-secondary">
+                              {TOOL_EXPLANATIONS[toolName]}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] font-sans text-text-tertiary">
+                      The planner chooses the high-level route with the model. Tool execution stays
+                      bounded and inspectable in the app.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm font-sans text-text-tertiary">
+                    No planner metadata was recorded for this answer.
+                  </p>
+                )}
+              </div>
+            ) : drawerTab === "tool_calls" ? (
+              <div className="space-y-3">
+                {drawerToolCalls.length > 0 ? (
+                  drawerToolCalls.map(renderToolCallItem)
+                ) : (
+                  <p className="text-sm font-sans text-text-tertiary">
+                    No tool calls were recorded for this answer.
+                  </p>
+                )}
+              </div>
+            ) : drawerTab === "sources" ? (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
+                  <p className="mb-1 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                    Active Query
+                  </p>
+                  <p className="text-sm font-sans text-text-primary">
+                    {getAssistantQuery(drawerMessage) || "Unavailable"}
+                  </p>
+                  <p className="mt-2 text-xs font-sans text-text-tertiary">
+                    Scope: {getSearchScopeSummary(drawerMessage.agentMeta?.searchScope)}
+                  </p>
+                  {getResolvedTimeScopeLabel(drawerPlan) && (
+                    <p className="mt-1 text-xs font-sans text-text-tertiary">
+                      Time scope: {getResolvedTimeScopeLabel(drawerPlan)}
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs font-sans text-text-tertiary">
+                    Selected sources: {selectedContextConversationIds.length} / {drawerCandidates.length}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                    Candidate Sources
+                  </p>
+                  {drawerCandidates.length > 0 ? (
+                    <div className="space-y-2">
+                      {drawerCandidates.map((candidate) => {
+                        const selected = selectedContextConversationIds.includes(
+                          candidate.conversationId
+                        );
+                        return (
+                          <div
+                            key={candidate.conversationId}
+                            className="rounded-lg border border-border-subtle bg-bg-surface-card p-2.5"
+                          >
+                            <div className="mb-1 flex items-start justify-between gap-2">
+                              <button
+                                onClick={() => toggleContextSelection(candidate.conversationId)}
+                                className="inline-flex items-center gap-1.5 text-left text-xs font-sans text-text-secondary hover:text-text-primary"
+                              >
+                                {selected ? (
+                                  <CheckSquare className="h-3.5 w-3.5 text-accent-primary" />
+                                ) : (
+                                  <Square className="h-3.5 w-3.5" />
+                                )}
+                                <span className="line-clamp-2">{candidate.title}</span>
+                              </button>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-sans text-accent-primary">
+                                  {getSourceBadgeLabel(candidate, drawerPlan)}
+                                </span>
+                                <button
+                                  onClick={() => onOpenConversation?.(candidate.conversationId)}
+                                  className="text-[11px] font-sans text-text-secondary hover:text-text-primary"
+                                >
+                                  Open
+                                </button>
+                              </div>
+                            </div>
+                            {candidate.summarySnippet && (
+                              <p className="mb-1 text-xs font-sans text-text-secondary">
+                                {candidate.summarySnippet}
+                              </p>
+                            )}
+                            {candidate.selectionReason && (
+                              <p className="mb-1 text-[11px] font-sans text-text-tertiary">
+                                {candidate.selectionReason}
+                              </p>
+                            )}
+                            {candidate.excerpt && (
+                              <p className="text-[11px] font-sans text-text-tertiary">
+                                {candidate.excerpt}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm font-sans text-text-tertiary">
+                      No context candidates for this answer.
+                    </p>
+                  )}
+                </div>
+
+                {drawerNotice && (
+                  <p
+                    className={`text-xs font-sans ${
+                      contextSaveStatus === "error" ? "text-danger" : "text-text-secondary"
+                    }`}
+                  >
+                    {drawerNotice}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleSaveContextDraft}
+                    disabled={contextSaveStatus === "saving"}
+                    className="rounded-md bg-accent-primary px-3 py-1.5 text-xs font-sans text-white transition-colors hover:bg-accent-primary/90 disabled:opacity-50"
+                  >
+                    {contextSaveStatus === "saving" ? "Saving..." : "Save Selection"}
+                  </button>
+                  <button
+                    onClick={handleRegenerateWithSelectedSources}
+                    disabled={isRegeneratingSources}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card disabled:opacity-50"
+                  >
+                    {isRegeneratingSources ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Regenerate Answer
+                  </button>
+                  <button
+                    onClick={() => setDrawerTab("context_draft")}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Open Draft
+                  </button>
+                </div>
+
+                <p className="text-[11px] font-sans text-text-tertiary">
+                  Regeneration appends a new turn using only the selected conversations.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <p className="mb-2 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                    Draft (Editable)
+                  </p>
+                  <textarea
+                    value={contextDraft}
+                    onChange={(event) => {
+                      setContextDraft(event.target.value);
+                      setContextSaveStatus("idle");
+                    }}
+                    rows={14}
+                    className="w-full resize-y rounded-lg border border-border-default bg-bg-primary p-3 text-sm font-sans text-text-primary focus:border-accent-primary focus:outline-none"
+                  />
+                </div>
+
+                {drawerNotice && (
+                  <p
+                    className={`text-xs font-sans ${
+                      contextSaveStatus === "error" ? "text-danger" : "text-text-secondary"
+                    }`}
+                  >
+                    {drawerNotice}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleSaveContextDraft}
+                    disabled={contextSaveStatus === "saving"}
+                    className="rounded-md bg-accent-primary px-3 py-1.5 text-xs font-sans text-white transition-colors hover:bg-accent-primary/90 disabled:opacity-50"
+                  >
+                    {contextSaveStatus === "saving" ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    onClick={handleCopyContextDraft}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
+                  >
+                    <Clipboard className="h-3.5 w-3.5" />
+                    Copy
+                  </button>
+                  <button
+                    onClick={handleDownloadContextDraft}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download TXT
+                  </button>
+                  <button
+                    onClick={handleStartChatWithContext}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    New Chat (Prefill)
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
+
+      {scopeChooserOpen && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/30 p-4">
+          <div className="flex h-[min(720px,90vh)] w-full max-w-3xl flex-col rounded-2xl border border-border-subtle bg-bg-primary shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+              <div>
+                <p className="text-sm font-sans font-medium text-text-primary">
+                  Choose Conversations
+                </p>
+                <p className="mt-1 text-xs font-sans text-text-tertiary">
+                  Search, preview, and pick the conversations the agent is allowed to use.
+                </p>
+              </div>
+              <button
+                onClick={() => setScopeChooserOpen(false)}
+                className="rounded-md p-1 text-text-tertiary hover:bg-bg-surface-card hover:text-text-primary"
+              >
+                <X className="h-4 w-4" strokeWidth={1.8} />
+              </button>
+            </div>
+
+            <div className="border-b border-border-subtle px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[260px] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
+                  <input
+                    value={scopeSearchQuery}
+                    onChange={(event) => setScopeSearchQuery(event.target.value)}
+                    placeholder="Search by title or snippet..."
+                    className="w-full rounded-lg border border-border-default bg-bg-primary py-2 pl-9 pr-3 text-sm font-sans text-text-primary focus:border-accent-primary focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setSearchScopeMode("selected");
+                    applySelectedScope();
+                  }}
+                  className="rounded-md bg-accent-primary px-3 py-2 text-xs font-sans text-white transition-colors hover:bg-accent-primary/90"
+                >
+                  Apply Selected
+                </button>
+                <button
+                  onClick={resetSearchScope}
+                  className="rounded-md border border-border-default px-3 py-2 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
+                >
+                  Use All
+                </button>
+              </div>
+              <p className="mt-2 text-xs font-sans text-text-tertiary">
+                {selectedScopeConversationIds.length} conversation
+                {selectedScopeConversationIds.length === 1 ? "" : "s"} selected
+              </p>
+              {scopeError && <p className="mt-2 text-xs font-sans text-danger">{scopeError}</p>}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {scopeLoading ? (
+                <div className="py-10 text-center">
+                  <Loader2 className="mx-auto h-5 w-5 animate-spin text-accent-primary" />
+                </div>
+              ) : scopeResults.length === 0 ? (
+                <div className="py-10 text-center text-sm font-sans text-text-tertiary">
+                  No conversations match this search.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {scopeResults.map((conversation) => {
+                    const selected = selectedScopeConversationIds.includes(conversation.id);
+                    return (
+                      <div
+                        key={conversation.id}
+                        className="rounded-xl border border-border-subtle bg-bg-surface-card p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <button
+                            onClick={() => toggleScopeConversation(conversation.id)}
+                            className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                          >
+                            {selected ? (
+                              <CheckSquare className="mt-0.5 h-4 w-4 flex-shrink-0 text-accent-primary" />
+                            ) : (
+                              <Square className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-tertiary" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-sans text-text-primary">
+                                {conversation.title}
+                              </p>
+                              <p className="mt-1 text-xs font-sans text-text-tertiary">
+                                {conversation.platform} · {new Date(conversation.updated_at).toLocaleDateString()}
+                              </p>
+                              <p className="mt-2 line-clamp-2 text-xs font-sans text-text-secondary">
+                                {conversation.snippet || "No preview available"}
+                              </p>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => onOpenConversation?.(conversation.id)}
+                            className="text-xs font-sans text-text-secondary hover:text-text-primary"
+                          >
+                            Open
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

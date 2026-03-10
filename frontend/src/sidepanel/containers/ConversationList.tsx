@@ -18,6 +18,11 @@ interface ConversationListProps {
   selectedPlatforms: Set<Platform>;
   onSelect: (conversation: Conversation) => void;
   refreshToken: number;
+  // Batch selection support
+  isBatchMode?: boolean;
+  selectedIds?: Set<number>;
+  onToggleSelection?: (id: number) => void;
+  onConversationsLoaded?: (conversations: Conversation[]) => void;
 }
 
 interface FilteredConversationItem {
@@ -126,6 +131,10 @@ export function ConversationList({
   selectedPlatforms,
   onSelect,
   refreshToken,
+  isBatchMode = false,
+  selectedIds = new Set(),
+  onToggleSelection,
+  onConversationsLoaded,
 }: ConversationListProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -148,18 +157,20 @@ export function ConversationList({
         if (!cancelled) {
           setConversations(data);
           setLoading(false);
+          onConversationsLoaded?.(data);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setConversations([]);
           setLoading(false);
+          onConversationsLoaded?.([]);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [refreshToken]);
+  }, [refreshToken, onConversationsLoaded]);
 
   useEffect(() => {
     const requestSeq = searchRequestSeqRef.current + 1;
@@ -450,6 +461,10 @@ export function ConversationList({
                 onRenameTitle={handleRenameTitle}
                 topicOptions={topicOptions}
                 onConversationUpdated={handleConversationUpdated}
+                // Batch selection
+                isBatchMode={isBatchMode}
+                isSelected={selectedIds.has(item.conversation.id)}
+                onToggleSelect={() => onToggleSelection?.(item.conversation.id)}
               />
             ))}
           </div>

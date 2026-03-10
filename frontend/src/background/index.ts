@@ -32,6 +32,7 @@ import {
   getExploreMessages,
   deleteExploreSession,
   updateExploreSession,
+  updateExploreMessageContext,
 } from "../lib/db/repository";
 import { runGardener } from "../lib/services/gardenerService";
 import {
@@ -432,7 +433,9 @@ async function handleOffscreenRequest(message: RequestMessage): Promise<Response
         const data = await askKnowledgeBase(
           message.payload.query,
           message.payload.sessionId,
-          message.payload.limit
+          message.payload.limit,
+          message.payload.mode,
+          message.payload.options
         );
         return { ok: true, type: messageType, data };
       }
@@ -564,6 +567,14 @@ async function handleOffscreenRequest(message: RequestMessage): Promise<Response
       }
       case "RENAME_EXPLORE_SESSION": {
         await updateExploreSession(message.payload.sessionId, { title: message.payload.title });
+        return { ok: true, type: messageType, data: { updated: true } };
+      }
+      case "UPDATE_EXPLORE_MESSAGE_CONTEXT": {
+        await updateExploreMessageContext(
+          message.payload.messageId,
+          message.payload.contextDraft,
+          message.payload.selectedContextConversationIds
+        );
         return { ok: true, type: messageType, data: { updated: true } };
       }
       default:

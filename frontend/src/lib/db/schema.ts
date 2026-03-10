@@ -52,6 +52,7 @@ export interface ExploreMessageRecord {
   role: "user" | "assistant";
   content: string;
   sources?: string; // JSON serialized RelatedConversation[]
+  agentMeta?: string; // JSON serialized ExploreAgentMeta
   timestamp: number;
 }
 
@@ -333,6 +334,22 @@ export class MemoryHubDB extends Dexie {
             }
           });
       });
+    this.version(11)
+      .stores({
+        conversations:
+          "++id, platform, title, created_at, updated_at, uuid, source_created_at, turn_count, topic_id, is_starred, [platform+created_at], [platform+uuid], [topic_id+updated_at]",
+        messages:
+          "++id, conversation_id, role, created_at, [conversation_id+created_at]",
+        summaries: "++id, conversationId, createdAt",
+        weekly_reports: "++id, rangeStart, rangeEnd, createdAt",
+        topics:
+          "++id, parent_id, name, created_at, updated_at, [parent_id+name]",
+        vectors: "++id, conversation_id, text_hash",
+        notes: "++id, created_at, updated_at",
+        explore_sessions: "id, updatedAt, createdAt",
+        explore_messages: "id, sessionId, timestamp, [sessionId+timestamp]",
+      })
+      .upgrade(() => undefined);
   }
 }
 
