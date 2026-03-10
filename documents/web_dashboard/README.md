@@ -38,6 +38,10 @@ This directory is the stable entrypoint for:
   - canonical engineering spec for dashboard / library / explore / network
 - `web_dashboard_current_architecture.md`
   - current implementation baseline, module boundaries, and live system flow
+- `explore_retrieval_current_architecture.md`
+  - current Explore retrieval stack, route behavior, and evidence limits
+- `explore_retrieval_technical_roadmap.md`
+  - forward roadmap for Explore retrieval quality, hybrid search, and chunking
 - `web_dashboard_rc8_repairs.md`
   - repair ledger for web-view regressions, starting with the rc8 Network edge fix
 - `web_dashboard_technical_roadmap.md`
@@ -47,8 +51,10 @@ This directory is the stable entrypoint for:
 
 1. `web_dashboard_engineering_spec.md`
 2. `web_dashboard_current_architecture.md`
-3. `web_dashboard_rc8_repairs.md`
-4. `web_dashboard_technical_roadmap.md`
+3. `explore_retrieval_current_architecture.md`
+4. `explore_retrieval_technical_roadmap.md`
+5. `web_dashboard_rc8_repairs.md`
+6. `web_dashboard_technical_roadmap.md`
 
 ## Primary source inputs
 

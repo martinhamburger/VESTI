@@ -50,6 +50,8 @@ Use this for:
 Canonical examples:
 - `web_dashboard/web_dashboard_engineering_spec.md`
 - `web_dashboard/web_dashboard_current_architecture.md`
+- `web_dashboard/explore_retrieval_current_architecture.md`
+- `web_dashboard/explore_retrieval_technical_roadmap.md`
 - `web_dashboard/web_dashboard_rc8_repairs.md`
 - `web_dashboard/web_dashboard_technical_roadmap.md`
 
