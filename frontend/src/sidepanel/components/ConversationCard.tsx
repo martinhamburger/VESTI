@@ -133,6 +133,10 @@ interface ConversationCardProps {
   topicOptions?: { id: number; label: string }[];
   onConversationUpdated?: (conversation: Conversation) => void;
   matchedInMessagesOnly?: boolean;
+  // Batch selection support
+  isBatchMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 export function ConversationCard({
@@ -145,6 +149,9 @@ export function ConversationCard({
   topicOptions = [],
   onConversationUpdated,
   matchedInMessagesOnly = false,
+  isBatchMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: ConversationCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -278,6 +285,10 @@ export function ConversationCard({
 
   const handleToggleStar = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    if (isBatchMode) {
+      onToggleSelect?.();
+      return;
+    }
     try {
       const updated = await updateConversationAndSync(conversation.id, {
         is_starred: !conversation.is_starred,
@@ -285,6 +296,14 @@ export function ConversationCard({
       onConversationUpdated?.(updated);
     } catch (error) {
       console.error("Failed to update star status", error);
+    }
+  };
+
+  const handleCardClick = () => {
+    if (isBatchMode) {
+      onToggleSelect?.();
+    } else {
+      onClick();
     }
   };
 
@@ -303,11 +322,14 @@ export function ConversationCard({
     }
   };
 
+  // Batch mode: always show as selected/hovered when selected
+  const effectiveIsHovered = isBatchMode ? isSelected : isHovered;
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={onClick}
+      onClick={handleCardClick}
       onFocus={() => setIsHovered(true)}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -317,15 +339,36 @@ export function ConversationCard({
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onClick();
+          handleCardClick();
         }
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={`group w-full cursor-pointer rounded-md p-3 text-left transition-all duration-150 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
-        isHovered ? "bg-surface-card-hover shadow-card-hover" : "bg-surface-card"
+        isBatchMode && isSelected
+          ? "bg-accent-primary/10 ring-1 ring-accent-primary/30"
+          : effectiveIsHovered
+            ? "bg-surface-card-hover shadow-card-hover"
+            : "bg-surface-card"
       }`}
     >
+      {/* Batch selection checkbox */}
+      {isBatchMode && (
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {isSelected ? (
+              <div className="flex h-4 w-4 items-center justify-center rounded bg-accent-primary">
+                <Check className="h-3 w-3 text-white" strokeWidth={2} />
+              </div>
+            ) : (
+              <div className="h-4 w-4 rounded border border-text-tertiary/40" />
+            )}
+            <span className={`text-xs ${isSelected ? "text-accent-primary font-medium" : "text-text-tertiary"}`}>
+              {isSelected ? "Selected" : "Click to select"}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <PlatformTag platform={conversation.platform} />
         <div className="flex items-center gap-1">
