@@ -1,6 +1,7 @@
 import type {
   ActiveCaptureStatus,
   Conversation,
+  ConversationMatchSummary,
   DataOverviewSnapshot,
   DashboardStats,
   ExportFormat,
@@ -13,6 +14,7 @@ import type {
   RagResponse,
   StorageUsageSnapshot,
   SummaryRecord,
+  SearchConversationMatchesQuery,
   WeeklyReportRecord,
   Topic,
   GardenerResult,
@@ -244,6 +246,19 @@ export async function searchConversationIdsByText(
     },
     FULL_TEXT_SEARCH_TIMEOUT_MS
   ) as Promise<number[]>;
+}
+
+export async function searchConversationMatchesByText(
+  params: SearchConversationMatchesQuery
+): Promise<ConversationMatchSummary[]> {
+  return sendRequest(
+    {
+      type: "SEARCH_CONVERSATION_MATCHES_BY_TEXT",
+      target: "offscreen",
+      payload: params,
+    },
+    FULL_TEXT_SEARCH_TIMEOUT_MS
+  ) as Promise<ConversationMatchSummary[]>;
 }
 
 export async function askKnowledgeBase(

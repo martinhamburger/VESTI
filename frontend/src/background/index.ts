@@ -10,6 +10,7 @@ import {
   listMessages,
   listNotes,
   searchConversationIdsByText,
+  searchConversationMatchesByText,
   deleteConversation,
   createNote,
   updateNote,
@@ -458,6 +459,10 @@ async function handleOffscreenRequest(message: RequestMessage): Promise<Response
       }
       case "SEARCH_CONVERSATION_IDS_BY_TEXT": {
         const data = await searchConversationIdsByText(message.payload.query);
+        return { ok: true, type: messageType, data };
+      }
+      case "SEARCH_CONVERSATION_MATCHES_BY_TEXT": {
+        const data = await searchConversationMatchesByText(message.payload);
         return { ok: true, type: messageType, data };
       }
       case "DELETE_CONVERSATION": {

@@ -58,6 +58,17 @@ export interface Conversation {
   has_note?: boolean;
 }
 
+export interface SearchConversationMatchesQuery {
+  query: string;
+  conversationIds?: number[];
+}
+
+export interface ConversationMatchSummary {
+  conversationId: number;
+  firstMatchedMessageId: number;
+  bestExcerpt: string;
+}
+
 export interface VectorRecord {
   id?: number;
   conversation_id: number;

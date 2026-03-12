@@ -1,5 +1,6 @@
 import type {
   Conversation,
+  ConversationMatchSummary,
   ConversationSummaryV2,
   DataOverviewSnapshot,
   ExportFormat,
@@ -15,6 +16,7 @@ import type {
   SummaryRecord,
   WeeklyLiteReportV1,
   WeeklyReportRecord,
+  SearchConversationMatchesQuery,
 } from "../types";
 import type { ConversationFilters } from "../messaging/protocol";
 import {
@@ -585,6 +587,88 @@ export async function searchConversationIdsByText(query: string): Promise<number
   });
 
   return Array.from(conversationIds);
+}
+
+function buildExcerpt(text: string, normalizedQuery: string): string {
+  const lower = text.toLowerCase();
+  const idx = lower.indexOf(normalizedQuery);
+  if (idx < 0) {
+    return "";
+  }
+  const start = Math.max(0, idx - 30);
+  const end = Math.min(text.length, idx + normalizedQuery.length + 60);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < text.length ? "..." : "";
+  return `${prefix}${text.slice(start, end)}${suffix}`;
+}
+
+export async function searchConversationMatchesByText(
+  params: SearchConversationMatchesQuery
+): Promise<ConversationMatchSummary[]> {
+  const normalizedQuery = params.query.trim().toLowerCase();
+  if (normalizedQuery.length < 2) {
+    return [];
+  }
+
+  const candidateIds = params.conversationIds
+    ? Array.from(
+        new Set(params.conversationIds.filter((value) => Number.isFinite(value)))
+      )
+    : null;
+  if (candidateIds && candidateIds.length === 0) {
+    return [];
+  }
+
+  const matchMap = new Map<
+    number,
+    { messageId: number; createdAt: number; excerpt: string }
+  >();
+
+  const collection = candidateIds
+    ? db.messages.where("conversation_id").anyOf(candidateIds)
+    : db.messages.toCollection();
+
+  await collection.each((record) => {
+    const conversationId = record.conversation_id;
+    if (typeof conversationId !== "number") {
+      return;
+    }
+
+    const content = record.content_text;
+    if (typeof content !== "string") {
+      return;
+    }
+
+    if (!content.toLowerCase().includes(normalizedQuery)) {
+      return;
+    }
+
+    const messageId = record.id;
+    if (typeof messageId !== "number") {
+      return;
+    }
+
+    const createdAt = record.created_at ?? 0;
+    const existing = matchMap.get(conversationId);
+    const shouldReplace =
+      !existing ||
+      createdAt < existing.createdAt ||
+      (createdAt === existing.createdAt && messageId < existing.messageId);
+
+    if (shouldReplace) {
+      matchMap.set(conversationId, {
+        messageId,
+        createdAt,
+        excerpt: buildExcerpt(content, normalizedQuery),
+      });
+    }
+  });
+
+  return Array.from(matchMap.entries()).map(([conversationId, match]) => ({
+    conversationId,
+    firstMatchedMessageId: match.messageId,
+    bestExcerpt: match.excerpt,
+  }));
 }
 
 export async function deleteConversation(id: number): Promise<boolean> {
