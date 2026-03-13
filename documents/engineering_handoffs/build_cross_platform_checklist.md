@@ -25,8 +25,8 @@ pnpm install --frozen-lockfile
 ## 3) Lockfile and Package Manager Policy
 
 1. Use pnpm as the single package manager.
-2. Keep `pnpm-lock.yaml` as source of truth.
-3. Do not mix npm install flows for release builds.
+2. Keep root `pnpm-lock.yaml` as the single source of truth.
+3. Do not mix npm install flows for release builds. Delete any `package-lock.json` before release.
 4. Avoid lockfile churn from local-only dependency edits.
 
 ## 4) Build Source of Truth
@@ -45,8 +45,8 @@ pnpm install --frozen-lockfile
 Recommended:
 ```bash
 pnpm install --frozen-lockfile
-pnpm -C frontend install --frozen-lockfile
 pnpm -C frontend build
+pnpm -C vesti-web build
 pnpm -C frontend package
 ```
 
