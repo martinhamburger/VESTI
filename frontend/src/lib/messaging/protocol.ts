@@ -18,6 +18,8 @@ import type {
   WeeklyReportRecord,
   RelatedConversation,
   RagResponse,
+  ExploreMode,
+  ExploreAskOptions,
   Note,
   SearchConversationMatchesQuery,
 } from "../types";
@@ -200,7 +202,13 @@ export type RequestMessage =
       target?: "offscreen";
       via?: "background";
       requestId?: string;
-      payload: { query: string; limit?: number; sessionId?: string };
+      payload: {
+        query: string;
+        limit?: number;
+        sessionId?: string;
+        mode?: ExploreMode;
+        options?: ExploreAskOptions;
+      };
     }
   | {
       type: "CREATE_EXPLORE_SESSION";
@@ -237,6 +245,16 @@ export type RequestMessage =
       target?: "offscreen";
       requestId?: string;
       payload: { sessionId: string; title: string };
+    }
+  | {
+      type: "UPDATE_EXPLORE_MESSAGE_CONTEXT";
+      target?: "offscreen";
+      requestId?: string;
+      payload: {
+        messageId: string;
+        contextDraft: string;
+        selectedContextConversationIds: number[];
+      };
     }
   | {
       type: "GET_MESSAGES";
@@ -425,6 +443,7 @@ export type ResponseDataMap = {
   GET_EXPLORE_MESSAGES: ExploreMessage[];
   DELETE_EXPLORE_SESSION: { deleted: boolean };
   RENAME_EXPLORE_SESSION: { updated: boolean };
+  UPDATE_EXPLORE_MESSAGE_CONTEXT: { updated: boolean };
   GET_MESSAGES: Message[];
   GET_NOTES: Note[];
   CREATE_NOTE: { note: Note };

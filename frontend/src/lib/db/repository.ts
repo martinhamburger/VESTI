@@ -3,6 +3,7 @@ import type {
   ConversationMatchSummary,
   ConversationSummaryV2,
   DataOverviewSnapshot,
+  ExploreAgentMeta,
   ExportFormat,
   ExportPayload,
   Message,
@@ -71,6 +72,207 @@ function parseExploreSources(raw?: string): ExploreSourceRecord[] | undefined {
   try {
     const parsed = JSON.parse(raw) as ExploreSourceRecord[];
     return normalizeExploreSources(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeExploreAgentMeta(
+  meta: ExploreAgentMeta | undefined
+): ExploreAgentMeta | undefined {
+  if (!meta) {
+    return undefined;
+  }
+
+  const normalizedCandidates = Array.isArray(meta.contextCandidates)
+    ? meta.contextCandidates
+        .filter((candidate) => candidate && typeof candidate === "object")
+        .map((candidate) => {
+          const platform = normalizePlatform(candidate.platform);
+          return {
+            ...candidate,
+            platform: platform ?? candidate.platform,
+          };
+        })
+    : undefined;
+
+  const selectedContextConversationIds = Array.isArray(
+    meta.selectedContextConversationIds
+  )
+    ? meta.selectedContextConversationIds.filter(
+        (id): id is number => typeof id === "number" && Number.isFinite(id)
+      )
+    : undefined;
+
+  const toolCalls = Array.isArray(meta.toolCalls)
+    ? meta.toolCalls
+        .filter((toolCall) => toolCall && typeof toolCall === "object")
+        .map((toolCall) => ({
+          ...toolCall,
+          description:
+            typeof toolCall.description === "string" ? toolCall.description : undefined,
+        }))
+    : [];
+
+  const searchScope =
+    meta.searchScope && typeof meta.searchScope === "object"
+      ? {
+          mode:
+            meta.searchScope.mode === "selected"
+              ? ("selected" as const)
+              : ("all" as const),
+          conversationIds: Array.isArray(meta.searchScope.conversationIds)
+            ? meta.searchScope.conversationIds.filter(
+                (id): id is number => typeof id === "number" && Number.isFinite(id)
+              )
+            : undefined,
+        }
+      : undefined;
+
+  const requestedTimeScope =
+    meta.plan?.requestedTimeScope && typeof meta.plan.requestedTimeScope === "object"
+      ? {
+          preset:
+            meta.plan.requestedTimeScope.preset === "current_week_to_date" ||
+            meta.plan.requestedTimeScope.preset === "last_7_days" ||
+            meta.plan.requestedTimeScope.preset === "last_full_week" ||
+            meta.plan.requestedTimeScope.preset === "custom"
+              ? meta.plan.requestedTimeScope.preset
+              : ("none" as const),
+          label:
+            typeof meta.plan.requestedTimeScope.label === "string"
+              ? meta.plan.requestedTimeScope.label
+              : undefined,
+          startDate:
+            typeof meta.plan.requestedTimeScope.startDate === "string"
+              ? meta.plan.requestedTimeScope.startDate
+              : undefined,
+          endDate:
+            typeof meta.plan.requestedTimeScope.endDate === "string"
+              ? meta.plan.requestedTimeScope.endDate
+              : undefined,
+        }
+      : undefined;
+
+  const resolvedTimeScope =
+    meta.plan?.resolvedTimeScope && typeof meta.plan.resolvedTimeScope === "object"
+      ? {
+          preset:
+            meta.plan.resolvedTimeScope.preset === "current_week_to_date" ||
+            meta.plan.resolvedTimeScope.preset === "last_7_days" ||
+            meta.plan.resolvedTimeScope.preset === "last_full_week" ||
+            meta.plan.resolvedTimeScope.preset === "custom"
+              ? meta.plan.resolvedTimeScope.preset
+              : ("last_7_days" as const),
+          label:
+            typeof meta.plan.resolvedTimeScope.label === "string"
+              ? meta.plan.resolvedTimeScope.label
+              : "Resolved range",
+          rangeStart:
+            typeof meta.plan.resolvedTimeScope.rangeStart === "number" &&
+            Number.isFinite(meta.plan.resolvedTimeScope.rangeStart)
+              ? meta.plan.resolvedTimeScope.rangeStart
+              : 0,
+          rangeEnd:
+            typeof meta.plan.resolvedTimeScope.rangeEnd === "number" &&
+            Number.isFinite(meta.plan.resolvedTimeScope.rangeEnd)
+              ? meta.plan.resolvedTimeScope.rangeEnd
+              : 0,
+          startDate:
+            typeof meta.plan.resolvedTimeScope.startDate === "string"
+              ? meta.plan.resolvedTimeScope.startDate
+              : "",
+          endDate:
+            typeof meta.plan.resolvedTimeScope.endDate === "string"
+              ? meta.plan.resolvedTimeScope.endDate
+              : "",
+        }
+      : undefined;
+
+  const plan =
+    meta.plan && typeof meta.plan === "object"
+      ? {
+          intent:
+            meta.plan.intent === "cross_conversation_summary" ||
+            meta.plan.intent === "weekly_review" ||
+            meta.plan.intent === "timeline" ||
+            meta.plan.intent === "clarification_needed"
+              ? meta.plan.intent
+              : ("fact_lookup" as const),
+          reason:
+            typeof meta.plan.reason === "string" ? meta.plan.reason : "UNSPECIFIED_REASON",
+          preferredPath:
+            meta.plan.preferredPath === "weekly_summary" ||
+            meta.plan.preferredPath === "clarify"
+              ? meta.plan.preferredPath
+              : ("rag" as const),
+          sourceLimit:
+            typeof meta.plan.sourceLimit === "number" && Number.isFinite(meta.plan.sourceLimit)
+              ? meta.plan.sourceLimit
+              : 5,
+          summaryTargetCount:
+            typeof meta.plan.summaryTargetCount === "number" &&
+            Number.isFinite(meta.plan.summaryTargetCount)
+              ? meta.plan.summaryTargetCount
+              : 0,
+          answerGoal:
+            typeof meta.plan.answerGoal === "string" ? meta.plan.answerGoal : undefined,
+          needsClarification:
+            typeof meta.plan.needsClarification === "boolean"
+              ? meta.plan.needsClarification
+              : undefined,
+          clarifyingQuestion:
+            typeof meta.plan.clarifyingQuestion === "string"
+              ? meta.plan.clarifyingQuestion
+              : undefined,
+          requestedTimeScope,
+          resolvedTimeScope:
+            resolvedTimeScope &&
+            resolvedTimeScope.rangeStart > 0 &&
+            resolvedTimeScope.rangeEnd >= resolvedTimeScope.rangeStart
+              ? resolvedTimeScope
+              : undefined,
+          toolPlan: Array.isArray(meta.plan.toolPlan)
+            ? meta.plan.toolPlan.filter(
+                (toolName): toolName is NonNullable<typeof meta.plan>["toolPlan"][number] =>
+                  typeof toolName === "string"
+              )
+            : undefined,
+        }
+      : undefined;
+
+  return {
+    ...meta,
+    query: typeof meta.query === "string" ? meta.query : undefined,
+    searchScope,
+    plan,
+    toolCalls,
+    contextCandidates: normalizedCandidates,
+    selectedContextConversationIds,
+  };
+}
+
+function parseExploreAgentMeta(raw?: string): ExploreAgentMeta | undefined {
+  if (!raw) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as ExploreAgentMeta;
+    return normalizeExploreAgentMeta(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+function serializeExploreAgentMeta(meta?: ExploreAgentMeta): string | undefined {
+  const normalized = normalizeExploreAgentMeta(meta);
+  if (!normalized) {
+    return undefined;
+  }
+
+  try {
+    return JSON.stringify(normalized);
   } catch {
     return undefined;
   }
@@ -961,6 +1163,7 @@ export interface ExploreMessage {
   role: "user" | "assistant";
   content: string;
   sources?: Array<{ id: number; title: string; platform: string; similarity: number }>;
+  agentMeta?: ExploreAgentMeta;
   timestamp: number;
 }
 
@@ -1035,6 +1238,7 @@ export async function addExploreMessage(
 ): Promise<ExploreMessage> {
   await enforceStorageWriteGuard();
   const normalizedSources = normalizeExploreSources(message.sources as ExploreSourceRecord[] | undefined);
+  const serializedAgentMeta = serializeExploreAgentMeta(message.agentMeta);
   
   const record: ExploreMessageRecord = {
     id: generateId("msg"),
@@ -1042,6 +1246,7 @@ export async function addExploreMessage(
     role: message.role,
     content: message.content,
     sources: normalizedSources ? JSON.stringify(normalizedSources) : undefined,
+    agentMeta: serializedAgentMeta,
     timestamp: message.timestamp,
   };
   
@@ -1075,6 +1280,7 @@ export async function addExploreMessage(
     role: message.role,
     content: message.content,
     sources: normalizedSources,
+    agentMeta: parseExploreAgentMeta(serializedAgentMeta),
     timestamp: message.timestamp,
   };
 }
@@ -1091,6 +1297,7 @@ export async function getExploreMessages(sessionId: string): Promise<ExploreMess
     role: record.role,
     content: record.content,
     sources: parseExploreSources(record.sources),
+    agentMeta: parseExploreAgentMeta(record.agentMeta),
     timestamp: record.timestamp,
   }));
 }
@@ -1115,8 +1322,36 @@ export async function getRecentExploreMessages(
       role: record.role,
       content: record.content,
       sources: parseExploreSources(record.sources),
+      agentMeta: parseExploreAgentMeta(record.agentMeta),
       timestamp: record.timestamp,
     }));
+}
+
+export async function updateExploreMessageContext(
+  messageId: string,
+  contextDraft: string,
+  selectedContextConversationIds: number[]
+): Promise<void> {
+  await enforceStorageWriteGuard();
+
+  const record = await db.explore_messages.get(messageId);
+  if (!record) {
+    throw new Error("EXPLORE_MESSAGE_NOT_FOUND");
+  }
+
+  const existingMeta = parseExploreAgentMeta(record.agentMeta);
+  const nextMeta = normalizeExploreAgentMeta({
+    mode: existingMeta?.mode ?? "agent",
+    toolCalls: existingMeta?.toolCalls ?? [],
+    contextCandidates: existingMeta?.contextCandidates ?? [],
+    ...existingMeta,
+    contextDraft,
+    selectedContextConversationIds,
+  });
+
+  await db.explore_messages.update(messageId, {
+    agentMeta: serializeExploreAgentMeta(nextMeta),
+  });
 }
 
 // Cleanup functions
@@ -1195,6 +1430,7 @@ export async function getAllExploreMessages(): Promise<ExploreMessage[]> {
     role: record.role,
     content: record.content,
     sources: parseExploreSources(record.sources),
+    agentMeta: parseExploreAgentMeta(record.agentMeta),
     timestamp: record.timestamp,
   }));
 }

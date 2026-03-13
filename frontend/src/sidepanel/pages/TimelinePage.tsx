@@ -1,4 +1,4 @@
-import { SlidersHorizontal } from "lucide-react";
+﻿import { SlidersHorizontal, ListChecks } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
   Conversation,
@@ -11,6 +11,10 @@ import { ConversationList } from "../containers/ConversationList";
 import { SearchLineIcon } from "../components/ThreadSearchIcons";
 import { DATE_PRESET_OPTIONS, PLATFORM_OPTIONS } from "../types/timelineFilters";
 import type { ThreadsEvent, ThreadsSearchSession } from "../types/threadsSearch";
+import { useBatchSelection } from "../hooks/useBatchSelection";
+import { BatchActionBar } from "../components/BatchActionBar";
+import { ExportDialog, type ExportConfig, type ExportResult } from "../components/ExportDialog";
+import { exportConversations } from "../utils/exportConversations";
 
 interface TimelinePageProps {
   session: ThreadsSearchSession;
@@ -44,6 +48,8 @@ export function TimelinePage({
     anchorConversationId,
   } = session;
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,8 +65,8 @@ export function TimelinePage({
     };
   }, [refreshToken]);
 
-const todayCount = stats?.todayCount ?? 0;
-const platformDistribution = stats?.platformDistribution ?? null;
+  const todayCount = stats?.todayCount ?? 0;
+  const platformDistribution = stats?.platformDistribution ?? null;
   const handleAnchorConsumed = useCallback(() => {
     dispatch({ type: "ANCHOR_CONSUMED" });
   }, [dispatch]);
@@ -74,6 +80,27 @@ const platformDistribution = stats?.platformDistribution ?? null;
     },
     [dispatch]
   );
+
+  // Batch selection
+  const {
+    selectedIds,
+    selectedCount,
+    isBatchMode,
+    toggleSelection,
+    selectAll,
+    clearSelection,
+    enterBatchMode,
+    exitBatchMode,
+  } = useBatchSelection({
+    items: conversations,
+    getId: (c) => c.id,
+    maxSelection: 20,
+  });
+
+  const handleExport = async (config: ExportConfig): Promise<ExportResult> => {
+    const selectedConversations = conversations.filter((c) => selectedIds.has(c.id));
+    return exportConversations(selectedConversations, config);
+  };
 
   const handleOpenSearch = () => {
     dispatch({ type: "HEADER_MODE_CHANGED", headerMode: "search" });
@@ -92,7 +119,7 @@ const platformDistribution = stats?.platformDistribution ?? null;
   };
 
   return (
-    <div className="flex h-full flex-col bg-bg-app">
+    <div className={`flex h-full flex-col bg-bg-app ${isBatchMode ? "pb-[60px]" : ""}`}>
       {headerMode === "search" ? (
         <header className="vesti-page-header gap-2">
           <div className="threads-search-surface flex h-8 flex-1 items-center gap-2 rounded-lg px-3">
@@ -152,6 +179,25 @@ const platformDistribution = stats?.platformDistribution ?? null;
               }`}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.8} />
+            </button>
+            {/* Select button - toggle batch mode like filter */}
+            <button
+              type="button"
+              aria-label={isBatchMode ? "Exit selection" : "Select conversations"}
+              onClick={() => {
+                if (isBatchMode) {
+                  exitBatchMode();
+                } else {
+                  enterBatchMode();
+                }
+              }}
+              className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
+                isBatchMode
+                  ? "bg-bg-secondary text-accent-primary"
+                  : "text-text-tertiary hover:bg-bg-secondary hover:text-text-secondary"
+              }`}
+            >
+              <ListChecks className="h-3.5 w-3.5" strokeWidth={1.8} />
             </button>
           </div>
         </header>
@@ -230,11 +276,7 @@ const platformDistribution = stats?.platformDistribution ?? null;
         </div>
       )}
 
-      <div
-        className={`min-h-0 flex-1 overflow-hidden ${
-          headerMode === "search" ? "pt-3" : ""
-        }`}
-      >
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         <ConversationList
           searchQuery={query}
           datePreset={datePreset}
@@ -246,8 +288,34 @@ const platformDistribution = stats?.platformDistribution ?? null;
           onAnchorConsumed={handleAnchorConsumed}
           onResultSummaryMapChange={handleResultSummaryMapChange}
           onBodySearchStarted={() => dispatch({ type: "BODY_SEARCH_STARTED" })}
+          // Batch selection
+          isBatchMode={isBatchMode}
+          selectedIds={selectedIds}
+          onToggleSelection={toggleSelection}
+          onConversationsLoaded={setConversations}
         />
+
+        {/* Batch action bar */}
+        {isBatchMode && (
+          <BatchActionBar
+            selectedCount={selectedCount}
+            totalCount={conversations.length}
+            onSelectAll={selectAll}
+            onClearSelection={clearSelection}
+            onExport={() => setIsExportDialogOpen(true)}
+            onExit={exitBatchMode}
+          />
+        )}
       </div>
+
+      {/* Export dialog */}
+      <ExportDialog
+        open={isExportDialogOpen}
+        conversations={conversations.filter((c) => selectedIds.has(c.id))}
+        onClose={() => setIsExportDialogOpen(false)}
+        onExport={handleExport}
+      />
     </div>
   );
 }
+
