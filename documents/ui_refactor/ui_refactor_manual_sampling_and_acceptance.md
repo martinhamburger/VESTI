@@ -72,6 +72,9 @@ Threads child flow (mandatory):
 26. Threads header layout baseline: status text is single-line (no wrap), all header elements are vertically centered, and left/right groups keep reasonable spacing.
 27. Thread card footer metadata baseline: no stray `路` character; use a mid-dot separator (e.g., `·`) and keep metadata on one line without wrapping.
 28. BatchActionBar density baseline: padding `7px`, font size `12px`, count badge horizontal padding `7px`, action button vertical padding `5px`.
+29. Threads filter disclosure baseline: opening filter mode shows `Date` and `Source` as independent compact disclosure rows, both collapsed by default; closing and reopening filter mode resets both rows to collapsed.
+30. Threads filter summary baseline: collapsed `Date` always shows the active preset label, and collapsed `Source` shows `All sources` / one name / two comma-joined names / `<first> +<n>` using `PLATFORM_OPTIONS` order.
+31. Threads filter density baseline: date/source pills use compact `11px` rhythm, tighter wrapping, and source tone badges remain color-coded without overflow or awkward wrapping.
 
 ---
 

@@ -74,6 +74,9 @@ If performance-related:
 | Selection UI visual weight too high | checkbox oversize or helper text reintroduced | inspect selection row sizing and helper text presence | conversation card selection row |
 | Footer metadata shows stray glyph or wraps | hardcoded copy or layout nowrap missing | compare footer copy and wrapping behavior | conversation card footer metadata |
 | Threads header text wraps or misaligns | missing nowrap/align rules or layout drift | verify header flex alignment + status text nowrap | Threads header layout |
+| Threads filter rows start expanded or retain stale open state | disclosure reset behavior lost | reopen filter mode and verify details mount-reset behavior | Threads filter disclosure rows |
+| Threads filter summary is wrong or wraps | summary formatter/layout drift | compare active filter state against collapsed summary rules and truncation | Threads filter summary row |
+| Threads filter pills feel oversized or uneven | compact density tokens drifted | inspect pill font, padding, gap, and source dot sizing | Threads filter pill density |
 
 ---
 
