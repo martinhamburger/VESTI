@@ -75,6 +75,13 @@ Threads child flow (mandatory):
 29. Threads filter disclosure baseline: opening filter mode shows `Date` and `Source` as independent compact disclosure rows, both collapsed by default; closing and reopening filter mode resets both rows to collapsed.
 30. Threads filter summary baseline: collapsed `Date` always shows the active preset label, and collapsed `Source` shows `All sources` / one name / two comma-joined names / `<first> +<n>` using `PLATFORM_OPTIONS` order.
 31. Threads filter density baseline: date/source pills use compact `11px` rhythm, tighter wrapping, and source tone badges remain color-coded without overflow or awkward wrapping.
+32. Threads overflow menu baseline: card overflow menu and submenu use the same compact Threads utility surface (`rounded-lg`, subtle border/background, `shadow-paper`) instead of generic popover styling.
+33. Threads overflow item density baseline: menu rows use `13px` medium text, compact `min-h-8` spacing, smaller `3.5` icons/chevron, and the open trigger shows a light active state without turning into a heavy accent block.
+34. Threads batch-selection visibility baseline: after choosing `Select` from a card overflow menu, every card in the current filtered result set shows the 18px circular checkbox slot and platform tags shift right consistently.
+35. Threads batch-selection state baseline: selected cards use only a light selected surface and do not reuse hover/expanded snippet/footer behavior; card click toggles selection instead of opening Reader while batch mode is active.
+36. Threads batch action tray baseline: tray actions are `Select All` / `Export` / `Delete` / `Exit`; `Select All` only targets the current filtered result set, and changing search/filter prunes hidden selections instead of preserving stale ids.
+37. Threads batch export baseline: export opens a Data-style format panel with exactly `JSON` / `TXT` / `MD`, and each option exports the current selected threads as full-thread content.
+38. Threads batch delete baseline: delete opens a Data-style danger panel, requires typing `DELETE`, and successful confirmation clears selection and exits batch mode.
 
 ---
 

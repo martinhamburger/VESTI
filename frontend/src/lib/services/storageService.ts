@@ -354,6 +354,23 @@ export async function deleteConversation(id: number): Promise<void> {
   });
 }
 
+export async function deleteConversations(ids: number[]): Promise<void> {
+  const uniqueIds = Array.from(new Set(ids));
+  if (uniqueIds.length === 0) return;
+
+  for (const id of uniqueIds) {
+    await sendRequest({
+      type: "DELETE_CONVERSATION",
+      target: "offscreen",
+      payload: { id },
+    });
+  }
+
+  chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
+    void chrome.runtime.lastError;
+  });
+}
+
 export async function updateConversationTitle(
   id: number,
   title: string

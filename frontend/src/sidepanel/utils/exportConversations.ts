@@ -1,5 +1,8 @@
 import type { Conversation, Message } from "~lib/types";
-import type { ExportConfig, ExportResult } from "../components/ExportDialog";
+import type {
+  ConversationExportConfig,
+  ConversationExportResult,
+} from "../types/export";
 import { getMessages } from "~lib/services/storageService";
 
 function toLocalDateTime(timestamp: number): string {
@@ -10,8 +13,8 @@ function toLocalDateTime(timestamp: number): string {
 
 export async function exportConversations(
   conversations: Conversation[],
-  config: ExportConfig
-): Promise<ExportResult> {
+  config: ConversationExportConfig
+): Promise<ConversationExportResult> {
   const { contentMode, format } = config;
 
   // Fetch messages for all conversations
@@ -42,7 +45,20 @@ export async function exportConversations(
   return {
     content,
     filename: generateFilename(conversations.length, format, contentMode),
+    mime: resolveExportMime(format),
   };
+}
+
+export function downloadConversationExport(
+  result: ConversationExportResult
+): void {
+  const blob = new Blob([result.content], { type: result.mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = result.filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function toMarkdown(
@@ -193,4 +209,10 @@ function generateFilename(count: number, format: string, mode: string): string {
   const date = new Date().toISOString().slice(0, 10);
   const modeSuffix = mode === "full" ? "" : `-${mode}`;
   return `vesti-${count}threads${modeSuffix}-${date}.${format}`;
+}
+
+function resolveExportMime(format: string): string {
+  return format === "json"
+    ? "application/json"
+    : "text/plain;charset=utf-8";
 }

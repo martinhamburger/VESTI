@@ -4,9 +4,13 @@ import type {
   Conversation,
   ConversationMatchSummary,
   DashboardStats,
+  ExportFormat,
   Platform,
 } from "~lib/types";
-import { getDashboardStats } from "~lib/services/storageService";
+import {
+  deleteConversations,
+  getDashboardStats,
+} from "~lib/services/storageService";
 import { PLATFORM_TONE } from "../components/platformTone";
 import { ThreadsFilterDisclosure } from "../components/ThreadsFilterDisclosure";
 import { ConversationList } from "../containers/ConversationList";
@@ -19,8 +23,27 @@ import {
 import type { ThreadsEvent, ThreadsSearchSession } from "../types/threadsSearch";
 import { useBatchSelection } from "../hooks/useBatchSelection";
 import { BatchActionBar } from "../components/BatchActionBar";
-import { ExportDialog, type ExportConfig, type ExportResult } from "../components/ExportDialog";
-import { exportConversations } from "../utils/exportConversations";
+import {
+  downloadConversationExport,
+  exportConversations,
+} from "../utils/exportConversations";
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getBatchListBottomInset(mode: "inactive" | "selecting" | "export_panel" | "delete_panel", hasFeedback: boolean): number {
+  const base =
+    mode === "inactive"
+      ? 16
+      : mode === "selecting"
+        ? 92
+        : mode === "export_panel"
+          ? 248
+          : 276;
+  return hasFeedback ? base + 36 : base;
+}
 
 interface TimelinePageProps {
   session: ThreadsSearchSession;
@@ -77,8 +100,13 @@ export function TimelinePage({
     anchorConversationId,
   } = session;
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [visibleConversations, setVisibleConversations] = useState<Conversation[]>([]);
+  const [batchActionKey, setBatchActionKey] = useState<string | null>(null);
+  const [deleteConfirmValue, setDeleteConfirmValue] = useState("");
+  const [batchFeedback, setBatchFeedback] = useState<{
+    message: string;
+    tone: "default" | "error";
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,27 +139,127 @@ export function TimelinePage({
     },
     [dispatch]
   );
+  const getConversationId = useCallback((conversation: Conversation) => conversation.id, []);
 
   // Batch selection
   const {
+    mode: batchMode,
     selectedIds,
     selectedCount,
     isBatchMode,
+    isAllSelected,
+    totalCount,
     toggleSelection,
     selectAll,
     clearSelection,
     enterBatchMode,
+    openExportPanel,
+    openDeletePanel,
+    closePanel,
     exitBatchMode,
   } = useBatchSelection({
-    items: conversations,
-    getId: (c) => c.id,
-    maxSelection: 20,
+    items: visibleConversations,
+    getId: getConversationId,
   });
+  const selectedConversations = visibleConversations.filter((conversation) =>
+    selectedIds.has(conversation.id)
+  );
+  const activeBatchMode = batchMode === "inactive" ? "selecting" : batchMode;
+  const listBottomInset = getBatchListBottomInset(
+    batchMode,
+    Boolean(batchFeedback)
+  );
 
-  const handleExport = async (config: ExportConfig): Promise<ExportResult> => {
-    const selectedConversations = conversations.filter((c) => selectedIds.has(c.id));
-    return exportConversations(selectedConversations, config);
-  };
+  const handleClearSelection = useCallback(() => {
+    setDeleteConfirmValue("");
+    clearSelection();
+  }, [clearSelection]);
+
+  const handleExitBatchMode = useCallback(() => {
+    setDeleteConfirmValue("");
+    setBatchActionKey(null);
+    setBatchFeedback(null);
+    exitBatchMode();
+  }, [exitBatchMode]);
+
+  const handleToggleExportPanel = useCallback(() => {
+    setDeleteConfirmValue("");
+    setBatchFeedback(null);
+    if (batchMode === "export_panel") {
+      closePanel();
+      return;
+    }
+    openExportPanel();
+  }, [batchMode, closePanel, openExportPanel]);
+
+  const handleToggleDeletePanel = useCallback(() => {
+    setBatchFeedback(null);
+    if (batchMode === "delete_panel") {
+      setDeleteConfirmValue("");
+      closePanel();
+      return;
+    }
+    setDeleteConfirmValue("");
+    openDeletePanel();
+  }, [batchMode, closePanel, openDeletePanel]);
+
+  const handleClosePanel = useCallback(() => {
+    setDeleteConfirmValue("");
+    closePanel();
+  }, [closePanel]);
+
+  const handleChooseExportFormat = useCallback(
+    async (format: ExportFormat) => {
+      if (selectedConversations.length === 0) return;
+      setBatchActionKey(`export-${format}`);
+      setBatchFeedback(null);
+      try {
+        const result = await exportConversations(selectedConversations, {
+          contentMode: "full",
+          format,
+        });
+        downloadConversationExport(result);
+        closePanel();
+        setBatchFeedback({
+          message: `Exported ${result.filename}`,
+          tone: "default",
+        });
+      } catch (error) {
+        setBatchFeedback({
+          message: getErrorMessage(error),
+          tone: "error",
+        });
+      } finally {
+        setBatchActionKey(null);
+      }
+    },
+    [closePanel, selectedConversations]
+  );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (deleteConfirmValue !== "DELETE" || selectedConversations.length === 0) {
+      return;
+    }
+
+    setBatchActionKey("delete");
+    setBatchFeedback(null);
+    try {
+      await deleteConversations(selectedConversations.map((conversation) => conversation.id));
+      setDeleteConfirmValue("");
+      handleExitBatchMode();
+    } catch (error) {
+      setBatchFeedback({
+        message: getErrorMessage(error),
+        tone: "error",
+      });
+    } finally {
+      setBatchActionKey(null);
+    }
+  }, [
+    deleteConfirmValue,
+    handleExitBatchMode,
+    selectedConversations,
+  ]);
 
   const handleOpenSearch = () => {
     dispatch({ type: "HEADER_MODE_CHANGED", headerMode: "search" });
@@ -150,16 +278,13 @@ export function TimelinePage({
   };
 
   const handleSelectFromMenu = (id: number) => {
-    if (!isBatchMode) {
-      enterBatchMode();
-    }
-    if (!selectedIds.has(id)) {
-      toggleSelection(id);
-    }
+    setDeleteConfirmValue("");
+    setBatchFeedback(null);
+    enterBatchMode(id);
   };
 
   return (
-    <div className={`flex h-full flex-col bg-bg-app ${isBatchMode ? "pb-[60px]" : ""}`}>
+    <div className="flex h-full flex-col bg-bg-app">
       {headerMode === "search" ? (
         <header className="vesti-page-header gap-2">
           <div className="threads-search-surface flex h-8 flex-1 items-center gap-2 rounded-lg px-3">
@@ -319,29 +444,31 @@ export function TimelinePage({
           selectedIds={selectedIds}
           onToggleSelection={toggleSelection}
           onSelectFromMenu={handleSelectFromMenu}
-          onConversationsLoaded={setConversations}
+          onFilteredConversationsChange={setVisibleConversations}
+          bottomInsetPx={listBottomInset}
         />
 
         {/* Batch action bar */}
         {isBatchMode && (
           <BatchActionBar
+            mode={activeBatchMode}
             selectedCount={selectedCount}
-            totalCount={conversations.length}
-            onSelectAll={selectAll}
-            onClearSelection={clearSelection}
-            onExport={() => setIsExportDialogOpen(true)}
-            onExit={exitBatchMode}
+            totalCount={totalCount}
+            actionKey={batchActionKey}
+            deleteConfirmValue={deleteConfirmValue}
+            feedback={batchFeedback}
+            onDeleteConfirmValueChange={setDeleteConfirmValue}
+            onSelectAll={isAllSelected ? handleClearSelection : selectAll}
+            onClearSelection={handleClearSelection}
+            onToggleExportPanel={handleToggleExportPanel}
+            onToggleDeletePanel={handleToggleDeletePanel}
+            onClosePanel={handleClosePanel}
+            onChooseExportFormat={handleChooseExportFormat}
+            onConfirmDelete={handleConfirmDelete}
+            onExit={handleExitBatchMode}
           />
         )}
       </div>
-
-      {/* Export dialog */}
-      <ExportDialog
-        open={isExportDialogOpen}
-        conversations={conversations.filter((c) => selectedIds.has(c.id))}
-        onClose={() => setIsExportDialogOpen(false)}
-        onExport={handleExport}
-      />
     </div>
   );
 }

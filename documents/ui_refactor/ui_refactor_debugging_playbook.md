@@ -77,6 +77,13 @@ If performance-related:
 | Threads filter rows start expanded or retain stale open state | disclosure reset behavior lost | reopen filter mode and verify details mount-reset behavior | Threads filter disclosure rows |
 | Threads filter summary is wrong or wraps | summary formatter/layout drift | compare active filter state against collapsed summary rules and truncation | Threads filter summary row |
 | Threads filter pills feel oversized or uneven | compact density tokens drifted | inspect pill font, padding, gap, and source dot sizing | Threads filter pill density |
+| Threads overflow menu feels like a generic popover | shell classes drifted back to shared defaults | compare menu border/background/shadow/radius against Threads utility surface baseline | conversation card overflow shell |
+| Threads overflow submenu does not match parent menu | submenu content skipped Threads-local classes | open `Add to project` and compare shell density/radius to parent menu | conversation card overflow submenu |
+| Threads overflow rows feel oversized or icon-heavy | item density tokens regressed | inspect item font size, row height, icon size, chevron size, and open-trigger active state | conversation card overflow item density |
+| Only one card looks "entered" after Select | selected state still reuses hover/expanded layout | enter batch mode and compare unselected vs selected card detail visibility and action rows | conversation card batch-selection layout |
+| Select All grabs the wrong threads | batch scope drifted from filtered result set | apply search/date/source filters, then compare tray count and selected ids against visible cards only | Threads batch-selection scope |
+| Batch export no longer matches Data language | tray export panel drifted from Data export rows or format set | verify panel offers only JSON/TXT/MD and compare button hierarchy to Data export block | Threads batch export panel |
+| Batch delete is too easy to trigger | destructive guard weakened or removed | open delete panel and verify `DELETE` input gate before confirm enables | Threads batch delete guard |
 
 ---
 

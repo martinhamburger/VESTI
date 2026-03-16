@@ -36,7 +36,9 @@ interface ConversationListProps {
   selectedIds?: Set<number>;
   onToggleSelection?: (id: number) => void;
   onSelectFromMenu?: (id: number) => void;
+  onFilteredConversationsChange?: (conversations: Conversation[]) => void;
   onConversationsLoaded?: (conversations: Conversation[]) => void;
+  bottomInsetPx?: number;
 }
 
 interface FilteredConversationItem {
@@ -156,7 +158,9 @@ export function ConversationList({
   selectedIds = new Set(),
   onToggleSelection,
   onSelectFromMenu,
+  onFilteredConversationsChange,
   onConversationsLoaded,
+  bottomInsetPx = 16,
 }: ConversationListProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -340,6 +344,12 @@ export function ConversationList({
   }, [refreshToken]);
 
   const topicOptions = useMemo(() => flattenTopics(topics), [topics]);
+
+  useEffect(() => {
+    onFilteredConversationsChange?.(
+      filteredConversations.map((item) => item.conversation)
+    );
+  }, [filteredConversations, onFilteredConversationsChange]);
 
   const grouped = useMemo(() => {
     const now = Date.now();
@@ -536,7 +546,8 @@ export function ConversationList({
   return (
     <div
       ref={listContainerRef}
-      className="vesti-scroll h-full min-h-0 flex flex-col gap-2 overflow-y-scroll px-4 pb-4"
+      className="vesti-scroll h-full min-h-0 flex flex-col gap-2 overflow-y-scroll px-4"
+      style={{ paddingBottom: `${bottomInsetPx}px` }}
     >
       {grouped.map((group) => (
         <div key={group.label}>

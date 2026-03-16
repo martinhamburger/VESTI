@@ -1,31 +1,23 @@
 import { useState, useMemo } from "react";
 import { X, Download, Copy, FileText, FileJson, FileCode, Loader2, Check } from "lucide-react";
 import type { Conversation } from "~lib/types";
-
-export type ExportContentMode = "full" | "compact" | "summary";
-export type ExportFormat = "md" | "txt" | "json";
-
-export interface ExportConfig {
-  conversationIds: number[];
-  contentMode: ExportContentMode;
-  format: ExportFormat;
-}
-
-export interface ExportResult {
-  content: string;
-  filename: string;
-}
+import type {
+  ConversationExportConfig,
+  ConversationExportContentMode,
+  ConversationExportFormat,
+  ConversationExportResult,
+} from "../types/export";
 
 interface ExportDialogProps {
   open: boolean;
   conversations: Conversation[];
   onClose: () => void;
-  onExport: (config: ExportConfig) => Promise<ExportResult>;
+  onExport: (config: ConversationExportConfig) => Promise<ConversationExportResult>;
 }
 
 export function ExportDialog({ open, conversations, onClose, onExport }: ExportDialogProps) {
-  const [contentMode, setContentMode] = useState<ExportContentMode>("full");
-  const [format, setFormat] = useState<ExportFormat>("md");
+  const [contentMode, setContentMode] = useState<ConversationExportContentMode>("full");
+  const [format, setFormat] = useState<ConversationExportFormat>("md");
   const [isExporting, setIsExporting] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -50,9 +42,7 @@ export function ExportDialog({ open, conversations, onClose, onExport }: ExportD
       });
 
       if (action === "download") {
-        const blob = new Blob([result.content], {
-          type: format === "json" ? "application/json" : "text/plain;charset=utf-8",
-        });
+        const blob = new Blob([result.content], { type: result.mime });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -106,7 +96,7 @@ export function ExportDialog({ open, conversations, onClose, onExport }: ExportD
               ].map(({ key, label, desc }) => (
                 <button
                   key={key}
-                  onClick={() => setContentMode(key as ExportContentMode)}
+                  onClick={() => setContentMode(key as ConversationExportContentMode)}
                   className={`flex flex-col items-center justify-center rounded-lg border px-2 py-2.5 text-center transition-all ${
                     contentMode === key
                       ? "border-accent-primary bg-accent-primary/10"
@@ -139,7 +129,7 @@ export function ExportDialog({ open, conversations, onClose, onExport }: ExportD
               ].map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
-                  onClick={() => setFormat(key as ExportFormat)}
+                  onClick={() => setFormat(key as ConversationExportFormat)}
                   className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${
                     format === key
                       ? "border-accent-primary bg-accent-primary/10 text-accent-primary"

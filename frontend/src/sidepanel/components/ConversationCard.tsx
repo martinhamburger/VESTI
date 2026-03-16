@@ -38,6 +38,13 @@ import { splitWithHighlight } from "../lib/highlight";
 const TOOLTIP_DELAY_MS = 200;
 const COPY_FEEDBACK_MS = 1500;
 const MAX_TITLE_LENGTH = 120;
+const THREADS_OVERFLOW_CONTENT_CLASS =
+  "w-44 max-h-64 overflow-y-auto rounded-lg border border-border-subtle bg-bg-primary/92 p-1 shadow-paper";
+const THREADS_OVERFLOW_ITEM_CLASS =
+  "min-h-8 rounded-md px-2.5 py-1.5 text-vesti-base font-medium text-text-primary focus:!bg-bg-secondary focus:!text-text-primary data-[highlighted]:!bg-bg-secondary data-[highlighted]:!text-text-primary [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:text-text-secondary";
+const THREADS_OVERFLOW_SUBTRIGGER_CLASS =
+  `${THREADS_OVERFLOW_ITEM_CLASS} data-[state=open]:!bg-bg-secondary data-[state=open]:!text-text-primary [&>svg:last-child]:h-3.5 [&>svg:last-child]:w-3.5 [&>svg:last-child]:text-text-tertiary`;
+const THREADS_OVERFLOW_SEPARATOR_CLASS = "-mx-0 my-1 bg-border-subtle";
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -314,8 +321,10 @@ export function ConversationCard({
     onRenameTitle,
   ]);
 
-  const handleStartTitleEdit = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
+  const handleStartTitleEdit = (
+    event?: Pick<MouseEvent<HTMLButtonElement>, "stopPropagation">
+  ) => {
+    event?.stopPropagation();
     if (isSavingTitle) return;
     setDraftTitle(conversation.title);
     setIsEditingTitle(true);
@@ -323,10 +332,6 @@ export function ConversationCard({
 
   const handleToggleStar = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    if (isBatchMode) {
-      onToggleSelect?.();
-      return;
-    }
     try {
       const updated = await updateConversationAndSync(conversation.id, {
         is_starred: !conversation.is_starred,
@@ -360,8 +365,16 @@ export function ConversationCard({
     }
   };
 
-  // Batch mode: always show as selected/hovered when selected
-  const effectiveIsHovered = isBatchMode ? isSelected : isHovered;
+  const showExpandedDetails = !isBatchMode && isHovered;
+  const cardStateClass = isBatchMode
+    ? isSelected
+      ? "bg-accent-primary/8 ring-1 ring-accent-primary/25"
+      : isHovered
+        ? "bg-surface-card-hover"
+        : "bg-surface-card"
+    : isHovered
+      ? "bg-surface-card-hover shadow-card-hover"
+      : "bg-surface-card";
 
   return (
     <div
@@ -383,16 +396,10 @@ export function ConversationCard({
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`group w-full cursor-pointer rounded-md p-3 text-left transition-all duration-150 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
-        isBatchMode && isSelected
-          ? "bg-accent-primary/10 ring-1 ring-accent-primary/30"
-          : effectiveIsHovered
-            ? "bg-surface-card-hover shadow-card-hover"
-            : "bg-surface-card"
-      }`}
+      className={`group w-full cursor-pointer rounded-md p-3 text-left transition-all duration-150 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${cardStateClass}`}
     >
       <div className="flex items-center justify-between">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className={`flex min-w-0 items-center ${isBatchMode ? "gap-2.5" : "gap-2"}`}>
           {isBatchMode && (
             <button
               type="button"
@@ -401,8 +408,10 @@ export function ConversationCard({
                 event.stopPropagation();
                 onToggleSelect?.();
               }}
-              className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full ${
-                isSelected ? "bg-accent-primary" : "border border-text-tertiary/40"
+              className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border transition-colors ${
+                isSelected
+                  ? "border-accent-primary bg-accent-primary"
+                  : "border-text-tertiary/35 bg-bg-primary/70"
               }`}
             >
               {isSelected && <Check className="h-3 w-3 text-white" strokeWidth={2} />}
@@ -411,21 +420,23 @@ export function ConversationCard({
           <PlatformTag platform={conversation.platform} />
         </div>
         <div className="flex items-center gap-1">
-          <ActionIconButton
-            label={conversation.is_starred ? "Unstar" : "Star"}
-            onClick={handleToggleStar}
-            icon={
-              <Star
-                className={
-                  conversation.is_starred
-                    ? "h-3.5 w-3.5 text-accent-primary"
-                    : "h-3.5 w-3.5"
-                }
-                strokeWidth={1.75}
-                fill={conversation.is_starred ? "currentColor" : "none"}
-              />
-            }
-          />
+          {!isBatchMode && (
+            <ActionIconButton
+              label={conversation.is_starred ? "Unstar" : "Star"}
+              onClick={handleToggleStar}
+              icon={
+                <Star
+                  className={
+                    conversation.is_starred
+                      ? "h-3.5 w-3.5 text-accent-primary"
+                      : "h-3.5 w-3.5"
+                  }
+                  strokeWidth={1.75}
+                  fill={conversation.is_starred ? "currentColor" : "none"}
+                />
+              }
+            />
+          )}
           <span className="text-vesti-xs text-text-tertiary">
             {formatRelativeTime(conversation.updated_at)}
           </span>
@@ -472,7 +483,7 @@ export function ConversationCard({
           </h3>
         )}
 
-        {!isEditingTitle && (
+        {!isEditingTitle && !isBatchMode && (
           <div className="flex shrink-0 items-center gap-0.5">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -480,30 +491,35 @@ export function ConversationCard({
                   type="button"
                   aria-label="More actions"
                   onClick={(event) => event.stopPropagation()}
-                  className="flex h-6 w-6 items-center justify-center rounded-sm text-text-tertiary opacity-60 transition-all duration-150 hover:bg-accent-primary-light hover:text-accent-primary hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                  className="flex h-6 w-6 items-center justify-center rounded-sm text-text-tertiary opacity-60 transition-all duration-150 hover:bg-accent-primary-light hover:text-accent-primary hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus data-[state=open]:bg-bg-secondary data-[state=open]:text-text-primary data-[state=open]:opacity-100"
                 >
                   <MoreHorizontal className="h-4 w-4" strokeWidth={1.8} />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48 max-h-64 overflow-y-auto">
+              <DropdownMenuContent
+                align="end"
+                className={THREADS_OVERFLOW_CONTENT_CLASS}
+              >
                 <DropdownMenuItem
                   disabled={!canRename}
+                  className={THREADS_OVERFLOW_ITEM_CLASS}
                   onSelect={(event) => {
                     event.stopPropagation();
                     if (!canRename) return;
                     handleStartTitleEdit();
                   }}
                 >
-                  <Pencil className="h-4 w-4" strokeWidth={1.6} />
+                  <Pencil className="h-3.5 w-3.5" strokeWidth={1.6} />
                   Rename
                 </DropdownMenuItem>
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <FolderOpen className="h-4 w-4" strokeWidth={1.6} />
+                  <DropdownMenuSubTrigger className={THREADS_OVERFLOW_SUBTRIGGER_CLASS}>
+                    <FolderOpen className="h-3.5 w-3.5" strokeWidth={1.6} />
                     Add to project
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-48 max-h-64 overflow-y-auto">
+                  <DropdownMenuSubContent className={THREADS_OVERFLOW_CONTENT_CLASS}>
                     <DropdownMenuItem
+                      className={THREADS_OVERFLOW_ITEM_CLASS}
                       onSelect={(event) => {
                         event.stopPropagation();
                         handleTopicChange({
@@ -516,6 +532,7 @@ export function ConversationCard({
                     {topicOptions.map((topic) => (
                       <DropdownMenuItem
                         key={topic.id}
+                        className={THREADS_OVERFLOW_ITEM_CLASS}
                         onSelect={(event) => {
                           event.stopPropagation();
                           handleTopicChange({
@@ -528,16 +545,16 @@ export function ConversationCard({
                     ))}
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className={THREADS_OVERFLOW_SEPARATOR_CLASS} />
                 <DropdownMenuItem
                   disabled={!onSelectFromMenu}
                   onSelect={(event) => {
                     event.stopPropagation();
                     onSelectFromMenu?.();
                   }}
-                  className="text-accent-primary focus:bg-accent-primary-light focus:text-accent-primary data-[highlighted]:bg-accent-primary-light data-[highlighted]:text-accent-primary"
+                  className={`${THREADS_OVERFLOW_ITEM_CLASS} focus:!bg-accent-primary-light data-[highlighted]:!bg-accent-primary-light`}
                 >
-                  <CheckSquare className="h-4 w-4" strokeWidth={1.6} />
+                  <CheckSquare className="h-3.5 w-3.5" strokeWidth={1.6} />
                   Select
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -547,57 +564,55 @@ export function ConversationCard({
 
       </div>
 
-      <div
-        className={`grid transition-[grid-template-rows,opacity] duration-150 ease-in-out ${
-          isHovered ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-        }`}
-      >
-        <div className="overflow-hidden">
-          <p className="mt-1.5 line-clamp-2 text-vesti-sm leading-[1.5] text-text-secondary">
-            {renderHighlightedText(snippetText)}
-          </p>
+      {showExpandedDetails && (
+        <div className="grid grid-rows-[1fr] opacity-100 transition-[grid-template-rows,opacity] duration-150 ease-in-out">
+          <div className="overflow-hidden">
+            <p className="mt-1.5 line-clamp-2 text-vesti-sm leading-[1.5] text-text-secondary">
+              {renderHighlightedText(snippetText)}
+            </p>
 
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="flex items-center gap-1 whitespace-nowrap text-vesti-xs text-text-tertiary">
-                <MessageSquare className="h-3.5 w-3.5" strokeWidth={1.75} />
-                {conversation.message_count} messages · {turnCount} turns
-              </span>
-            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex items-center gap-1 whitespace-nowrap text-vesti-xs text-text-tertiary">
+                  <MessageSquare className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  {conversation.message_count} messages · {turnCount} turns
+                </span>
+              </div>
 
-            <div className="flex items-center gap-1.5">
-              <ActionIconButton
-                label={copied ? "Copied!" : "Copy Full Text"}
-                onClick={handleCopy}
-                icon={
-                  copied ? (
-                    <Check className="h-3.5 w-3.5 text-success" strokeWidth={1.75} />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  )
-                }
-              />
-              <ActionIconButton
-                label={
-                  hasSourceUrl
-                    ? "Go to Original URL"
-                    : "Source URL unavailable"
-                }
-                onClick={handleOpenSource}
-                disabled={!hasSourceUrl}
-                icon={<ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />}
-              />
-              <div className="mx-0.5 h-3.5 w-px bg-border-subtle" />
-              <ActionIconButton
-                label="Delete conversation"
-                onClick={handleDelete}
-                tone="danger"
-                icon={<Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />}
-              />
+              <div className="flex items-center gap-1.5">
+                <ActionIconButton
+                  label={copied ? "Copied!" : "Copy Full Text"}
+                  onClick={handleCopy}
+                  icon={
+                    copied ? (
+                      <Check className="h-3.5 w-3.5 text-success" strokeWidth={1.75} />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    )
+                  }
+                />
+                <ActionIconButton
+                  label={
+                    hasSourceUrl
+                      ? "Go to Original URL"
+                      : "Source URL unavailable"
+                  }
+                  onClick={handleOpenSource}
+                  disabled={!hasSourceUrl}
+                  icon={<ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                />
+                <div className="mx-0.5 h-3.5 w-px bg-border-subtle" />
+                <ActionIconButton
+                  label="Delete conversation"
+                  onClick={handleDelete}
+                  tone="danger"
+                  icon={<Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
