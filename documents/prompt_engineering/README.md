@@ -26,6 +26,7 @@ It does not own:
 - `embedding_proxy_contract_v2_0.md`
 - `insights_prompt_ui_engineering.md`
 - `model_settings.md`
+- `export_compression_current_architecture.md`
 
 ## Supporting operational docs
 

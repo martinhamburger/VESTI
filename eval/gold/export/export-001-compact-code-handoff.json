@@ -1,0 +1,55 @@
+{
+  "id": "export-001-compact-code-handoff",
+  "type": "export",
+  "mode": "compact",
+  "locale": "en",
+  "title": "Threads batch selection and export tray integration",
+  "platform": "Claude",
+  "created_at": 1773576000000,
+  "messages": [
+    {
+      "role": "user",
+      "content": "We need the Threads Select flow to stop opening Reader from the overflow menu. Please isolate the menu action from card activation and keep batch mode local to TimelinePage.",
+      "timestamp": 1773576000000
+    },
+    {
+      "role": "ai",
+      "content": "I will add a one-shot suppression guard in frontend/src/sidepanel/components/ConversationCard.tsx and a second guard in frontend/src/sidepanel/pages/TimelinePage.tsx so Select enters batch mode without OPEN_READER leaking through.",
+      "timestamp": 1773576360000
+    },
+    {
+      "role": "user",
+      "content": "Good. Also keep Select All scoped to the current filtered set and reuse Data-style export/delete semantics in BatchActionBar.tsx. Do not reintroduce ExportDialog.",
+      "timestamp": 1773576900000
+    },
+    {
+      "role": "ai",
+      "content": "Plan locked. We'll keep the tray local, route export through exportConversations(...), and preserve the current JSON/TXT/MD rows. The relevant files are frontend/src/sidepanel/components/BatchActionBar.tsx, frontend/src/sidepanel/pages/TimelinePage.tsx, and frontend/src/sidepanel/utils/exportConversations.ts.",
+      "timestamp": 1773577260000
+    },
+    {
+      "role": "user",
+      "content": "Please preserve concrete artifacts. We still need pnpm -C frontend build, git add -p for mixed files, and a clean commit split for overflow, tray spacing, and export compression.",
+      "timestamp": 1773577740000
+    },
+    {
+      "role": "ai",
+      "content": "Noted. Reusable artifacts include `handleSelectFromMenu`, `suppressNextReaderOpenRef`, `exportMode`, and commands like `pnpm -C frontend build` plus `git add -p frontend/src/sidepanel/components/BatchActionBar.tsx`.",
+      "timestamp": 1773578220000
+    }
+  ],
+  "gold": {
+    "required_facts": [
+      "Reader",
+      "BatchActionBar.tsx",
+      "TimelinePage.tsx",
+      "pnpm -C frontend build",
+      "git add -p"
+    ],
+    "forbidden_facts": [
+      "GraphQL",
+      "Kubernetes"
+    ],
+    "reference": "## Background\n- Title: Threads batch selection and export tray integration\n- Platform: Claude\n- Context: The thread is hardening Threads Select so overflow actions do not open Reader and batch mode stays local.\n- Constraint: Keep Select All scoped to the current filtered set and reuse Data-style export/delete semantics without bringing back ExportDialog.\n\n## Key Questions\n- How do we stop overflow Select from leaking into OPEN_READER while preserving normal card clicks?\n- How do we keep batch export and delete aligned with the current Threads tray structure?\n\n## Decisions And Answers\n- Add a one-shot suppression guard in ConversationCard.tsx and a second guard in TimelinePage.tsx so overflow Select only enters batch mode.\n- Keep export routed through exportConversations(...) and preserve JSON/TXT/MD rows in the tray instead of restoring ExportDialog.\n- Split the work into focused commits for overflow hardening, tray spacing, and export compression.\n\n## Reusable Artifacts\n- Path: frontend/src/sidepanel/components/BatchActionBar.tsx\n- Path: frontend/src/sidepanel/pages/TimelinePage.tsx\n- API/Function: handleSelectFromMenu(...)\n- API/Function: suppressNextReaderOpenRef\n- Command: pnpm -C frontend build\n- Command: git add -p frontend/src/sidepanel/components/BatchActionBar.tsx\n\n## Unresolved\n- Validate the final tray layout in a narrow viewport after the interaction fixes land.\n- Finish the export compression quality pass before the final commit split."
+  }
+}

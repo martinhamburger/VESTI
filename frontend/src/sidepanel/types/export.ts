@@ -9,8 +9,14 @@ export interface ConversationExportConfig {
   format: ConversationExportFormat;
 }
 
+export interface ConversationExportNotice {
+  message: string;
+  tone: "default" | "warning";
+}
+
 export interface ConversationExportResult {
   content: string;
   filename: string;
   mime: string;
+  notice?: ConversationExportNotice;
 }

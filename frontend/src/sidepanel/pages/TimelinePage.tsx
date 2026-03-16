@@ -27,6 +27,7 @@ import {
   downloadConversationExport,
   exportConversations,
 } from "../utils/exportConversations";
+import type { ConversationExportContentMode } from "../types/export";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -34,15 +35,19 @@ function getErrorMessage(error: unknown): string {
 }
 
 function getBatchListBottomInset(mode: "inactive" | "selecting" | "export_panel" | "delete_panel", hasFeedback: boolean): number {
-  const base =
-    mode === "inactive"
-      ? 16
-      : mode === "selecting"
-        ? 92
-        : mode === "export_panel"
-          ? 248
-          : 276;
-  return hasFeedback ? base + 36 : base;
+  if (mode === "inactive") {
+    return 16;
+  }
+
+  if (mode === "selecting") {
+    return hasFeedback ? 104 : 68;
+  }
+
+  if (mode === "export_panel") {
+    return 308;
+  }
+
+  return 248;
 }
 
 interface TimelinePageProps {
@@ -101,11 +106,13 @@ export function TimelinePage({
   } = session;
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [visibleConversations, setVisibleConversations] = useState<Conversation[]>([]);
+  const [exportMode, setExportMode] =
+    useState<ConversationExportContentMode>("full");
   const [batchActionKey, setBatchActionKey] = useState<string | null>(null);
   const [deleteConfirmValue, setDeleteConfirmValue] = useState("");
   const [batchFeedback, setBatchFeedback] = useState<{
     message: string;
-    tone: "default" | "error";
+    tone: "default" | "warning" | "error";
   } | null>(null);
   const suppressNextReaderOpenRef = useRef(false);
   const suppressNextReaderOpenTimerRef = useRef<number | null>(null);
@@ -225,14 +232,16 @@ export function TimelinePage({
       setBatchFeedback(null);
       try {
         const result = await exportConversations(selectedConversations, {
-          contentMode: "full",
+          contentMode: exportMode,
           format,
         });
         downloadConversationExport(result);
         closePanel();
         setBatchFeedback({
-          message: `Exported ${result.filename}`,
-          tone: "default",
+          message: result.notice
+            ? `${result.notice.message} Saved as ${result.filename}.`
+            : `Exported ${result.filename}`,
+          tone: result.notice?.tone ?? "default",
         });
       } catch (error) {
         setBatchFeedback({
@@ -243,7 +252,7 @@ export function TimelinePage({
         setBatchActionKey(null);
       }
     },
-    [closePanel, selectedConversations]
+    [closePanel, exportMode, selectedConversations]
   );
 
   const handleConfirmDelete = useCallback(async () => {
@@ -496,12 +505,14 @@ export function TimelinePage({
         {isBatchMode && (
           <BatchActionBar
             mode={activeBatchMode}
+            exportMode={exportMode}
             selectedCount={selectedCount}
             totalCount={totalCount}
             actionKey={batchActionKey}
             deleteConfirmValue={deleteConfirmValue}
             feedback={batchFeedback}
             onDeleteConfirmValueChange={setDeleteConfirmValue}
+            onExportModeChange={setExportMode}
             onSelectAll={isAllSelected ? handleClearSelection : selectAll}
             onClearSelection={handleClearSelection}
             onToggleExportPanel={handleToggleExportPanel}

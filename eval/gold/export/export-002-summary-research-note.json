@@ -1,0 +1,55 @@
+{
+  "id": "export-002-summary-research-note",
+  "type": "export",
+  "mode": "summary",
+  "locale": "en",
+  "title": "Export compression roadmap and summary framing",
+  "platform": "ChatGPT",
+  "created_at": 1773662400000,
+  "messages": [
+    {
+      "role": "user",
+      "content": "We do not want to solve Kimi 2.5 routing right now. Instead, merge the useful export compression ideas, keep JSON compressed_content as a string, and leave future seams for ModelScope and moonshot_direct.",
+      "timestamp": 1773662400000
+    },
+    {
+      "role": "ai",
+      "content": "Understood. We'll keep exportConversations.ts as the only canonical export entry, add prompt-driven Compact and Summary modes, and keep fallback as success plus warning rather than hard fail.",
+      "timestamp": 1773662760000
+    },
+    {
+      "role": "user",
+      "content": "For summary specifically, I want it to align with conversation_summary.v2 thinking: core question, important moves, reusable snippets, next steps, and tags, but still output markdown for human recall.",
+      "timestamp": 1773663300000
+    },
+    {
+      "role": "ai",
+      "content": "That means Summary should lean toward Problem Frame and Important Moves instead of loose takeaways. We'll keep headings fixed as TL;DR, Problem Frame, Important Moves, Reusable Snippets, Next Steps, and Tags.",
+      "timestamp": 1773663780000
+    },
+    {
+      "role": "user",
+      "content": "Also tighten validation. All headings must appear, Summary needs grounded sections, and if the transcript mentions file paths or commands the output should not silently drop them.",
+      "timestamp": 1773664260000
+    },
+    {
+      "role": "ai",
+      "content": "Agreed. We'll add stronger validation plus export eval fixtures, and keep moonshot_direct dormant so Settings and BYOK are not polluted before real verification.",
+      "timestamp": 1773664740000
+    }
+  ],
+  "gold": {
+    "required_facts": [
+      "conversation_summary.v2",
+      "compressed_content",
+      "moonshot_direct",
+      "markdown",
+      "validation"
+    ],
+    "forbidden_facts": [
+      "NFT",
+      "RabbitMQ"
+    ],
+    "reference": "## TL;DR\n- The thread locked a human-readable Summary export path that borrows the conversation_summary.v2 mindset, keeps compressed_content as a string, and defers any real Kimi 2.5 routing decision.\n\n## Problem Frame\n- The export roadmap should absorb useful compression and prompt ideas without reopening provider scope or polluting Settings/BYOK.\n- Summary needs to feel like structured recall, not loose notes, while still staying in markdown instead of JSON.\n\n## Important Moves\n- Keep exportConversations.ts as the canonical export entry and add Compact and Summary as prompt-driven modes.\n- Keep fallback behavior as successful export with a warning instead of a hard failure.\n- Tighten validation so required headings stay present and grounded artifacts like commands or file paths are not silently dropped.\n- Leave moonshot_direct dormant as a future seam rather than a live provider option.\n\n## Reusable Snippets\n- Reference: conversation_summary.v2\n- Reference: compressed_content\n- Reference: moonshot_direct\n- Reference: exportConversations.ts\n\n## Next Steps\n- Improve the Summary fallback so it reads like a structured note instead of a clipped transcript.\n- Add export eval fixtures that specifically cover compact, summary, and sparse-thread behavior.\n\n## Tags\n- export-compression, conversation_summary.v2, markdown, validation, moonshot_direct"
+  }
+}

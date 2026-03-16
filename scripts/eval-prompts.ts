@@ -2,15 +2,34 @@
 import path from "node:path";
 import process from "node:process";
 import { getPrompt } from "../frontend/src/lib/prompts";
-import type { WeeklyLiteReportV1 } from "../frontend/src/lib/types";
+import type { Message, WeeklyLiteReportV1 } from "../frontend/src/lib/types";
 
 type Mode = "auto" | "live" | "mock";
 type Variant = "current" | "experimental";
+type CaseKind = "conversation" | "weekly" | "export";
+type ExportEvalMode = "compact" | "summary";
 
 type Cli = { mode: Mode; variant: Variant; updateBaseline: boolean; strict: boolean; debugRaw: boolean; throttleMs: number; caseFilter: string; limit: number; caseDelayMs: number };
 
 const STRICT_JSON =
   "Output must be valid JSON only. Do not include markdown, code fences, or extra text.";
+const EXPORT_HEADINGS: Record<ExportEvalMode, string[]> = {
+  compact: [
+    "## Background",
+    "## Key Questions",
+    "## Decisions And Answers",
+    "## Reusable Artifacts",
+    "## Unresolved",
+  ],
+  summary: [
+    "## TL;DR",
+    "## Problem Frame",
+    "## Important Moves",
+    "## Reusable Snippets",
+    "## Next Steps",
+    "## Tags",
+  ],
+};
 
 const args = process.argv.slice(2);
 const cli: Cli = {
@@ -502,7 +521,75 @@ function parseJsonFromText(raw: string): unknown {
   throw new Error("INVALID_JSON_PAYLOAD");
 }
 
-function parseStructured(kind: "conversation" | "weekly", raw: string) {
+function parseMarkdownSections(
+  raw: string,
+  headings: string[]
+): Record<string, string> | null {
+  const text = raw.trim();
+  if (!text) return null;
+
+  const sections: Record<string, string> = {};
+  for (let index = 0; index < headings.length; index += 1) {
+    const heading = headings[index];
+    const start = text.indexOf(heading);
+    if (start < 0) return null;
+
+    const bodyStart = start + heading.length;
+    const nextHeading = headings
+      .slice(index + 1)
+      .map((candidate) => ({
+        candidate,
+        position: text.indexOf(candidate, bodyStart),
+      }))
+      .filter((entry) => entry.position >= 0)
+      .sort((a, b) => a.position - b.position)[0];
+
+    sections[heading] = text
+      .slice(bodyStart, nextHeading ? nextHeading.position : undefined)
+      .trim();
+  }
+
+  return sections;
+}
+
+function parseExportMarkdown(
+  mode: ExportEvalMode,
+  raw: string
+): {
+  data: { mode: ExportEvalMode; body: string; sections: Record<string, string> } | null;
+  errors: string[];
+} {
+  const body = raw.trim();
+  if (!body) {
+    return { data: null, errors: ["EMPTY_EXPORT_OUTPUT"] };
+  }
+
+  const sections = parseMarkdownSections(body, EXPORT_HEADINGS[mode]);
+  if (!sections) {
+    return {
+      data: null,
+      errors: [`missing required headings for ${mode}`],
+    };
+  }
+
+  return {
+    data: {
+      mode,
+      body,
+      sections,
+    },
+    errors: [],
+  };
+}
+
+function parseStructured(kind: CaseKind, raw: string, exportMode?: ExportEvalMode) {
+  if (kind === "export") {
+    if (!exportMode) {
+      return { data: null, errors: ["EXPORT_MODE_MISSING"] };
+    }
+    return parseExportMarkdown(exportMode, raw);
+  }
+
   try {
     const value = parseJsonFromText(raw);
     if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -589,7 +676,7 @@ async function callProvider(
       body: JSON.stringify(body),
     });
 
-  const postWithRetry = async (body: Record<string, unknown>, label: string) => {
+  const postWithRetry = async (body: Record<string, unknown>) => {
     let retries = 0;
     while (true) {
       if (cli.throttleMs > 0 && retries === 0) {
@@ -630,7 +717,7 @@ async function callProvider(
       max_tokens: cfg.maxTokens,
       response_format: { type: "json_object" },
       messages: msgs,
-    }, "json_mode");
+    });
     if (r.ok) return { content: content(await r.json()), mode: "json_mode" };
     const err = await r.text();
     const fallback =
@@ -645,7 +732,7 @@ async function callProvider(
         { role: "system", content: `${system}\n${STRICT_JSON}` },
         { role: "user", content: user },
       ],
-    }, "prompt_json");
+    });
     if (!r2.ok) throw new Error(`provider prompt_json failed ${r2.status}`);
     return { content: content(await r2.json()), mode: "prompt_json" };
   }
@@ -655,13 +742,16 @@ async function callProvider(
     temperature: cfg.temperature,
     max_tokens: cfg.maxTokens,
     messages: msgs,
-  }, "plain_text");
+  });
   if (!r.ok) throw new Error(`provider plain failed ${r.status}`);
   return { content: content(await r.json()), mode: "plain_text" };
 }
 
-function textFromStructured(s: any, raw: string): string {
+function textFromStructured(kind: CaseKind, s: any, raw: string): string {
   if (!s) return raw;
+  if (kind === "export") {
+    return typeof s.body === "string" ? s.body : raw;
+  }
   if (s.topic_title) {
     return [s.topic_title, ...(s.key_takeaways || []), ...(s.action_items || []), ...(s.tech_stack_detected || [])].join(" ");
   }
@@ -681,6 +771,18 @@ function round2(n: number) {
   return Number(n.toFixed(2));
 }
 
+function toEvalMessages(
+  messages: Array<{ role: string; content: string; timestamp: number }>
+): Message[] {
+  return messages.map((m, i) => ({
+    id: i + 1,
+    conversation_id: 1,
+    role: m.role as Message["role"],
+    content_text: m.content,
+    created_at: m.timestamp,
+  }));
+}
+
 async function main() {
   const root = rootDir();
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
@@ -698,6 +800,7 @@ async function main() {
   let cases = [
     ...listJson<any>(path.join(root, "eval", "gold", "conversation")),
     ...listJson<any>(path.join(root, "eval", "gold", "weekly")),
+    ...listJson<any>(path.join(root, "eval", "gold", "export")),
   ];
 
   if (cli.caseFilter) {
@@ -736,8 +839,17 @@ async function main() {
 
   const scored: any[] = [];
   for (const c of cases) {
-    const kind = c.type as "conversation" | "weekly";
-    const promptType = kind === "conversation" ? "conversationSummary" : "weeklyDigest";
+    const kind = c.type as CaseKind;
+    const exportMode =
+      kind === "export" ? (c.mode as ExportEvalMode) : undefined;
+    const promptType =
+      kind === "conversation"
+        ? "conversationSummary"
+        : kind === "weekly"
+          ? "weeklyDigest"
+          : exportMode === "compact"
+            ? "exportCompact"
+            : "exportSummary";
     const prompt = getPrompt(promptType, { variant: cli.variant });
     let mode = "mock_gold";
     let attempt = 1;
@@ -747,32 +859,41 @@ async function main() {
     const debugAttempts: Array<{ attempt: number; mode: string; raw: string; errors?: string[] }> = [];
 
     if (runMode === "mock") {
-      const ref = JSON.parse(JSON.stringify(c.gold.reference));
-      const has = (v: string) => norm(textFromStructured(ref, "")).includes(norm(v));
-      const missing = (c.gold.required_facts || []).filter((f: string) => !has(f));
-      if (kind === "conversation") {
-        ref.key_takeaways = [...(ref.key_takeaways || []), ...missing];
+      if (kind === "export") {
+        raw = String(c.gold.reference || "").trim();
+        const parsedExport = parseStructured(kind, raw, exportMode);
+        parsed = parsedExport.data;
+        if (!parsed) {
+          throw new Error(
+            `mock export case ${c.id} is invalid: ${parsedExport.errors.join("; ")}`
+          );
+        }
       } else {
-        ref.highlights = [...(ref.highlights || []), ...missing];
+        const ref = JSON.parse(JSON.stringify(c.gold.reference));
+        const has = (v: string) =>
+          norm(textFromStructured(kind, ref, "")).includes(norm(v));
+        const missing = (c.gold.required_facts || []).filter(
+          (f: string) => !has(f)
+        );
+        if (kind === "conversation") {
+          ref.key_takeaways = [...(ref.key_takeaways || []), ...missing];
+        } else {
+          ref.highlights = [...(ref.highlights || []), ...missing];
+        }
+        raw = JSON.stringify(ref);
+        parsed = ref;
       }
-      raw = JSON.stringify(ref);
-      parsed = ref;
       debugAttempts.push({ attempt: 1, mode: "mock_gold", raw });
     } else {
       const payload =
         kind === "conversation"
           ? {
               conversationTitle: c.title,
-              messages: c.messages.map((m: any, i: number) => ({
-                id: i + 1,
-                conversation_id: 1,
-                role: m.role,
-                content_text: m.content,
-                created_at: m.timestamp,
-              })),
+              messages: toEvalMessages(c.messages),
               locale: c.locale || "zh",
             }
-          : {
+          : kind === "weekly"
+            ? {
               conversations: c.conversations.map((x: any) => ({
                 id: x.id,
                 uuid: String(x.id),
@@ -790,15 +911,53 @@ async function main() {
               rangeStart: c.range_start,
               rangeEnd: c.range_end,
               locale: c.locale || "zh",
-            };
+            }
+            : {
+                conversationTitle: c.title,
+                conversationPlatform: c.platform || "unknown",
+                conversationCreatedAt:
+                  c.created_at || c.messages?.[0]?.timestamp || Date.now(),
+                messages: toEvalMessages(c.messages),
+                locale: c.locale || "zh",
+              };
 
-      const p1 = await callProvider(cfg!, prompt.system, prompt.userTemplate(payload as never), true);
+      const p1 = await callProvider(
+        cfg!,
+        prompt.system,
+        prompt.userTemplate(payload as never),
+        kind !== "export"
+      );
       mode = p1.mode;
       raw = p1.content;
-      const v1 = parseStructured(kind, raw);
-      debugAttempts.push({ attempt: 1, mode: p1.mode, raw: p1.content, errors: v1.errors });
+      const v1 = parseStructured(kind, raw, exportMode);
+      debugAttempts.push({
+        attempt: 1,
+        mode: p1.mode,
+        raw: p1.content,
+        errors: v1.errors,
+      });
       if (v1.data) {
         parsed = v1.data;
+      } else if (kind === "export") {
+        attempt = 2;
+        mode = "fallback_text";
+        const p2 = await callProvider(
+          cfg!,
+          prompt.fallbackSystem || prompt.system,
+          prompt.fallbackTemplate(payload as never),
+          false
+        );
+        raw = p2.content;
+        const v2 = parseStructured(kind, raw, exportMode);
+        debugAttempts.push({
+          attempt: 2,
+          mode: "fallback_text",
+          raw: p2.content,
+          errors: v2.errors,
+        });
+        if (v2.data) {
+          parsed = v2.data;
+        }
       } else {
         attempt = 2;
         const repair =
@@ -809,7 +968,12 @@ async function main() {
         mode = p2.mode;
         raw = p2.content;
         const v2 = parseStructured(kind, raw);
-        debugAttempts.push({ attempt: 2, mode: p2.mode, raw: p2.content, errors: v2.errors });
+        debugAttempts.push({
+          attempt: 2,
+          mode: p2.mode,
+          raw: p2.content,
+          errors: v2.errors,
+        });
         if (v2.data) {
           parsed = v2.data;
         } else {
@@ -837,7 +1001,7 @@ async function main() {
       );
     }
 
-    const text = textFromStructured(parsed, raw);
+    const text = textFromStructured(kind, parsed, raw);
     const required = c.gold.required_facts || [];
     const forbidden = c.gold.forbidden_facts || [];
     const matched = required.filter((f: string) => norm(text).includes(norm(f)));
@@ -851,9 +1015,13 @@ async function main() {
         ? parsed?.action_items?.length
           ? 1
           : 0
-        : parsed?.suggested_focus?.length
-          ? 1
-          : 0;
+        : kind === "weekly"
+          ? parsed?.suggested_focus?.length
+            ? 1
+            : 0
+          : parsed?.sections?.["## Next Steps"] || parsed?.sections?.["## Unresolved"]
+            ? 1
+            : 0;
 
     let weeklyLowSignalItemRate = 0;
     let weeklyMinCompleteSentenceRate = 100;
@@ -1004,6 +1172,7 @@ async function main() {
       total: scored.length,
       conversation: scored.filter((x) => x.type === "conversation").length,
       weekly: scored.filter((x) => x.type === "weekly").length,
+      export: scored.filter((x) => x.type === "export").length,
     },
     metrics,
     thresholds: reportThresholds,

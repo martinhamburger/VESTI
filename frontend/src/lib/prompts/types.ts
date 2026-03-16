@@ -1,6 +1,11 @@
 import type { Conversation, ConversationSummaryV2, Message } from "../types";
 
-export type PromptType = "compaction" | "conversationSummary" | "weeklyDigest";
+export type PromptType =
+  | "compaction"
+  | "conversationSummary"
+  | "weeklyDigest"
+  | "exportCompact"
+  | "exportSummary";
 export type PromptVariant = "current" | "experimental";
 
 export interface CompactionPromptPayload {
@@ -35,6 +40,14 @@ export interface WeeklyDigestPromptPayload {
   locale?: "zh" | "en";
 }
 
+export interface ExportCompressionPromptPayload {
+  conversationTitle?: string;
+  conversationPlatform?: string;
+  conversationCreatedAt?: number;
+  messages: Message[];
+  locale?: "zh" | "en";
+}
+
 export interface PromptVersion<TPayload> {
   version: string;
   createdAt: string;
@@ -49,6 +62,8 @@ export interface PromptPayloadMap {
   compaction: CompactionPromptPayload;
   conversationSummary: ConversationSummaryPromptPayload;
   weeklyDigest: WeeklyDigestPromptPayload;
+  exportCompact: ExportCompressionPromptPayload;
+  exportSummary: ExportCompressionPromptPayload;
 }
 
 export type PromptConfig = {

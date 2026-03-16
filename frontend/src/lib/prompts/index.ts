@@ -7,6 +7,14 @@ import {
   EXPERIMENTAL_CONVERSATION_SUMMARY_PROMPT,
 } from "./conversationSummary";
 import {
+  CURRENT_EXPORT_COMPACT_PROMPT,
+  EXPERIMENTAL_EXPORT_COMPACT_PROMPT,
+} from "./exportCompact";
+import {
+  CURRENT_EXPORT_SUMMARY_PROMPT,
+  EXPERIMENTAL_EXPORT_SUMMARY_PROMPT,
+} from "./exportSummary";
+import {
   CURRENT_WEEKLY_DIGEST_PROMPT,
   EXPERIMENTAL_WEEKLY_DIGEST_PROMPT,
 } from "./weeklyDigest";
@@ -19,6 +27,7 @@ import type {
 export type {
   CompactionPromptPayload,
   ConversationSummaryPromptPayload,
+  ExportCompressionPromptPayload,
   PromptConfig,
   PromptPayloadMap,
   PromptType,
@@ -30,12 +39,16 @@ export type {
 export const CURRENT_PROMPTS: PromptConfig = {
   compaction: CURRENT_COMPACTION_PROMPT,
   conversationSummary: CURRENT_CONVERSATION_SUMMARY_PROMPT,
+  exportCompact: CURRENT_EXPORT_COMPACT_PROMPT,
+  exportSummary: CURRENT_EXPORT_SUMMARY_PROMPT,
   weeklyDigest: CURRENT_WEEKLY_DIGEST_PROMPT,
 };
 
 export const EXPERIMENTAL_PROMPTS: Partial<PromptConfig> = {
   compaction: EXPERIMENTAL_COMPACTION_PROMPT,
   conversationSummary: EXPERIMENTAL_CONVERSATION_SUMMARY_PROMPT,
+  exportCompact: EXPERIMENTAL_EXPORT_COMPACT_PROMPT,
+  exportSummary: EXPERIMENTAL_EXPORT_SUMMARY_PROMPT,
   weeklyDigest: EXPERIMENTAL_WEEKLY_DIGEST_PROMPT,
 };
 

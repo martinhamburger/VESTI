@@ -3631,5 +3631,11 @@
     background-color: hsl(var(--danger) / 0.08);
     color: hsl(var(--danger));
   }
+
+  .data-feedback-row.is-warning {
+    border-color: hsl(var(--warning) / 0.28);
+    background-color: hsl(var(--warning) / 0.09);
+    color: hsl(var(--warning));
+  }
 }
 

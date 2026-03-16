@@ -84,6 +84,9 @@ If performance-related:
 | Select All grabs the wrong threads | batch scope drifted from filtered result set | apply search/date/source filters, then compare tray count and selected ids against visible cards only | Threads batch-selection scope |
 | Batch export no longer matches Data language | tray export panel drifted from Data export rows or format set | verify panel offers only JSON/TXT/MD and compare button hierarchy to Data export block | Threads batch export panel |
 | Batch delete is too easy to trigger | destructive guard weakened or removed | open delete panel and verify `DELETE` input gate before confirm enables | Threads batch delete guard |
+| Compact/Summary selector is missing or replaced by old modal flow | export UI regressed to pre-tray interaction model | verify export panel shows `Full / Compact / Summary` above JSON/TXT/MD rows and `TimelinePage` no longer mounts legacy export dialog wiring | BatchActionBar + Timeline export path |
+| Compact/Summary export hard-fails when LLM path is unavailable | deterministic local fallback path missing or output validation too strict | simulate missing/bad LLM path and verify export still finishes with warning feedback | exportCompression + exportConversations |
+| Future Kimi seam leaks into Settings too early | experimental route/model candidate was exposed through BYOK whitelist instead of staying export-internal | verify `BYOK_MODEL_WHITELIST` remains unchanged and `moonshot_direct` stays dormant in resolver only | llmConfig + export compression route seam |
 
 ---
 

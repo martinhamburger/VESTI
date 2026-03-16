@@ -20,6 +20,13 @@ export const BYOK_MODEL_WHITELIST = [
   "deepseek-ai/DeepSeek-V3.2",
 ] as const;
 
+// Reserved for future export-compression routing enablement after real API validation.
+export const FUTURE_MODELSCOPE_EXPORT_MODEL_CANDIDATES = [
+  "moonshotai/Kimi-K2.5",
+] as const;
+export const FUTURE_MOONSHOT_DIRECT_EXPORT_MODEL_CANDIDATES: readonly string[] =
+  [];
+
 export type ProxyRoute = "chat" | "embeddings";
 
 const BYOK_MODEL_SET = new Set<string>(BYOK_MODEL_WHITELIST);

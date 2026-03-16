@@ -1,0 +1,32 @@
+{
+  "id": "export-003-compact-sparse-short-thread",
+  "type": "export",
+  "mode": "compact",
+  "locale": "en",
+  "title": "Quick build gate check",
+  "platform": "Qwen",
+  "created_at": 1773748800000,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Before we split commits, run pnpm -C frontend build and keep a handoff note if anything fails.",
+      "timestamp": 1773748800000
+    },
+    {
+      "role": "ai",
+      "content": "Understood. I'll run pnpm -C frontend build first and fall back to a concise handoff if the export pass still needs follow-up.",
+      "timestamp": 1773749160000
+    }
+  ],
+  "gold": {
+    "required_facts": [
+      "pnpm -C frontend build",
+      "handoff"
+    ],
+    "forbidden_facts": [
+      "Terraform",
+      "Redis"
+    ],
+    "reference": "## Background\n- Title: Quick build gate check\n- Platform: Qwen\n- Context: The thread is a sparse pre-commit check focused on running pnpm -C frontend build before cutting commits.\n\n## Key Questions\n- Should we run pnpm -C frontend build before splitting commits?\n\n## Decisions And Answers\n- Run pnpm -C frontend build first and keep a handoff note if follow-up is still needed.\n\n## Reusable Artifacts\n- Command: pnpm -C frontend build\n- Reference: handoff note\n\n## Unresolved\n- The export pass may still need follow-up after the build gate completes."
+  }
+}

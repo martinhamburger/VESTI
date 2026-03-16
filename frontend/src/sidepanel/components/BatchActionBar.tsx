@@ -7,64 +7,95 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import type { ExportFormat } from "~lib/types";
+import type {
+  ConversationExportContentMode,
+  ConversationExportFormat,
+} from "../types/export";
 import type { BatchSelectionMode } from "../hooks/useBatchSelection";
 
 type BatchActionMode = Exclude<BatchSelectionMode, "inactive">;
 
 interface BatchFeedback {
   message: string;
-  tone: "default" | "error";
+  tone: "default" | "warning" | "error";
 }
 
 interface BatchActionBarProps {
   mode: BatchActionMode;
+  exportMode: ConversationExportContentMode;
   selectedCount: number;
   totalCount: number;
   actionKey: string | null;
   deleteConfirmValue: string;
   feedback?: BatchFeedback | null;
   onDeleteConfirmValueChange: (value: string) => void;
+  onExportModeChange: (mode: ConversationExportContentMode) => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
   onToggleExportPanel: () => void;
   onToggleDeletePanel: () => void;
   onClosePanel: () => void;
-  onChooseExportFormat: (format: ExportFormat) => void;
+  onChooseExportFormat: (format: ConversationExportFormat) => void;
   onConfirmDelete: () => void;
   onExit: () => void;
 }
 
 const EXPORT_OPTIONS: Array<{
-  format: ExportFormat;
+  format: ConversationExportFormat;
   name: string;
   description: string;
 }> = [
   {
     format: "json",
     name: "JSON",
-    description: "Structured full export for local backup and reprocessing",
+    description: "Structured export for backup, review, and reprocessing",
   },
   {
     format: "txt",
     name: "TXT",
-    description: "Human-readable plain text export",
+    description: "Plain text export for quick reading and copy/paste",
   },
   {
     format: "md",
     name: "MD",
-    description: "Markdown export for notes and writing tools",
+    description: "Markdown export for notes, docs, and writing tools",
+  },
+];
+
+const EXPORT_MODE_OPTIONS: Array<{
+  mode: ConversationExportContentMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    mode: "full",
+    label: "Full",
+    description: "Keep the complete thread transcript locally.",
+  },
+  {
+    mode: "compact",
+    label: "Compact",
+    description:
+      "AI handoff format. Tries current LLM settings first, then local fallback.",
+  },
+  {
+    mode: "summary",
+    label: "Summary",
+    description:
+      "Human note format. Tries current LLM settings first, then local fallback.",
   },
 ];
 
 export function BatchActionBar({
   mode,
+  exportMode,
   selectedCount,
   totalCount,
   actionKey,
   deleteConfirmValue,
   feedback = null,
   onDeleteConfirmValueChange,
+  onExportModeChange,
   onSelectAll,
   onClearSelection,
   onToggleExportPanel,
@@ -79,10 +110,15 @@ export function BatchActionBar({
   const deleteBusy = actionKey === "delete";
   const showingExportPanel = mode === "export_panel";
   const showingDeletePanel = mode === "delete_panel";
+  const selectedMode =
+    EXPORT_MODE_OPTIONS.find((option) => option.mode === exportMode) ||
+    EXPORT_MODE_OPTIONS[0];
   const feedbackClassName =
     feedback?.tone === "error"
       ? "is-error"
-      : "";
+      : feedback?.tone === "warning"
+        ? "is-warning"
+        : "";
   const toolbarActionBaseClassName =
     "inline-flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus disabled:cursor-not-allowed disabled:opacity-45";
   const toolbarNeutralActionClassName = `${toolbarActionBaseClassName} text-text-secondary hover:bg-bg-secondary hover:text-text-primary`;
@@ -99,7 +135,7 @@ export function BatchActionBar({
                 Export {selectedCount} selected thread{selectedCount === 1 ? "" : "s"}
               </p>
               <p className="mt-0.5 text-[11px] text-text-secondary">
-                Choose the same full-export format set used in Data.
+                Keep Data-style format rows and choose the export density here.
               </p>
             </div>
             <button
@@ -111,7 +147,33 @@ export function BatchActionBar({
             </button>
           </div>
 
-          <p className="data-subgroup-label">Export format</p>
+          <p className="mt-3 data-subgroup-label">Export mode</p>
+          <div className="rounded-lg bg-bg-secondary p-1">
+            <div className="grid grid-cols-3 gap-1">
+              {EXPORT_MODE_OPTIONS.map((option) => {
+                const active = exportMode === option.mode;
+                return (
+                  <button
+                    key={option.mode}
+                    type="button"
+                    onClick={() => onExportModeChange(option.mode)}
+                    className={`rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors ${
+                      active
+                        ? "bg-bg-primary text-text-primary shadow-sm"
+                        : "text-text-secondary hover:bg-bg-primary/70 hover:text-text-primary"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] leading-[1.45] text-text-secondary">
+            {selectedMode.description}
+          </p>
+
+          <p className="mt-3 data-subgroup-label">Export format</p>
           <div className="data-export-list">
             {EXPORT_OPTIONS.map((option) => {
               const busy = actionKey === `export-${option.format}`;
@@ -150,13 +212,13 @@ export function BatchActionBar({
               <div className="min-w-0">
                 <div className="data-danger-head">
                   <TriangleAlert className="h-4 w-4" strokeWidth={1.8} />
-                  <span>Delete selected threads</span>
+                  <span>Delete {selectedCount} selected thread{selectedCount === 1 ? "" : "s"}</span>
                 </div>
                 <p className="data-danger-desc mb-0">
                   This will remove {selectedCount} selected thread
-                  {selectedCount === 1 ? "" : "s"} and their messages from local storage.
-                  Type <span className="font-semibold text-danger">DELETE</span> to
-                  continue.
+                  {selectedCount === 1 ? "" : "s"} and their messages from local
+                  storage. Type <span className="font-semibold text-danger">DELETE</span>{" "}
+                  to continue.
                 </p>
               </div>
               <button
