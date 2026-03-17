@@ -5,6 +5,8 @@ import { clamp, truncateLabel } from "./temporal-graph-utils";
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const RELAXATION_ITERATIONS = 56;
+const VIRTUAL_WIDTH_MULTIPLIER = 1.62;
+const VIRTUAL_HEIGHT_MULTIPLIER = 1.46;
 
 export interface LayoutAnchor {
   anchorX: number;
@@ -87,6 +89,8 @@ function buildLayoutBounds(
   width: number,
   height: number
 ): LayoutBounds {
+  const centerX = width / 2;
+  const centerY = height / 2 + 8;
   const maxHorizontalFootprint = nodes.reduce(
     (value, node) =>
       Math.max(value, metricsById.get(node.id)?.horizontalFootprint ?? node.radius + 16),
@@ -97,11 +101,12 @@ function buildLayoutBounds(
       Math.max(value, metricsById.get(node.id)?.verticalFootprint ?? node.radius + 32),
     0
   );
-
-  const left = clamp(maxHorizontalFootprint + 12, 32, Math.max(40, width * 0.24));
-  const right = Math.max(left + 80, width - left);
-  const top = clamp(maxVerticalFootprint * 0.55, 26, Math.max(34, height * 0.18));
-  const bottom = Math.max(top + 96, height - maxVerticalFootprint - 20);
+  const virtualWidth = Math.max(width + 160, width * VIRTUAL_WIDTH_MULTIPLIER);
+  const virtualHeight = Math.max(height + 120, height * VIRTUAL_HEIGHT_MULTIPLIER);
+  const left = centerX - virtualWidth / 2 + maxHorizontalFootprint;
+  const right = centerX + virtualWidth / 2 - maxHorizontalFootprint;
+  const top = centerY - virtualHeight / 2 + maxVerticalFootprint * 0.72;
+  const bottom = centerY + virtualHeight / 2 - maxVerticalFootprint;
 
   return {
     left,

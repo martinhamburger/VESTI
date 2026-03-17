@@ -64,12 +64,14 @@ Primary responsibilities:
 - request edge data for those nodes
 - render the graph via a canvas-based temporal playback system with deterministic fixed anchors
 - map conversation chronology into a day-by-day playback timeline while keeping the underlying node-set fetch contract explicit
+- allow panning across a larger logical graph area instead of forcing all visible anchors to fit inside the viewport
 - reset and auto-run the replay whenever the `Network` tab becomes active again
 - expose a local trend-chart scrubber over daily new-conversation counts so users can pause on a specific time point
 - distribute same-day births within that day by capture order so one-day datasets still produce a visible replay
+- treat node clicks as local inspection: highlight connected nodes in-graph and open a right-side node details drawer, rather than navigating away immediately
 
 As of rc8, `Network` explicitly requests edges for its active base node set rather than passively reading whatever vectors already exist.
-The current renderer no longer depends on ECharts or a live force simulation; it builds temporal node state in the web layer, computes deterministic fixed anchors for the full graph, draws nodes/edges onto `<canvas>`, and drives only the visible time position from a fixed-duration local playback clock.
+The current renderer no longer depends on ECharts or a live force simulation; it builds temporal node state in the web layer, computes deterministic fixed anchors for the full graph, lets the viewport pan across a larger logical graph space, draws nodes/edges onto `<canvas>`, and drives only the visible time position from a fixed-duration local playback clock.
 
 Current temporal status:
 - `Network` node chronology now uses the same `originAt = source_created_at ?? first_captured_at ?? created_at` start-time semantics as Threads / Reader / Web Reader

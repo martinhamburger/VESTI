@@ -31,6 +31,7 @@ Priority work after rc8:
 - consider lightweight graph refresh hooks when base node set changes rapidly
 - keep the temporal playback renderer CSP-safe in extension surfaces by preferring canvas / deterministic-layout approaches over charting integrations that require riskier runtime assumptions
 - preserve the fixed-duration replay + trend-scrubber model as the default interaction, instead of reintroducing tab-local hidden warmup assumptions or charting-based controls
+- keep graph inspection in-place when possible by favoring local focus / drawer patterns over forcing every node click to navigate away
 
 ### 3.2 Network temporal contract alignment
 Before time-driven graph animation or replay is treated as finalized behavior, the web/dashboard layer still needs an explicit temporal contract for `Network`.

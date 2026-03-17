@@ -101,6 +101,8 @@ Locked requirements:
 - the bottom time control is a draggable conversation-count trend chart based on daily new-conversation counts, not a static progress bar
 - when many conversations land on the same day, replay still distributes their births within that day by capture order so the graph remains readable
 - node placement is deterministic for a given dataset and viewport size; replay and scrubbing must not reshuffle spatial positions
+- the visible viewport may pan across a larger logical graph area; node anchors are not required to fit entirely inside the initial viewport
+- clicking a node is a local inspection action: it highlights adjacent nodes/edges and opens a right-side details drawer; navigation back to `Library` is secondary, not the primary click action
 - genuine empty graphs are allowed if similarity truly does not produce edges
 
 ## 6. Internal interface notes
