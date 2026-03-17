@@ -15,6 +15,7 @@ export interface ConversationExportNotice {
   tone: "default" | "warning";
   title?: string;
   detail?: string;
+  technicalSummary?: string;
   hint?: string;
   diagnostic?: LlmDiagnostic | null;
 }

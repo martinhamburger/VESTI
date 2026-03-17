@@ -20,6 +20,7 @@ interface BatchFeedback {
   tone: "default" | "warning" | "error";
   title?: string;
   detail?: string;
+  technicalSummary?: string;
   hint?: string;
 }
 
@@ -213,6 +214,9 @@ export function BatchActionBar({
                   <p className="data-feedback-title">{feedback.title || feedback.message}</p>
                 </div>
                 {feedback.detail && <p className="data-feedback-detail">{feedback.detail}</p>}
+                {feedback.technicalSummary && (
+                  <p className="data-feedback-technical">{feedback.technicalSummary}</p>
+                )}
                 {feedback.hint && <p className="data-feedback-hint">{feedback.hint}</p>}
               </div>
             ) : (
@@ -298,6 +302,9 @@ export function BatchActionBar({
                   <p className="data-feedback-title">{feedback.title || feedback.message}</p>
                 </div>
                 {feedback.detail && <p className="data-feedback-detail">{feedback.detail}</p>}
+                {feedback.technicalSummary && (
+                  <p className="data-feedback-technical">{feedback.technicalSummary}</p>
+                )}
                 {feedback.hint && <p className="data-feedback-hint">{feedback.hint}</p>}
               </div>
             ) : (
@@ -374,6 +381,9 @@ export function BatchActionBar({
                   <p className="data-feedback-title">{feedback.title || feedback.message}</p>
                 </div>
                 {feedback.detail && <p className="data-feedback-detail">{feedback.detail}</p>}
+                {feedback.technicalSummary && (
+                  <p className="data-feedback-technical">{feedback.technicalSummary}</p>
+                )}
                 {feedback.hint && <p className="data-feedback-hint">{feedback.hint}</p>}
               </div>
             ) : (

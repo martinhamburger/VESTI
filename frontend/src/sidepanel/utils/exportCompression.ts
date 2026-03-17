@@ -54,6 +54,10 @@ export interface CompressedConversationExport {
   usedFallbackPrompt: boolean;
   fallbackReason?: string;
   diagnostic?: LlmDiagnostic;
+  modelId?: string;
+  exportPromptProfile?: ExportPromptProfile;
+  primaryInvalidReason?: ExportCompressionInvalidReasonCode;
+  fallbackInvalidReason?: ExportCompressionInvalidReasonCode;
 }
 
 interface ExportCompressionAdapter {
@@ -67,6 +71,27 @@ interface ExportCompressionAdapter {
 interface ExportCompressionValidationResult {
   valid: boolean;
   issueCode?: ExportCompressionInvalidReasonCode;
+}
+
+interface ExportCompressionFailureContext {
+  route: ExportCompressionRoute;
+  modelId?: string;
+  exportPromptProfile?: ExportPromptProfile;
+  primaryInvalidReason?: ExportCompressionInvalidReasonCode;
+  fallbackInvalidReason?: ExportCompressionInvalidReasonCode;
+}
+
+class ExportCompressionValidationError extends Error {
+  readonly context: ExportCompressionFailureContext;
+
+  constructor(
+    reason: string,
+    context: ExportCompressionFailureContext
+  ) {
+    super(reason);
+    this.name = "ExportCompressionValidationError";
+    this.context = context;
+  }
 }
 
 const ACTIVE_EXPORT_COMPRESSION_ROUTE: ExportCompressionRoute =
@@ -596,7 +621,8 @@ function buildLocalFallback(
   item: ConversationExportDatasetItem,
   mode: ExportCompressionMode,
   reason: string,
-  diagnostic?: LlmDiagnostic | null
+  diagnostic?: LlmDiagnostic | null,
+  failureContext?: ExportCompressionFailureContext | null
 ): CompressedConversationExport {
   const body =
     mode === "compact"
@@ -609,9 +635,14 @@ function buildLocalFallback(
     body,
     mode,
     source: "local_fallback",
+    route: failureContext?.route,
     usedFallbackPrompt: false,
     fallbackReason: diagnostic?.code || reason,
     diagnostic: diagnostic || undefined,
+    modelId: failureContext?.modelId,
+    exportPromptProfile: failureContext?.exportPromptProfile,
+    primaryInvalidReason: failureContext?.primaryInvalidReason,
+    fallbackInvalidReason: failureContext?.fallbackInvalidReason,
   };
 }
 
@@ -629,7 +660,7 @@ function getExportValidationFeedback(reason: string | undefined):
       return {
         detail:
           "LLM returned text, but the required markdown sections were missing. Validation: export_missing_required_headings.",
-        hint: "We expect the shipping export headings exactly; try again after the model/profile switch finishes propagating.",
+        hint: "We expect the shipping export headings exactly; this is usually a prompt/profile compliance issue rather than an auth or routing failure.",
       };
     case "export_grounded_sections_insufficient":
       return {
@@ -646,6 +677,51 @@ function getExportValidationFeedback(reason: string | undefined):
     default:
       return null;
   }
+}
+
+function describeCompressionRoute(
+  route: ExportCompressionRoute | undefined
+): string {
+  switch (route) {
+    case "current_llm_settings":
+      return "Current LLM settings";
+    case "moonshot_direct":
+      return "Moonshot direct";
+    default:
+      return "Unknown";
+  }
+}
+
+function buildCompressionTechnicalSummary(
+  result: CompressedConversationExport
+): string | undefined {
+  const parts: string[] = [];
+
+  if (result.diagnostic?.technicalSummary) {
+    parts.push(result.diagnostic.technicalSummary);
+  }
+
+  if (result.route) {
+    parts.push(`Compression route: ${describeCompressionRoute(result.route)}`);
+  }
+
+  if (result.modelId) {
+    parts.push(`Model: ${result.modelId}`);
+  }
+
+  if (result.exportPromptProfile) {
+    parts.push(`Profile: ${result.exportPromptProfile}`);
+  }
+
+  if (result.primaryInvalidReason) {
+    parts.push(`Primary: ${result.primaryInvalidReason}`);
+  }
+
+  if (result.fallbackInvalidReason) {
+    parts.push(`Fallback: ${result.fallbackInvalidReason}`);
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 function extractSections(
@@ -845,10 +921,17 @@ async function compressWithCurrentLlmSettings(
     primaryInvalidReason: primaryValidation.issueCode,
   });
 
-  throw new Error(
+  throw new ExportCompressionValidationError(
     fallbackValidation.issueCode ||
       primaryValidation.issueCode ||
-      "export_output_too_short"
+      "export_output_too_short",
+    {
+      route: "current_llm_settings",
+      modelId,
+      exportPromptProfile: exportProfile,
+      primaryInvalidReason: primaryValidation.issueCode,
+      fallbackInvalidReason: fallbackValidation.issueCode,
+    }
   );
 }
 
@@ -891,6 +974,13 @@ function buildCompressionNotice(
   const validationFeedback = diagnostic
     ? null
     : getExportValidationFeedback(validationFallback?.fallbackReason);
+  const technicalSummary = diagnostic
+    ? representativeFallback
+      ? buildCompressionTechnicalSummary(representativeFallback)
+      : diagnostic.technicalSummary
+    : validationFallback
+      ? buildCompressionTechnicalSummary(validationFallback)
+      : undefined;
   const detail = diagnostic
     ? `${diagnostic.userMessage}
 ${diagnostic.technicalSummary}`
@@ -905,6 +995,7 @@ ${diagnostic.technicalSummary}`
       message: `${mode === "compact" ? "Compact" : "Summary"} export used structured local fallback for all selected threads.`,
       title: "Local fallback used for all selected threads",
       detail,
+      technicalSummary,
       hint,
       diagnostic: diagnostic || null,
     };
@@ -915,6 +1006,7 @@ ${diagnostic.technicalSummary}`
     message: `${mode === "compact" ? "Compact" : "Summary"} export used structured local fallback for ${fallbackCount} of ${results.length} selected threads.`,
     title: `Local fallback used for ${fallbackCount} of ${results.length} selected threads`,
     detail,
+    technicalSummary,
     hint,
     diagnostic: diagnostic || null,
   };
@@ -968,6 +1060,10 @@ export async function compressExportDataset(
     } catch (error) {
       const reason = error instanceof Error ? error.message : "compression_failed";
       const diagnostic = getLlmDiagnostic(error);
+      const failureContext =
+        error instanceof ExportCompressionValidationError
+          ? error.context
+          : null;
       logger.warn("llm", "Export compression fell back to local formatter", {
         route,
         mode,
@@ -975,8 +1071,12 @@ export async function compressExportDataset(
         reason,
         diagnosticCode: diagnostic?.code,
         diagnosticRequestId: diagnostic?.requestId,
+        modelId: failureContext?.modelId,
+        exportPromptProfile: failureContext?.exportPromptProfile,
+        primaryInvalidReason: failureContext?.primaryInvalidReason,
+        fallbackInvalidReason: failureContext?.fallbackInvalidReason,
       });
-      items.push(buildLocalFallback(item, mode, reason, diagnostic));
+      items.push(buildLocalFallback(item, mode, reason, diagnostic, failureContext));
     }
   }
 

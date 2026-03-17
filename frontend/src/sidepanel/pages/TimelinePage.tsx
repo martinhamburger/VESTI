@@ -246,6 +246,7 @@ export function TimelinePage({
             tone: result.notice.tone,
             title: result.notice.title,
             detail: result.notice.detail,
+            technicalSummary: result.notice.technicalSummary,
             hint: result.notice.hint
               ? `${result.notice.hint} Saved as ${result.filename}.`
               : `Saved as ${result.filename}.`,

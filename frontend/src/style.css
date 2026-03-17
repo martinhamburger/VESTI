@@ -3738,12 +3738,28 @@
     color: hsl(var(--text-tertiary));
   }
 
+  .data-feedback-technical {
+    font-size: 10px;
+    line-height: 1.4;
+    color: hsl(var(--text-tertiary));
+    font-family:
+      "SFMono-Regular",
+      Consolas,
+      "Liberation Mono",
+      Menlo,
+      monospace;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
   .data-feedback-callout.is-warning .data-feedback-detail,
+  .data-feedback-callout.is-warning .data-feedback-technical,
   .data-feedback-callout.is-warning .data-feedback-hint {
     color: hsl(var(--warning));
   }
 
   .data-feedback-callout.is-error .data-feedback-detail,
+  .data-feedback-callout.is-error .data-feedback-technical,
   .data-feedback-callout.is-error .data-feedback-hint {
     color: hsl(var(--danger));
   }
