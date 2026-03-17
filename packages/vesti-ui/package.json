@@ -23,7 +23,6 @@
     "react-dom": ">=18"
   },
   "dependencies": {
-    "d3-force": "^3.0.0",
     "dompurify": "^3.3.1",
     "marked": "^17.0.3"
   }

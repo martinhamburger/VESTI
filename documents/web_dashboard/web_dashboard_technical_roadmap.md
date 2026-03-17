@@ -29,7 +29,7 @@ Priority work after rc8:
 - add stronger graph diagnostics for node count / edge count / empty-graph reasons
 - separate ?true empty graph? from ?runtime unavailable? and ?edge computation failed? states
 - consider lightweight graph refresh hooks when base node set changes rapidly
-- keep the temporal playback renderer CSP-safe in extension surfaces by preferring canvas / local-force approaches over charting integrations that require riskier runtime assumptions
+- keep the temporal playback renderer CSP-safe in extension surfaces by preferring canvas / deterministic-layout approaches over charting integrations that require riskier runtime assumptions
 - preserve the fixed-duration replay + trend-scrubber model as the default interaction, instead of reintroducing tab-local hidden warmup assumptions or charting-based controls
 
 ### 3.2 Network temporal contract alignment

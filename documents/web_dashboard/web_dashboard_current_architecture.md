@@ -62,20 +62,20 @@ Primary responsibilities:
 Primary responsibilities:
 - determine current graph node set
 - request edge data for those nodes
-- render the graph via a canvas-based `d3-force` playback system
+- render the graph via a canvas-based temporal playback system with deterministic fixed anchors
 - map conversation chronology into a day-by-day playback timeline while keeping the underlying node-set fetch contract explicit
 - reset and auto-run the replay whenever the `Network` tab becomes active again
 - expose a local trend-chart scrubber over daily new-conversation counts so users can pause on a specific time point
 - distribute same-day births within that day by capture order so one-day datasets still produce a visible replay
 
 As of rc8, `Network` explicitly requests edges for its active base node set rather than passively reading whatever vectors already exist.
-The current renderer no longer depends on ECharts; it builds temporal node state in the web layer, draws nodes/edges onto `<canvas>`, keeps replay/reset behavior local to the tab, and drives the visible time position from a fixed-duration local playback clock rather than a days-per-second control.
+The current renderer no longer depends on ECharts or a live force simulation; it builds temporal node state in the web layer, computes deterministic fixed anchors for the full graph, draws nodes/edges onto `<canvas>`, and drives only the visible time position from a fixed-duration local playback clock.
 
 Current temporal status:
 - `Network` node chronology now uses the same `originAt = source_created_at ?? first_captured_at ?? created_at` start-time semantics as Threads / Reader / Web Reader
 - `first_captured_at` and `last_captured_at` remain secondary acquisition / freshness clocks and do not move nodes on the main playback timeline
 - the trend scrubber / replay UI is local to the tab and does not yet imply a stable runtime-backed time-filtering contract
-- temporal playback is only partially finalized: node placement is locked, but filtering / edge-contract time semantics remain pending
+- temporal playback is only partially finalized: node chronology and fixed anchor placement are locked, but filtering / edge-contract time semantics remain pending
 
 ## 4. Message and data flow
 
