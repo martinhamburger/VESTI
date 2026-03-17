@@ -17,6 +17,7 @@ import {
   Trash2,
   X,
   ExternalLink,
+  Scissors,
 } from "lucide-react";
 import type {
   Conversation,
@@ -33,8 +34,9 @@ import { getPlatformBadgeStyle, getPlatformLabel } from "../constants/platform";
 import { StructuredSummaryCard } from "../components/StructuredSummaryCard";
 import { SummaryPipelineProgress } from "../components/SummaryPipelineProgress";
 import type { PipelineStageState } from "../components/SummaryPipelineProgress";
+import { ClipperView } from "./clipper-view";
 
-type ViewMode = "conversations" | "notes";
+type ViewMode = "conversations" | "notes" | "clipper";
 type FolderItem = { name: string; isCustom: boolean; isTag: boolean };
 type FolderMeta = { customFolders: string[] };
 
@@ -712,6 +714,12 @@ export function LibraryTab({
     }
   };
 
+  const handleClipperNoteCreated = (note: Note) => {
+    setNotes((prev) => [note, ...prev]);
+    setSelectedNoteId(note.id);
+    setViewMode("notes");
+  };
+
   function formatDate(timestamp?: number): string {
     if (!timestamp) return "Unknown date";
     return new Intl.DateTimeFormat("en-US", {
@@ -955,11 +963,22 @@ export function LibraryTab({
             <span className="flex-1 text-sm font-sans text-text-primary">My Notes</span>
             <span className="text-xs font-sans text-text-tertiary">{notes.length}</span>
           </button>
+          <button
+            onClick={() => {
+              setViewMode("clipper");
+            }}
+            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors my-1 rounded-lg ${
+              viewMode === "clipper" ? "bg-bg-surface-card-active" : "hover:bg-bg-surface-card"
+            }`}
+          >
+            <Scissors strokeWidth={1.5} className="w-4 h-4 text-text-secondary" />
+            <span className="flex-1 text-sm font-sans text-text-primary">Clipper</span>
+          </button>
         </div>
       </aside>
 
       {/* Middle Column - Conversation/Note List (320px) */}
-      <div className="w-[320px] bg-bg-tertiary flex flex-col">
+      {viewMode !== "clipper" && <div className="w-[320px] bg-bg-tertiary flex flex-col">
         {viewMode === "conversations" ? (
           <>
             <div className="px-4 py-3">
@@ -1262,7 +1281,7 @@ export function LibraryTab({
             </div>
           </>
         )}
-      </div>
+      </div>}
 
       {/* Right Column - Reader/Editor (flex-1) */}
       {viewMode === "conversations" && selectedConversation && (
@@ -1940,6 +1959,16 @@ export function LibraryTab({
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {viewMode === "clipper" && (
+        <div className="flex-1 bg-bg-primary overflow-y-auto">
+          <ClipperView
+            storage={storage}
+            conversations={conversations}
+            onNoteCreated={handleClipperNoteCreated}
+          />
         </div>
       )}
 
