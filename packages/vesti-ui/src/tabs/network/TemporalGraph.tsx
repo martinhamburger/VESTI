@@ -34,11 +34,17 @@ interface RenderNode extends GraphNode {
   y: number;
 }
 
-interface PanBounds {
+interface WorldBounds {
   minX: number;
   maxX: number;
   minY: number;
   maxY: number;
+}
+
+interface ViewTransform {
+  offsetX: number;
+  offsetY: number;
+  scale: number;
 }
 
 interface LabelCandidate {
@@ -55,32 +61,55 @@ interface LabelCandidate {
   force: boolean;
 }
 
-const PAN_PADDING = 12;
-const PAN_OVERSCROLL_X = 108;
-const PAN_OVERSCROLL_Y = 72;
-const DRAG_THRESHOLD = 5;
-
-function getGraphCenterY(height: number) {
-  return height / 2 + 8;
+interface PointerSnapshot {
+  clientX: number;
+  clientY: number;
 }
 
-function createPanBounds() {
+interface GestureState {
+  mode: "idle" | "pan" | "pinch";
+  pointerId: number | null;
+  startClientX: number;
+  startClientY: number;
+  startOffsetX: number;
+  startOffsetY: number;
+  moved: boolean;
+  startScale: number;
+  startDistance: number;
+  worldX: number;
+  worldY: number;
+}
+
+const VIEW_PADDING = 16;
+const OVERSCROLL_X = 120;
+const OVERSCROLL_Y = 80;
+const DRAG_THRESHOLD = 5;
+const MIN_ZOOM = 0.72;
+const MAX_ZOOM = 2.6;
+const WHEEL_ZOOM_INTENSITY = 0.0016;
+
+function createWorldBounds(): WorldBounds {
   return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
 }
 
-function getCenteredPan(bounds: PanBounds) {
+function createGestureState(): GestureState {
   return {
-    x: clamp((bounds.minX + bounds.maxX) / 2, bounds.minX, bounds.maxX),
-    y: clamp((bounds.minY + bounds.maxY) / 2, bounds.minY, bounds.maxY),
+    mode: "idle",
+    pointerId: null,
+    startClientX: 0,
+    startClientY: 0,
+    startOffsetX: 0,
+    startOffsetY: 0,
+    moved: false,
+    startScale: 1,
+    startDistance: 0,
+    worldX: 0,
+    worldY: 0,
   };
 }
 
-function buildPanBounds(
-  layout: ReturnType<typeof buildFixedAnchorLayout>,
-  width: number,
-  height: number
-): PanBounds {
-  if (layout.size === 0) return createPanBounds();
+function buildWorldBounds(layout: ReturnType<typeof buildFixedAnchorLayout>) {
+  if (layout.size === 0) return createWorldBounds();
 
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
@@ -94,33 +123,71 @@ function buildPanBounds(
     maxY = Math.max(maxY, anchor.anchorY + anchor.verticalFootprint);
   });
 
-  const horizontalRange = maxX - minX;
-  const verticalRange = maxY - minY;
+  return { minX, maxX, minY, maxY };
+}
 
-  const minPanX =
-    horizontalRange + PAN_PADDING * 2 <= width
-      ? (width - (minX + maxX)) / 2
-      : width - PAN_PADDING - maxX - PAN_OVERSCROLL_X;
-  const maxPanX =
-    horizontalRange + PAN_PADDING * 2 <= width
-      ? (width - (minX + maxX)) / 2
-      : PAN_PADDING - minX + PAN_OVERSCROLL_X;
+function getFitScale(bounds: WorldBounds, width: number, height: number) {
+  const worldWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const worldHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const availableWidth = Math.max(1, width - VIEW_PADDING * 2);
+  const availableHeight = Math.max(1, height - VIEW_PADDING * 2);
+  return clamp(
+    Math.min(availableWidth / worldWidth, availableHeight / worldHeight, 1.12),
+    MIN_ZOOM,
+    MAX_ZOOM
+  );
+}
 
-  const minPanY =
-    verticalRange + PAN_PADDING * 2 <= height
-      ? (height - (minY + maxY)) / 2
-      : height - PAN_PADDING - maxY - PAN_OVERSCROLL_Y;
-  const maxPanY =
-    verticalRange + PAN_PADDING * 2 <= height
-      ? (height - (minY + maxY)) / 2
-      : PAN_PADDING - minY + PAN_OVERSCROLL_Y;
+function clampTransform(
+  transform: ViewTransform,
+  bounds: WorldBounds,
+  width: number,
+  height: number
+) {
+  const worldWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const worldHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const scaledWidth = worldWidth * transform.scale;
+  const scaledHeight = worldHeight * transform.scale;
+
+  const minOffsetX =
+    scaledWidth + VIEW_PADDING * 2 <= width
+      ? (width - scaledWidth) / 2 - bounds.minX * transform.scale
+      : width - VIEW_PADDING - bounds.maxX * transform.scale - OVERSCROLL_X;
+  const maxOffsetX =
+    scaledWidth + VIEW_PADDING * 2 <= width
+      ? (width - scaledWidth) / 2 - bounds.minX * transform.scale
+      : VIEW_PADDING - bounds.minX * transform.scale + OVERSCROLL_X;
+
+  const minOffsetY =
+    scaledHeight + VIEW_PADDING * 2 <= height
+      ? (height - scaledHeight) / 2 - bounds.minY * transform.scale
+      : height - VIEW_PADDING - bounds.maxY * transform.scale - OVERSCROLL_Y;
+  const maxOffsetY =
+    scaledHeight + VIEW_PADDING * 2 <= height
+      ? (height - scaledHeight) / 2 - bounds.minY * transform.scale
+      : VIEW_PADDING - bounds.minY * transform.scale + OVERSCROLL_Y;
 
   return {
-    minX: Math.min(minPanX, maxPanX),
-    maxX: Math.max(minPanX, maxPanX),
-    minY: Math.min(minPanY, maxPanY),
-    maxY: Math.max(minPanY, maxPanY),
+    offsetX: clamp(transform.offsetX, Math.min(minOffsetX, maxOffsetX), Math.max(minOffsetX, maxOffsetX)),
+    offsetY: clamp(transform.offsetY, Math.min(minOffsetY, maxOffsetY), Math.max(minOffsetY, maxOffsetY)),
+    scale: clamp(transform.scale, MIN_ZOOM, MAX_ZOOM),
   };
+}
+
+function createCenteredTransform(bounds: WorldBounds, width: number, height: number): ViewTransform {
+  const scale = getFitScale(bounds, width, height);
+  const worldCenterX = (bounds.minX + bounds.maxX) / 2;
+  const worldCenterY = (bounds.minY + bounds.maxY) / 2;
+  return clampTransform(
+    {
+      scale,
+      offsetX: width / 2 - worldCenterX * scale,
+      offsetY: height / 2 - worldCenterY * scale,
+    },
+    bounds,
+    width,
+    height
+  );
 }
 
 function labelsOverlap(left: LabelCandidate, right: LabelCandidate) {
@@ -130,6 +197,39 @@ function labelsOverlap(left: LabelCandidate, right: LabelCandidate) {
     left.bottom < right.top ||
     left.top > right.bottom
   );
+}
+
+function projectX(worldX: number, transform: ViewTransform) {
+  return worldX * transform.scale + transform.offsetX;
+}
+
+function projectY(worldY: number, transform: ViewTransform) {
+  return worldY * transform.scale + transform.offsetY;
+}
+
+function screenToWorld(screenX: number, screenY: number, transform: ViewTransform) {
+  return {
+    x: (screenX - transform.offsetX) / transform.scale,
+    y: (screenY - transform.offsetY) / transform.scale,
+  };
+}
+
+function getDistanceBetweenPointers(points: PointerSnapshot[]) {
+  if (points.length < 2) return 0;
+  const [left, right] = points;
+  return Math.hypot(right.clientX - left.clientX, right.clientY - left.clientY);
+}
+
+function getPointerMidpoint(
+  points: PointerSnapshot[],
+  rect: DOMRect
+) {
+  if (points.length < 2) return { x: 0, y: 0 };
+  const [left, right] = points;
+  return {
+    x: (left.clientX + right.clientX) / 2 - rect.left,
+    y: (left.clientY + right.clientY) / 2 - rect.top,
+  };
 }
 
 export function TemporalGraph({
@@ -149,23 +249,10 @@ export function TemporalGraph({
   const currentDayRef = useRef(currentDay);
   const activeNodesRef = useRef<RenderNode[]>([]);
   const layoutRef = useRef<ReturnType<typeof buildFixedAnchorLayout>>(new Map());
-  const panRef = useRef({ x: 0, y: 0 });
-  const panBoundsRef = useRef<PanBounds>(createPanBounds());
-  const pointerStateRef = useRef<{
-    pointerId: number | null;
-    startClientX: number;
-    startClientY: number;
-    startPanX: number;
-    startPanY: number;
-    moved: boolean;
-  }>({
-    pointerId: null,
-    startClientX: 0,
-    startClientY: 0,
-    startPanX: 0,
-    startPanY: 0,
-    moved: false,
-  });
+  const worldBoundsRef = useRef<WorldBounds>(createWorldBounds());
+  const transformRef = useRef<ViewTransform>({ offsetX: 0, offsetY: 0, scale: 1 });
+  const activePointersRef = useRef(new Map<number, PointerSnapshot>());
+  const gestureRef = useRef<GestureState>(createGestureState());
   const [width, setWidth] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -191,7 +278,8 @@ export function TemporalGraph({
     context.clearRect(0, 0, width, height);
 
     const centerX = width / 2;
-    const centerY = getGraphCenterY(height);
+    const centerY = height / 2 + 8;
+    const transform = transformRef.current;
     const renderedNodes: RenderNode[] = [];
     const renderedNodesById = new Map<number, RenderNode>();
     const labelCandidates: LabelCandidate[] = [];
@@ -201,8 +289,8 @@ export function TemporalGraph({
       const anchor = layoutRef.current.get(node.id);
       if (!anchor) continue;
 
-      const targetX = anchor.anchorX + panRef.current.x;
-      const targetY = anchor.anchorY + panRef.current.y;
+      const targetX = projectX(anchor.anchorX, transform);
+      const targetY = projectY(anchor.anchorY, transform);
       const age = currentDayRef.current - node.timelineDay;
       const enterProgress = Math.max(0, Math.min(1, age / 0.8));
       const renderNode: RenderNode = {
@@ -258,17 +346,16 @@ export function TemporalGraph({
       const age = currentDayRef.current - node.timelineDay;
       if (age >= 0 && age < 0.8) {
         const birthProgress = Math.max(0, Math.min(1, age / 0.8));
-        const ringOneOpacity = (1 - birthProgress) * 0.15 * (hasSelection && !isSelected && !isNeighbor ? 0.28 : 1);
-        const ringTwoOpacity = (1 - birthProgress) * 0.1 * (hasSelection && !isSelected && !isNeighbor ? 0.28 : 1);
+        const rippleMultiplier = hasSelection && !isSelected && !isNeighbor ? 0.28 : 1;
 
         context.beginPath();
         context.arc(node.x, node.y, node.radius + birthProgress * 18, 0, Math.PI * 2);
-        context.fillStyle = hexToRgba(node.color, ringOneOpacity);
+        context.fillStyle = hexToRgba(node.color, (1 - birthProgress) * 0.15 * rippleMultiplier);
         context.fill();
 
         context.beginPath();
         context.arc(node.x, node.y, node.radius + birthProgress * 10, 0, Math.PI * 2);
-        context.fillStyle = hexToRgba(node.color, ringTwoOpacity);
+        context.fillStyle = hexToRgba(node.color, (1 - birthProgress) * 0.1 * rippleMultiplier);
         context.fill();
       }
 
@@ -290,10 +377,9 @@ export function TemporalGraph({
           : isNeighbor
             ? Math.max(0.62, Math.min(1, (alpha - 0.2) / 0.28))
             : Math.min(1, (alpha - 0.3) / 0.25);
-
         const label = truncateLabel(node.label, 18);
         const anchor = layoutRef.current.get(node.id);
-        const labelHalfWidth = anchor?.labelHalfWidth ?? Math.max(34, label.length * 3.5);
+        const labelHalfWidth = anchor?.labelHalfWidth ?? Math.max(36, label.length * 4);
         const labelY = node.y + node.radius + 13;
 
         labelCandidates.push({
@@ -302,13 +388,13 @@ export function TemporalGraph({
           alpha: labelAlpha,
           x: node.x,
           y: labelY,
-          left: node.x - labelHalfWidth,
-          right: node.x + labelHalfWidth,
-          top: labelY - 10,
-          bottom: labelY + 4,
+          left: node.x - labelHalfWidth - 10,
+          right: node.x + labelHalfWidth + 10,
+          top: labelY - 16,
+          bottom: labelY + 8,
           priority:
-            (isSelected ? 100 : 0) +
-            (isNeighbor ? 25 : 0) +
+            (isSelected ? 120 : 0) +
+            (isNeighbor ? 30 : 0) +
             node.radius +
             labelAlpha * 10,
           force: isSelected,
@@ -339,6 +425,58 @@ export function TemporalGraph({
       });
   }, [data.edges, data.nodes, height, highlightedNodeIdSet, selectedNodeId, themeMode, width]);
 
+  const setTransformAndRedraw = useCallback(
+    (nextTransform: ViewTransform) => {
+      transformRef.current = clampTransform(
+        nextTransform,
+        worldBoundsRef.current,
+        width,
+        height
+      );
+      draw();
+    },
+    [draw, height, width]
+  );
+
+  const initializePanGesture = useCallback((pointerId: number, clientX: number, clientY: number) => {
+    gestureRef.current = {
+      mode: "pan",
+      pointerId,
+      startClientX: clientX,
+      startClientY: clientY,
+      startOffsetX: transformRef.current.offsetX,
+      startOffsetY: transformRef.current.offsetY,
+      moved: false,
+      startScale: transformRef.current.scale,
+      startDistance: 0,
+      worldX: 0,
+      worldY: 0,
+    };
+  }, []);
+
+  const initializePinchGesture = useCallback((canvas: HTMLCanvasElement) => {
+    const points = Array.from(activePointersRef.current.values());
+    if (points.length < 2) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const midpoint = getPointerMidpoint(points, rect);
+    const worldPoint = screenToWorld(midpoint.x, midpoint.y, transformRef.current);
+
+    gestureRef.current = {
+      mode: "pinch",
+      pointerId: null,
+      startClientX: midpoint.x,
+      startClientY: midpoint.y,
+      startOffsetX: transformRef.current.offsetX,
+      startOffsetY: transformRef.current.offsetY,
+      moved: true,
+      startScale: transformRef.current.scale,
+      startDistance: Math.max(1, getDistanceBetweenPointers(points)),
+      worldX: worldPoint.x,
+      worldY: worldPoint.y,
+    };
+  }, []);
+
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
@@ -358,16 +496,16 @@ export function TemporalGraph({
     if (width <= 0) {
       layoutRef.current = new Map();
       activeNodesRef.current = [];
-      panBoundsRef.current = createPanBounds();
-      panRef.current = { x: 0, y: 0 };
+      worldBoundsRef.current = createWorldBounds();
+      transformRef.current = { offsetX: 0, offsetY: 0, scale: 1 };
       return;
     }
 
     const layout = buildFixedAnchorLayout(data.nodes, data.edges, width, height);
     layoutRef.current = layout;
-    const panBounds = buildPanBounds(layout, width, height);
-    panBoundsRef.current = panBounds;
-    panRef.current = getCenteredPan(panBounds);
+    const worldBounds = buildWorldBounds(layout);
+    worldBoundsRef.current = worldBounds;
+    transformRef.current = createCenteredTransform(worldBounds, width, height);
     draw();
   }, [data.edges, data.nodes, draw, height, width]);
 
@@ -377,65 +515,106 @@ export function TemporalGraph({
   }, [currentDay, draw, resetToken, scrubbing, selectedNodeId, highlightedNodeIdSet]);
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
-    pointerStateRef.current = {
-      pointerId: event.pointerId,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      startPanX: panRef.current.x,
-      startPanY: panRef.current.y,
-      moved: false,
-    };
+    activePointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+
+    if (activePointersRef.current.size === 1) {
+      initializePanGesture(event.pointerId, event.clientX, event.clientY);
+    } else if (activePointersRef.current.size === 2) {
+      initializePinchGesture(event.currentTarget);
+      setIsDragging(false);
+    }
+
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, []);
+  }, [initializePanGesture, initializePinchGesture]);
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
-      if (pointerStateRef.current.pointerId !== event.pointerId) return;
+      if (!activePointersRef.current.has(event.pointerId)) return;
 
-      const deltaX = event.clientX - pointerStateRef.current.startClientX;
-      const deltaY = event.clientY - pointerStateRef.current.startClientY;
+      activePointersRef.current.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+
+      if (activePointersRef.current.size >= 2) {
+        if (gestureRef.current.mode !== "pinch") {
+          initializePinchGesture(event.currentTarget);
+        }
+
+        const points = Array.from(activePointersRef.current.values());
+        const rect = event.currentTarget.getBoundingClientRect();
+        const midpoint = getPointerMidpoint(points, rect);
+        const distance = Math.max(1, getDistanceBetweenPointers(points));
+        const nextScale = clamp(
+          gestureRef.current.startScale * (distance / Math.max(1, gestureRef.current.startDistance)),
+          MIN_ZOOM,
+          MAX_ZOOM
+        );
+
+        setTransformAndRedraw({
+          scale: nextScale,
+          offsetX: midpoint.x - gestureRef.current.worldX * nextScale,
+          offsetY: midpoint.y - gestureRef.current.worldY * nextScale,
+        });
+        return;
+      }
 
       if (
-        !pointerStateRef.current.moved &&
-        Math.hypot(deltaX, deltaY) > DRAG_THRESHOLD
+        gestureRef.current.mode !== "pan" ||
+        gestureRef.current.pointerId !== event.pointerId
       ) {
-        pointerStateRef.current.moved = true;
+        return;
+      }
+
+      const deltaX = event.clientX - gestureRef.current.startClientX;
+      const deltaY = event.clientY - gestureRef.current.startClientY;
+      if (!gestureRef.current.moved && Math.hypot(deltaX, deltaY) > DRAG_THRESHOLD) {
+        gestureRef.current.moved = true;
         setIsDragging(true);
       }
 
-      if (!pointerStateRef.current.moved) return;
+      if (!gestureRef.current.moved) return;
 
-      panRef.current = {
-        x: clamp(
-          pointerStateRef.current.startPanX + deltaX,
-          panBoundsRef.current.minX,
-          panBoundsRef.current.maxX
-        ),
-        y: clamp(
-          pointerStateRef.current.startPanY + deltaY,
-          panBoundsRef.current.minY,
-          panBoundsRef.current.maxY
-        ),
-      };
-      draw();
+      setTransformAndRedraw({
+        scale: transformRef.current.scale,
+        offsetX: gestureRef.current.startOffsetX + deltaX,
+        offsetY: gestureRef.current.startOffsetY + deltaY,
+      });
     },
-    [draw]
+    [initializePinchGesture, setTransformAndRedraw]
   );
 
   const releasePointer = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
-      if (pointerStateRef.current.pointerId !== event.pointerId) return;
-
-      const wasDragging = pointerStateRef.current.moved;
-      pointerStateRef.current.pointerId = null;
-      pointerStateRef.current.moved = false;
-      setIsDragging(false);
-
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
 
-      if (wasDragging) return;
+      const shouldHandleClick =
+        gestureRef.current.mode === "pan" &&
+        gestureRef.current.pointerId === event.pointerId &&
+        !gestureRef.current.moved;
+
+      activePointersRef.current.delete(event.pointerId);
+
+      if (activePointersRef.current.size >= 2) {
+        initializePinchGesture(event.currentTarget);
+      } else if (activePointersRef.current.size === 1) {
+        const [remainingPointerId, remainingPointer] = Array.from(activePointersRef.current.entries())[0];
+        initializePanGesture(
+          remainingPointerId,
+          remainingPointer.clientX,
+          remainingPointer.clientY
+        );
+      } else {
+        gestureRef.current = createGestureState();
+        setIsDragging(false);
+      }
+
+      if (!shouldHandleClick) return;
 
       const rect = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - rect.left;
@@ -447,7 +626,31 @@ export function TemporalGraph({
         onBackgroundClick?.();
       }
     },
-    [onBackgroundClick, onNodeClick]
+    [initializePanGesture, initializePinchGesture, onBackgroundClick, onNodeClick]
+  );
+
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<HTMLCanvasElement>) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+
+      const rect = event.currentTarget.getBoundingClientRect();
+      const screenX = event.clientX - rect.left;
+      const screenY = event.clientY - rect.top;
+      const worldPoint = screenToWorld(screenX, screenY, transformRef.current);
+      const nextScale = clamp(
+        transformRef.current.scale * Math.exp(-event.deltaY * WHEEL_ZOOM_INTENSITY),
+        MIN_ZOOM,
+        MAX_ZOOM
+      );
+
+      setTransformAndRedraw({
+        scale: nextScale,
+        offsetX: screenX - worldPoint.x * nextScale,
+        offsetY: screenY - worldPoint.y * nextScale,
+      });
+    },
+    [setTransformAndRedraw]
   );
 
   return (
@@ -460,6 +663,7 @@ export function TemporalGraph({
         onPointerMove={handlePointerMove}
         onPointerUp={releasePointer}
         onPointerCancel={releasePointer}
+        onWheel={handleWheel}
       />
     </div>
   );

@@ -64,6 +64,71 @@ interface Slot {
   cellHeight: number;
 }
 
+function buildComponentSubslots(
+  slot: Slot,
+  componentNodeCount: number,
+  maxCollisionRadius: number
+) {
+  const subslotCount =
+    componentNodeCount >= 10
+      ? Math.min(8, Math.max(3, Math.ceil(componentNodeCount / 4)))
+      : componentNodeCount >= 6
+        ? 2
+        : 1;
+
+  if (subslotCount <= 1) {
+    return [
+      {
+        centerX: slot.centerX,
+        centerY: slot.centerY,
+      },
+    ];
+  }
+
+  const columns = Math.max(1, Math.ceil(Math.sqrt(subslotCount)));
+  const rows = Math.max(1, Math.ceil(subslotCount / columns));
+  const spreadX = Math.min(
+    slot.cellWidth * 0.82,
+    Math.max(columns * maxCollisionRadius * 3.3, slot.cellWidth * 0.36)
+  );
+  const spreadY = Math.min(
+    slot.cellHeight * 0.74,
+    Math.max(rows * maxCollisionRadius * 3.05, slot.cellHeight * 0.3)
+  );
+  const originX = slot.centerX - spreadX / 2;
+  const originY = slot.centerY - spreadY / 2;
+  const cellWidth = spreadX / columns;
+  const cellHeight = spreadY / rows;
+  const subslots: Array<{ centerX: number; centerY: number; row: number; column: number }> = [];
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      subslots.push({
+        centerX: originX + cellWidth * (column + 0.5),
+        centerY: originY + cellHeight * (row + 0.5),
+        row,
+        column,
+      });
+    }
+  }
+
+  subslots.sort((left, right) => {
+    const leftDistance =
+      (left.centerX - slot.centerX) * (left.centerX - slot.centerX) +
+      (left.centerY - slot.centerY) * (left.centerY - slot.centerY);
+    const rightDistance =
+      (right.centerX - slot.centerX) * (right.centerX - slot.centerX) +
+      (right.centerY - slot.centerY) * (right.centerY - slot.centerY);
+    return (
+      compareNumbers(leftDistance, rightDistance) ||
+      compareNumbers(left.row, right.row) ||
+      compareNumbers(left.column, right.column)
+    );
+  });
+
+  return subslots.slice(0, subslotCount);
+}
+
 function getLabelHalfWidth(label: string, width: number) {
   return Math.min(
     Math.max(width * 0.2, 60),
@@ -297,12 +362,25 @@ function buildInitialStates(
     const spacing = Math.max(component.maxCollisionRadius * 1.38, 52);
     const flattenY = 0.92;
     const componentPull = 0.012 / Math.max(1, Math.sqrt(component.nodeCount));
+    const subslots = buildComponentSubslots(
+      slot,
+      component.nodeCount,
+      component.maxCollisionRadius
+    );
 
     componentNodes.forEach((node, nodeIndex) => {
       const metrics = metricsById.get(node.id)!;
+      const subslot = subslots[nodeIndex % subslots.length] ?? {
+        centerX: slot.centerX,
+        centerY: slot.centerY,
+      };
+      const orbitIndex = Math.floor(nodeIndex / subslots.length);
       const radialDistance =
-        nodeIndex === 0 ? 0 : Math.sqrt(nodeIndex) * spacing;
-      const angle = nodeIndex === 0 ? 0 : nodeIndex * GOLDEN_ANGLE;
+        orbitIndex === 0 ? 0 : Math.sqrt(orbitIndex) * spacing;
+      const angle =
+        orbitIndex === 0
+          ? 0
+          : orbitIndex * GOLDEN_ANGLE + (nodeIndex % subslots.length) * ((Math.PI * 2) / subslots.length);
 
       const state: LayoutNodeState = {
         ...node,
@@ -311,8 +389,8 @@ function buildInitialStates(
         componentCenterX: slot.centerX,
         componentCenterY: slot.centerY,
         componentPull,
-        x: slot.centerX + Math.cos(angle) * radialDistance,
-        y: slot.centerY + Math.sin(angle) * radialDistance * flattenY,
+        x: subslot.centerX + Math.cos(angle) * radialDistance,
+        y: subslot.centerY + Math.sin(angle) * radialDistance * flattenY,
       };
 
       clampStateToBounds(state, bounds);
