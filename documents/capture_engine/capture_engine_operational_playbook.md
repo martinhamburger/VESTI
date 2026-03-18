@@ -51,6 +51,26 @@ Audience: Parser maintainers, QA, release owners, engineers doing DOM sampling o
 - 不要只采“正在生成”的瞬时状态，要补“历史线程冷打开”。
 - 多模态 case 必须单独建样本，不能混在普通文本 case 里。
 
+### 3.1 Math Formula Sampling Notes
+
+数学公式 case 额外记录以下平台分流：
+
+| platform family | 优先信号 | 处理要求 |
+| --- | --- | --- |
+| `ChatGPT / Claude / Qwen / DeepSeek` | `.katex-mathml annotation[encoding="application/x-tex"]` | 优先走 annotation 语义层；仅在明显整体双转义时收敛反斜杠 |
+| `Gemini` | `[data-math]` | 以属性态公式源为主；旧 `data-formula` 只作为兼容 fallback |
+| `Doubao` | `[data-custom-copy-text]` | 只去定界符 `\\(...\\)` / `\\[...\\]`，不做全局双反斜杠收敛 |
+| `Kimi / Yuanbao` | DOM 无稳定公式源 | 记录为 deferred fallback track，转向 copy-full-markdown / network interception / shadow-state evidence |
+
+附加采样要求：
+- 至少分别采 inline 与 block math。
+- 含 table / paragraph / list 的混排公式必须单独留样，防止整段被误提升为 `math`。
+- 复制验证必须记录“复制结果是否为 raw TeX”，而不是只看 reader 视觉渲染。
+- 需要同时记录 `content_text` 是否已被多层公式 DOM 污染，而不是只记录 reader 外观。
+- 对旧记录回归时，要区分：
+  - `已有 AST math，可由 repair migration 修复 canonical text`
+  - `没有 AST，必须重新打开原线程并 recapture`
+
 ## 4. Fault Taxonomy
 
 统一使用以下 fault taxonomy：
