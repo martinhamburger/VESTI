@@ -271,7 +271,7 @@ export type StorageApi = {
   saveNote?: (note: Omit<Note, "id" | "created_at" | "updated_at">) => Promise<Note>;
   updateNote?: (
     id: number,
-    changes: Partial<Pick<Note, "title" | "content">>
+    changes: Partial<Omit<Note, "id" | "created_at" | "updated_at">>
   ) => Promise<Note>;
   deleteNote?: (id: number) => Promise<void>;
   getStorageUsage?: () => Promise<StorageUsageSnapshot>;
@@ -312,10 +312,28 @@ export interface ChatSummaryData {
   plain_text?: string;
 }
 
+export type NoteBlockType = "message-group" | "annotation" | "text" | "compressed_context";
+
+export interface NoteBlock {
+  id: string;
+  type: NoteBlockType;
+  collapsed?: boolean;
+  data: {
+    // For message-group: array of message IDs from conversation
+    messageIds?: number[];
+    // For annotation: user's comment/note
+    text?: string;
+    // For text: free-form text content
+    markdown?: string;
+  };
+  parentBlockId?: string; // For nested blocks (e.g., annotations on message groups)
+}
+
 export interface Note {
   id: number;
   title: string;
-  content: string;
+  content: string; // Keep for backward compat, will be JSON stringified block array
+  blocks?: NoteBlock[]; // New block-based structure
   created_at: number;
   updated_at: number;
   linked_conversation_ids: number[];

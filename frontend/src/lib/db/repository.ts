@@ -1135,6 +1135,7 @@ function toNote(record: NoteRecord & { id: number }): Note {
     id: record.id,
     title: record.title,
     content: record.content,
+    blocks: record.blocks,
     created_at: record.created_at,
     updated_at: record.updated_at,
     linked_conversation_ids: record.linked_conversation_ids ?? [],
@@ -1155,6 +1156,7 @@ export async function createNote(
   const id = await db.notes.add({
     title: data.title,
     content: data.content,
+    blocks: data.blocks,
     linked_conversation_ids: data.linked_conversation_ids,
     created_at: now,
     updated_at: now,
@@ -1168,7 +1170,7 @@ export async function createNote(
 
 export async function updateNote(
   id: number,
-  changes: Partial<Pick<Note, "title" | "content">>
+  changes: Partial<Omit<Note, "id" | "created_at" | "updated_at">>
 ): Promise<Note> {
   await db.notes.update(id, { ...changes, updated_at: Date.now() });
   const record = await db.notes.get(id);

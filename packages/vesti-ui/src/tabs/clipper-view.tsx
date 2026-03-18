@@ -67,11 +67,9 @@ export function ClipperView({
       .join("\n\n---\n\n");
   }, [messages, selectedMessages]);
 
-  // Update draft content when messages are selected
+  // Keep draft content in sync with current message selection.
   useEffect(() => {
-    if (selectedMessageContent) {
-      setDraftContent(selectedMessageContent);
-    }
+    setDraftContent(selectedMessageContent);
   }, [selectedMessageContent]);
 
   // Auto-resize textarea
@@ -130,10 +128,21 @@ export function ClipperView({
     setSaveStatus("saving");
 
     try {
+      // Create message-group block from selected messages
+      const messageGroupBlock = {
+        id: `msg-group-${Date.now()}`,
+        type: "message-group" as const,
+        data: {
+          messageIds: Array.from(selectedMessages),
+        },
+      };
+
+      // Create Note with both content (for backward compat) and blocks
       const newNote = await storage.saveNote({
         title: draftTitle.trim(),
         content: draftContent,
         linked_conversation_ids: selectedConversationId ? [selectedConversationId] : [],
+        blocks: selectedMessages.size > 0 ? [messageGroupBlock] : undefined,
       });
 
       setSaveStatus("success");

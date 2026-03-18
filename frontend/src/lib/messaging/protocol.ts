@@ -276,14 +276,22 @@ export type RequestMessage =
       target: "offscreen";
       via?: "background";
       requestId?: string;
-      payload: { title: string; content: string; linked_conversation_ids: number[] };
+      payload: {
+        title: string;
+        content: string;
+        blocks?: Note["blocks"];
+        linked_conversation_ids: number[];
+      };
     }
   | {
       type: "UPDATE_NOTE";
       target: "offscreen";
       via?: "background";
       requestId?: string;
-      payload: { id: number; changes: { title?: string; content?: string } };
+      payload: {
+        id: number;
+        changes: Partial<Omit<Note, "id" | "created_at" | "updated_at">>;
+      };
     }
   | {
       type: "DELETE_NOTE";

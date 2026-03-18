@@ -220,7 +220,7 @@ export async function saveNote(
 
 export async function updateNote(
   id: number,
-  changes: Partial<Pick<Note, "title" | "content">>
+  changes: Partial<Omit<Note, "id" | "created_at" | "updated_at">>
 ): Promise<Note> {
   const result = (await sendRequest({
     type: "UPDATE_NOTE",

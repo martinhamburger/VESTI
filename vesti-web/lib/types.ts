@@ -73,10 +73,25 @@ export interface Message {
   created_at: number;
 }
 
+export type NoteBlockType = 'message-group' | 'annotation' | 'text' | 'compressed_context';
+
+export interface NoteBlock {
+  id: string;
+  type: NoteBlockType;
+  collapsed?: boolean;
+  data: {
+    messageIds?: number[];
+    text?: string;
+    markdown?: string;
+  };
+  parentBlockId?: string;
+}
+
 export interface Note {
   id: number;
   title: string;
   content: string;
+  blocks?: NoteBlock[];
   linked_conversation_ids: number[];
   created_at: number;
   updated_at: number;

@@ -3,6 +3,7 @@ import type { Table } from "dexie";
 import type {
   Conversation,
   Message,
+  NoteBlock,
   SummaryRecord,
   WeeklyReportRecord,
 } from "../types";
@@ -31,6 +32,7 @@ export interface NoteRecord {
   id?: number;
   title: string;
   content: string;
+  blocks?: NoteBlock[];
   created_at: number;
   updated_at: number;
   linked_conversation_ids: number[];

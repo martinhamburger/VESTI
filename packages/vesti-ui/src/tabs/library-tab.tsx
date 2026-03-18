@@ -27,6 +27,7 @@ import type {
   Message,
   ChatSummaryData,
   Note,
+  NoteBlock,
   UiThemeMode,
 } from "../types";
 import { useLibraryData } from "../contexts/library-data";
@@ -35,6 +36,7 @@ import { StructuredSummaryCard } from "../components/StructuredSummaryCard";
 import { SummaryPipelineProgress } from "../components/SummaryPipelineProgress";
 import type { PipelineStageState } from "../components/SummaryPipelineProgress";
 import { ClipperView } from "./clipper-view";
+import { NoteBlockEditor } from "./note-block-editor";
 
 type ViewMode = "conversations" | "notes" | "clipper";
 type FolderItem = { name: string; isCustom: boolean; isTag: boolean };
@@ -98,6 +100,8 @@ export function LibraryTab({
   const [noteContent, setNoteContent] = useState("");
   const [noteSaveStatus, setNoteSaveStatus] = useState<"saved" | "unsaved">("saved");
   const [isEditingNoteBody, setIsEditingNoteBody] = useState(false);
+  const [noteBlocks, setNoteBlocks] = useState<NoteBlock[]>([]);
+  const [noteSlashTriggerNonce, setNoteSlashTriggerNonce] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const renameNoteInputRef = useRef<HTMLInputElement>(null);
@@ -139,17 +143,42 @@ export function LibraryTab({
     );
   }
 
+  const serializeNoteBlocks = (blocks: NoteBlock[]): string => {
+    return blocks
+      .map((block) => {
+        if (block.type === "text") {
+          return block.data?.text || "";
+        }
+        if (block.type === "message-group") {
+          return `[Messages: ${block.data?.messageIds?.join(", ") || ""}]`;
+        }
+        if (block.type === "compressed_context") {
+          return `[Compressed]\n${block.data?.text || ""}`;
+        }
+        if (block.type === "annotation") {
+          return block.data?.markdown || block.data?.text || "";
+        }
+        return "";
+      })
+      .join("\n\n");
+  };
+
   // Auto-save note with debounce
   useEffect(() => {
     if (viewMode !== "notes" || !selectedNoteId) return;
-    if (!noteContent && !noteTitle) return;
+    if (!noteBlocks.length && !noteTitle) return;
     setNoteSaveStatus("unsaved");
     const timer = setTimeout(() => {
-      console.log("[dashboard] Note saved:", { title: noteTitle, content: noteContent });
+      const serializedContent = serializeNoteBlocks(noteBlocks);
+      setNoteContent(serializedContent);
+      console.log("[dashboard] Note draft changed:", {
+        title: noteTitle,
+        blocks: noteBlocks.length,
+      });
       setNoteSaveStatus("saved");
     }, 800);
     return () => clearTimeout(timer);
-  }, [noteContent, noteTitle, viewMode, selectedNoteId]);
+  }, [noteBlocks, noteTitle, viewMode, selectedNoteId]);
 
   // Load selected note
   useEffect(() => {
@@ -159,8 +188,78 @@ export function LibraryTab({
       setNoteTitle(note.title);
       setNoteContent(note.content);
       setIsEditingNoteBody(false);
+      // Initialize blocks: use existing blocks or convert from content
+      if (note.blocks && note.blocks.length > 0) {
+        setNoteBlocks(note.blocks);
+      } else {
+        // Convert plain text content to a text block
+        setNoteBlocks([
+          {
+            id: `block-${Date.now()}`,
+            type: "text",
+            data: { text: note.content },
+          },
+        ]);
+      }
     }
   }, [selectedNoteId, notes]);
+
+  // Load messages for note's linked conversation
+  useEffect(() => {
+    if (!selectedNoteId || viewMode !== "notes") {
+      setMessages([]);
+      return;
+    }
+    
+    const note = notes.find((n) => n.id === selectedNoteId);
+    if (!note || !note.linked_conversation_ids || note.linked_conversation_ids.length === 0) {
+      setMessages([]);
+      return;
+    }
+
+    // Load messages from the first linked conversation
+    const conversationId = note.linked_conversation_ids[0];
+    if (!storage.getMessages) {
+      setMessages([]);
+      return;
+    }
+
+    setMessagesLoading(true);
+    storage
+      .getMessages(conversationId)
+      .then((data) => setMessages(data))
+      .catch(() => setMessages([]))
+      .finally(() => setMessagesLoading(false));
+  }, [selectedNoteId, viewMode, notes, storage]);
+
+  // Global slash trigger in notes view (progressive disclosure entry point)
+  useEffect(() => {
+    if (viewMode !== "notes" || !selectedNote) return;
+
+    const onGlobalKeyDown = (event: KeyboardEvent) => {
+      if (isEditingNoteBody || editingTitle) return;
+      if (event.key !== "/") return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName.toLowerCase();
+        const isInputLike =
+          tagName === "input" ||
+          tagName === "textarea" ||
+          tagName === "select" ||
+          target.isContentEditable;
+        if (isInputLike) return;
+      }
+
+      event.preventDefault();
+      setNoteSlashTriggerNonce((prev) => prev + 1);
+      setIsEditingNoteBody(true);
+    };
+
+    window.addEventListener("keydown", onGlobalKeyDown);
+    return () => window.removeEventListener("keydown", onGlobalKeyDown);
+  }, [viewMode, selectedNote, isEditingNoteBody, editingTitle]);
 
   useEffect(() => {
     if (!storage.getNotes) return;
@@ -1861,16 +1960,20 @@ export function LibraryTab({
             </div>
 
             {isEditingNoteBody ? (
-              <textarea
-                ref={textareaRef}
-                value={noteContent}
-                onChange={(e) => setNoteContent(e.target.value)}
-                onBlur={async () => {
+              <div
+                onBlur={async (event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    return;
+                  }
                   setIsEditingNoteBody(false);
                   if (!selectedNote || !storage.updateNote) return;
                   try {
+                    const blockContent = serializeNoteBlocks(noteBlocks);
+                    setNoteContent(blockContent);
+
                     const updated = await storage.updateNote(selectedNote.id, {
-                      content: noteContent,
+                      content: blockContent,
+                      blocks: noteBlocks,
                     });
                     setNotes((prev) =>
                       prev.map((note) => (note.id === updated.id ? updated : note))
@@ -1879,19 +1982,16 @@ export function LibraryTab({
                     console.error("[library] updateNote failed", error);
                   }
                 }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && event.metaKey) {
-                    event.preventDefault();
-                    setIsEditingNoteBody(false);
-                  }
-                }}
-                placeholder="Start writing..."
-                className="w-full bg-transparent border-none outline-none resize-none text-[13px] leading-[1.7] text-text-primary placeholder:text-text-tertiary mb-12"
-                style={{
-                  fontFamily: "\"JetBrains Mono\", \"SF Mono\", Menlo, monospace",
-                  minHeight: "240px",
-                }}
-              />
+                tabIndex={0}
+              >
+                <NoteBlockEditor
+                  blocks={noteBlocks}
+                  messages={messages}
+                  onBlocksChange={setNoteBlocks}
+                  slashTriggerNonce={noteSlashTriggerNonce}
+                  readOnly={false}
+                />
+              </div>
             ) : (
               <div
                 role="button"
@@ -1901,21 +2001,24 @@ export function LibraryTab({
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     setIsEditingNoteBody(true);
+                    return;
+                  }
+                  if (event.key === "/") {
+                    event.preventDefault();
+                    setNoteSlashTriggerNonce((prev) => prev + 1);
+                    setIsEditingNoteBody(true);
                   }
                 }}
                 className="mb-12 cursor-text"
                 style={{ minHeight: "240px" }}
               >
-                {renderedNoteContent ? (
-                  <div
-                    className="prose prose-slate max-w-none text-text-primary"
-                    dangerouslySetInnerHTML={{ __html: renderedNoteContent }}
-                  />
-                ) : (
-                  <div className="text-[13px] font-sans text-text-tertiary">
-                    Start writing...
-                  </div>
-                )}
+                <NoteBlockEditor
+                  blocks={noteBlocks}
+                  messages={messages}
+                  onBlocksChange={setNoteBlocks}
+                  slashTriggerNonce={noteSlashTriggerNonce}
+                  readOnly={true}
+                />
               </div>
             )}
 

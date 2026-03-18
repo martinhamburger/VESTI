@@ -106,13 +106,21 @@ type RequestMessage =
       type: 'CREATE_NOTE';
       target?: 'offscreen';
       requestId?: string;
-      payload: { title: string; content: string; linked_conversation_ids: number[] };
+      payload: {
+        title: string;
+        content: string;
+        blocks?: Note['blocks'];
+        linked_conversation_ids: number[];
+      };
     }
   | {
       type: 'UPDATE_NOTE';
       target?: 'offscreen';
       requestId?: string;
-      payload: { id: number; changes: { title?: string; content?: string } };
+      payload: {
+        id: number;
+        changes: Partial<Omit<Note, 'id' | 'created_at' | 'updated_at'>>;
+      };
     }
   | {
       type: 'DELETE_NOTE';
@@ -596,7 +604,12 @@ export async function getNotes(): Promise<Note[]> {
 }
 
 export async function saveNote(
-  data: { title: string; content: string; linked_conversation_ids: number[] }
+  data: {
+    title: string;
+    content: string;
+    blocks?: Note['blocks'];
+    linked_conversation_ids: number[];
+  }
 ): Promise<Note> {
   const result = (await sendRequest({
     type: 'CREATE_NOTE',
@@ -608,7 +621,7 @@ export async function saveNote(
 
 export async function updateNote(
   id: number,
-  changes: { title?: string; content?: string }
+  changes: Partial<Omit<Note, 'id' | 'created_at' | 'updated_at'>>
 ): Promise<Note> {
   const result = (await sendRequest({
     type: 'UPDATE_NOTE',
