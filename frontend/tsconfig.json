@@ -15,7 +15,7 @@
         "./*"
       ],
       "@vesti/ui": [
-        "./src/vendor/vesti-ui.ts"
+        "../packages/vesti-ui/src/index.ts"
       ]
     },
     "baseUrl": "."

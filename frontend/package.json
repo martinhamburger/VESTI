@@ -22,7 +22,7 @@
     "@vesti/ui": "file:../packages/vesti-ui",
     "dexie": "^4.3.0",
     "katex": "^0.16.25",
-    "lucide-react": "^0.544.0",
+    "lucide-react": "0.564.0",
     "plasmo": "0.90.5",
     "react": "18.2.0",
     "react-dom": "18.2.0",

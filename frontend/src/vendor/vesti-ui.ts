@@ -1,5 +1,5 @@
-export { VestiDashboard } from "../../../packages/vesti-ui/src";
 export {
+  VestiDashboard,
   connectToNotion,
   disconnectNotion,
   formatNotionErrorMessage,
@@ -9,8 +9,5 @@ export {
   listNotionDatabases,
   setNotionSettings,
   selectNotionDatabase,
-} from "../../../packages/vesti-ui/src/notion-integration";
-export type {
-  NotionDatabaseOption,
-  NotionSettings,
-} from "../../../packages/vesti-ui/src/notion-integration";
+} from "@vesti/ui";
+export type { NotionDatabaseOption, NotionSettings } from "@vesti/ui";
