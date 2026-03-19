@@ -22,8 +22,12 @@ The current shipping export path still uses:
 - canonical export entry: `frontend/src/sidepanel/utils/exportConversations.ts`
 - compression runtime: `frontend/src/sidepanel/utils/exportCompression.ts`
 - prompt registry entries:
-  - `frontend/src/lib/prompts/exportCompact.ts`
-  - `frontend/src/lib/prompts/exportSummary.ts`
+  - `frontend/src/lib/prompts/export/compactComposer.ts`
+  - `frontend/src/lib/prompts/export/summaryComposer.ts`
+
+Compatibility re-export shims still exist at:
+- `frontend/src/lib/prompts/exportCompact.ts`
+- `frontend/src/lib/prompts/exportSummary.ts`
 
 Shipping user modes remain:
 - `Full`

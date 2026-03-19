@@ -13,6 +13,7 @@ This directory owns:
 - export eval and drift-governance rules
 - model/proxy interface baselines used by export
 - prompt inventory and migration debt tracking
+- cross-platform normalization assumptions that export depends on before `E0`
 
 This directory does not own:
 - runtime event transport contracts
@@ -29,8 +30,38 @@ Two sources of truth now coexist with different responsibilities:
 
 Documentation explains contracts, architecture, inventory, and evaluation. Runtime prompt text is no longer canonical in markdown docs.
 
+## First-read package for expert review
+
+For external expert review or fast onboarding on the export direction, start with this package in order:
+
+1. `export_ai_handoff_architecture.md`
+2. `export_knowledge_export_architecture.md`
+3. `cross_platform_conversation_normalization_architecture.md`
+4. `export_stage_artifact_schemas.md`
+5. `export_workflow_runner_spec.md`
+
+This package is designed to answer:
+- what is currently shipped
+- what is deliberately deferred
+- how the future bounded chain should be implemented
+- where cross-platform ingestion stops and export begins
+
 ## Active canonical docs
 
+- `export_ai_handoff_architecture.md`
+  - **first-read**
+  - **expert-facing bridge doc**
+  - single-file entrypoint for current shipped AI Handoff (compact) + future multi-agent direction
+- `export_knowledge_export_architecture.md`
+  - **first-read**
+  - **expert-facing bridge doc**
+  - single-file entrypoint for current shipped Knowledge Export (summary) + future multi-agent direction
+- `cross_platform_conversation_normalization_architecture.md`
+  - **first-read** when the discussion needs the pre-`E0` ingestion boundary
+- `export_stage_artifact_schemas.md`
+  - canonical schema note for `P1/E0/E1/E2/E3/repair` artifacts
+- `export_workflow_runner_spec.md`
+  - canonical note for the bounded export pipeline runner
 - `model_settings.md`
 - `embedding_proxy_contract_v2_0.md`
 - `export_multi_agent_architecture.md`

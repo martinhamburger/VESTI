@@ -22,7 +22,6 @@ interface BatchFeedback {
   tone: "default" | "warning" | "error";
   title?: string;
   detail?: string;
-  technicalSummary?: string;
   hint?: string;
 }
 
@@ -87,7 +86,7 @@ const EXPORT_MODE_OPTIONS: Array<{
     mode: "compact",
     label: "Compact",
     description:
-      "AI handoff format. Tries current LLM settings first, then local fallback.",
+      "Distilled handoff for the next agent. Tries current LLM settings first, then local fallback.",
   },
   {
     mode: "summary",
@@ -144,7 +143,7 @@ export function BatchActionBar({
   const toolbarDeleteActionClassName = `${toolbarActionBaseClassName} text-danger hover:bg-bg-secondary`;
   const toolbarSelectActionClassName = `${toolbarNeutralActionClassName} px-1.5`;
   const hasStructuredFeedback = Boolean(
-    feedback?.title || feedback?.detail || feedback?.technicalSummary || feedback?.hint
+    feedback?.title || feedback?.detail || feedback?.hint
   );
   const downloadBusy = actionKey === `download-${selectedExportFormat}`;
   const copyBusy = actionKey === `copy-${selectedExportFormat}`;
@@ -275,9 +274,6 @@ export function BatchActionBar({
                   <p className="data-feedback-title">{feedback.title || feedback.message}</p>
                 </div>
                 {feedback.detail && <p className="data-feedback-detail">{feedback.detail}</p>}
-                {feedback.technicalSummary && (
-                  <p className="data-feedback-technical">{feedback.technicalSummary}</p>
-                )}
                 {feedback.hint && <p className="data-feedback-hint">{feedback.hint}</p>}
               </div>
             ) : (
@@ -363,9 +359,6 @@ export function BatchActionBar({
                   <p className="data-feedback-title">{feedback.title || feedback.message}</p>
                 </div>
                 {feedback.detail && <p className="data-feedback-detail">{feedback.detail}</p>}
-                {feedback.technicalSummary && (
-                  <p className="data-feedback-technical">{feedback.technicalSummary}</p>
-                )}
                 {feedback.hint && <p className="data-feedback-hint">{feedback.hint}</p>}
               </div>
             ) : (
@@ -442,9 +435,6 @@ export function BatchActionBar({
                   <p className="data-feedback-title">{feedback.title || feedback.message}</p>
                 </div>
                 {feedback.detail && <p className="data-feedback-detail">{feedback.detail}</p>}
-                {feedback.technicalSummary && (
-                  <p className="data-feedback-technical">{feedback.technicalSummary}</p>
-                )}
                 {feedback.hint && <p className="data-feedback-hint">{feedback.hint}</p>}
               </div>
             ) : (

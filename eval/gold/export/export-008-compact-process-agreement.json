@@ -1,0 +1,53 @@
+{
+  "id": "export-008-compact-process-agreement",
+  "type": "export",
+  "mode": "compact",
+  "locale": "en",
+  "title": "Collaboration norms for export follow-up work",
+  "platform": "ChatGPT",
+  "created_at": 1773900000000,
+  "messages": [
+    {
+      "role": "user",
+      "content": "For the next export iteration, do not reopen the summary track and do not mix capture-engine fixes into the branch. Keep the work scoped to compact and AI handoff only.",
+      "timestamp": 1773900000000
+    },
+    {
+      "role": "ai",
+      "content": "Understood. We'll treat summary as maintenance-only for now, and keep the branch focused on compact, handoff, and distillation work.",
+      "timestamp": 1773900360000
+    },
+    {
+      "role": "user",
+      "content": "Also keep the updates crisp. If a blocker appears, tell me the exact failure mode instead of giving me a broad architecture recap.",
+      "timestamp": 1773900720000
+    },
+    {
+      "role": "ai",
+      "content": "Locked. The handoff should preserve the working agreement: narrow scope, explicit blocker reporting, and no branch pollution from capture or time/network work.",
+      "timestamp": 1773901080000
+    }
+  ],
+  "gold": {
+    "key_facts": [
+      "summary",
+      "compact",
+      "AI handoff",
+      "exact failure mode",
+      "capture-engine"
+    ],
+    "required_facts": [
+      "summary",
+      "compact",
+      "AI handoff",
+      "exact failure mode",
+      "capture-engine"
+    ],
+    "forbidden_facts": [
+      "Kubernetes",
+      "Path:"
+    ],
+    "reference": "## Background\n- Title: Collaboration norms for export follow-up work\n- Platform: ChatGPT\n- Context: The thread is establishing working norms for the next export iteration so the branch stays narrow and blocker reporting stays actionable.\n\n## Key Questions\n- How should the next export iteration be scoped?\n- What communication style should be preserved if a blocker appears?\n\n## Decisions And Answers\n- Keep the branch scoped to compact and AI handoff only.\n- Treat summary as maintenance-only for now and do not mix capture-engine fixes into the branch.\n- Report the exact failure mode when blocked instead of giving a broad architecture recap.\n\n## Reusable Artifacts\n- Reference: exact failure mode\n- Reference: narrow export scope\n\n## Unresolved\n- The team may still need to decide when summary leaves maintenance mode.",
+    "experimental_reference": "StartedAt: 2026-03-18T01:00:00Z\nConversation Type: process_agreement\n\n## State Overview\nThis thread is establishing collaboration rules for the next export iteration rather than solving a technical bug directly. The core problem is to keep the branch narrowly scoped to compact and AI handoff work while preserving a reporting style that stays crisp and failure-mode specific. The current state is that summary is frozen to maintenance mode, capture-engine work is out of scope, and the next agent inherits those constraints as working agreement rather than optional preference.\n\n## User Context And Corrections\n- Keep the next export iteration scoped to `compact` and `AI handoff` only.\n- Do not reopen the summary track beyond maintenance work.\n- Do not mix capture-engine, time, or network fixes into the export branch.\n- If a blocker appears, report the exact failure mode instead of responding with a broad architecture recap.\n\n## Open Risks And Next Actions\n- The remaining open process question is when summary should leave maintenance mode without reopening a second front too early."
+  }
+}

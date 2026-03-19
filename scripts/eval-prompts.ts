@@ -3,6 +3,11 @@ import path from "node:path";
 import process from "node:process";
 import { getPrompt } from "../frontend/src/lib/prompts";
 import {
+  CONDITIONAL_HANDOFF_OVERVIEW_HEADING,
+  CONDITIONAL_HANDOFF_SECTION_WHITELIST,
+  CONDITIONAL_HANDOFF_TYPES,
+} from "../frontend/src/lib/prompts/export/compactComposer";
+import {
   getLlmModelProfile,
   type ExportPromptProfile,
 } from "../frontend/src/lib/services/llmModelProfile";
@@ -12,6 +17,16 @@ type Mode = "auto" | "live" | "mock";
 type Variant = "current" | "experimental";
 type CaseKind = "conversation" | "weekly" | "export";
 type ExportEvalMode = "compact" | "summary";
+type ExportContractMode = "fixed_headings" | "conditional_handoff";
+type ParsedExportMarkdown = {
+  mode: ExportEvalMode;
+  body: string;
+  sections: Record<string, string>;
+  contract: ExportContractMode;
+  startedAt?: string;
+  conversationTypes?: string[];
+  stateOverview?: string;
+};
 
 type Cli = { mode: Mode; variant: Variant; updateBaseline: boolean; strict: boolean; debugRaw: boolean; throttleMs: number; caseFilter: string; limit: number; caseDelayMs: number };
 
@@ -37,6 +52,10 @@ const EXPORT_HEADINGS: Record<ExportEvalMode, string[]> = {
 const EXPORT_PROFILES: ExportPromptProfile[] = [
   "kimi_handoff_rich",
   "step_flash_concise",
+];
+const CONDITIONAL_HANDOFF_TYPES_SET = new Set<string>(CONDITIONAL_HANDOFF_TYPES);
+const CONDITIONAL_HANDOFF_SECTIONS: string[] = [
+  ...CONDITIONAL_HANDOFF_SECTION_WHITELIST,
 ];
 
 const args = process.argv.slice(2);
@@ -564,9 +583,13 @@ function parseExportMarkdown(
   mode: ExportEvalMode,
   raw: string
 ): {
-  data: { mode: ExportEvalMode; body: string; sections: Record<string, string> } | null;
+  data: ParsedExportMarkdown | null;
   errors: string[];
 } {
+  if (shouldUseConditionalHandoffEval(mode)) {
+    return parseConditionalHandoffMarkdown(mode, raw);
+  }
+
   const body = raw.trim();
   if (!body) {
     return { data: null, errors: ["EMPTY_EXPORT_OUTPUT"] };
@@ -585,6 +608,7 @@ function parseExportMarkdown(
       mode,
       body,
       sections,
+      contract: "fixed_headings",
     },
     errors: [],
   };
@@ -598,31 +622,335 @@ function hasExportMeaningfulText(value: string): boolean {
   return cjkCount >= 4 || asciiWordCount >= 3 || compact.length >= 18;
 }
 
+function countCodeFenceMarkers(value: string): number {
+  return (value.match(/```/g) || []).length;
+}
+
+function isBulletLikeLine(value: string): boolean {
+  const trimmed = value.trim();
+  return /^[-*]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed);
+}
+
+function isProseLikeOverview(value: string): boolean {
+  const lines = value
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("```"));
+
+  if (lines.length === 0) {
+    return false;
+  }
+
+  const proseLines = lines.filter((line) => !isBulletLikeLine(line));
+  if (proseLines.length === 0) {
+    return false;
+  }
+
+  const proseText = proseLines.join(" ");
+  const sentenceCount = proseText
+    .split(/(?<=[。！？!?])\s*|(?<=[.!?])\s+/)
+    .map((line) => line.trim())
+    .filter((line) => isCompleteSentence(line)).length;
+
+  return sentenceCount >= 2 || (proseLines.length >= 2 && proseText.length >= 140);
+}
+
+function findDanglingCueLines(value: string): string[] {
+  const lines = value.replace(/\r\n/g, "\n").split("\n");
+  const dangling: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const trimmed = lines[index].trim();
+    if (!trimmed) continue;
+    if (
+      trimmed.startsWith("StartedAt:") ||
+      trimmed.startsWith("Conversation Type:") ||
+      trimmed.startsWith("## ")
+    ) {
+      continue;
+    }
+    if (!/[:：]$/.test(trimmed)) {
+      continue;
+    }
+
+    let nextMeaningful: string | null = null;
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const nextTrimmed = lines[cursor].trim();
+      if (!nextTrimmed) continue;
+      nextMeaningful = nextTrimmed;
+      break;
+    }
+
+    if (nextMeaningful === null || nextMeaningful.startsWith("## ")) {
+      dangling.push(trimmed);
+    }
+  }
+
+  return dangling;
+}
+
+function shouldUseConditionalHandoffEval(
+  mode: ExportEvalMode | undefined
+): mode is "compact" {
+  return cli.variant === "experimental" && mode === "compact";
+}
+
+function parseConditionalConversationType(value: string): string[] | null {
+  const normalized = value
+    .split("+")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (normalized.length < 1 || normalized.length > 2) {
+    return null;
+  }
+
+  if (normalized.some((part) => !CONDITIONAL_HANDOFF_TYPES_SET.has(part))) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function parseConditionalHandoffMarkdown(
+  mode: ExportEvalMode,
+  raw: string
+): {
+  data: ParsedExportMarkdown | null;
+  errors: string[];
+} {
+  const body = raw.trim();
+  if (!body) {
+    return { data: null, errors: ["EMPTY_EXPORT_OUTPUT"] };
+  }
+
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const nonEmptyLines = lines.map((line) => line.trim()).filter(Boolean);
+  const startedLine = nonEmptyLines[0] || "";
+  const typeLine = nonEmptyLines[1] || "";
+  const errors: string[] = [];
+
+  if (!startedLine.startsWith("StartedAt:")) {
+    errors.push("missing StartedAt line");
+  }
+  if (!typeLine.startsWith("Conversation Type:")) {
+    errors.push("missing Conversation Type line");
+  }
+
+  const startedAt = startedLine.replace(/^StartedAt:\s*/, "").trim();
+  const typeValue = typeLine.replace(/^Conversation Type:\s*/, "").trim();
+  const conversationTypes = parseConditionalConversationType(typeValue);
+  if (!conversationTypes) {
+    errors.push("invalid Conversation Type");
+  }
+
+  const rawSections: Record<string, string> = {};
+  const sectionOrder: string[] = [];
+  let currentHeading: string | null = null;
+  let seenFirstHeading = false;
+
+  for (const rawLine of lines.slice(2)) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      if (currentHeading) {
+        rawSections[currentHeading] = `${rawSections[currentHeading]}\n`;
+      }
+      continue;
+    }
+
+    if (trimmed.startsWith("## ")) {
+      seenFirstHeading = true;
+      if (
+        trimmed !== CONDITIONAL_HANDOFF_OVERVIEW_HEADING &&
+        !CONDITIONAL_HANDOFF_SECTIONS.includes(trimmed)
+      ) {
+        errors.push(`unknown conditional heading: ${trimmed}`);
+        currentHeading = null;
+        continue;
+      }
+      if (rawSections[trimmed] !== undefined) {
+        errors.push(`duplicate heading: ${trimmed}`);
+        currentHeading = trimmed;
+        continue;
+      }
+      if (
+        sectionOrder.length === 0 &&
+        trimmed !== CONDITIONAL_HANDOFF_OVERVIEW_HEADING
+      ) {
+        errors.push("missing required State Overview heading");
+      }
+      if (
+        sectionOrder.length > 0 &&
+        trimmed === CONDITIONAL_HANDOFF_OVERVIEW_HEADING
+      ) {
+        errors.push("State Overview must be the first section");
+      }
+      rawSections[trimmed] = "";
+      sectionOrder.push(trimmed);
+      currentHeading = trimmed;
+      continue;
+    }
+
+    if (!currentHeading) {
+      if (seenFirstHeading || trimmed) {
+        errors.push("non-heading content appeared before a valid section");
+      }
+      continue;
+    }
+
+    rawSections[currentHeading] = rawSections[currentHeading]
+      ? `${rawSections[currentHeading]}\n${rawLine}`
+      : rawLine;
+  }
+
+  if (
+    sectionOrder.length === 0 ||
+    sectionOrder[0] !== CONDITIONAL_HANDOFF_OVERVIEW_HEADING
+  ) {
+    errors.push("missing conditional sections");
+  }
+
+  const stateOverview = (
+    rawSections[CONDITIONAL_HANDOFF_OVERVIEW_HEADING] || ""
+  ).trim();
+  if (!stateOverview) {
+    errors.push("missing State Overview body");
+  } else if (!hasExportMeaningfulText(stateOverview) || !isProseLikeOverview(stateOverview)) {
+    errors.push("State Overview is not prose-like");
+  }
+
+  const conditionalSectionOrder = sectionOrder.filter(
+    (heading) => heading !== CONDITIONAL_HANDOFF_OVERVIEW_HEADING
+  );
+  if (conditionalSectionOrder.length === 0) {
+    errors.push("missing whitelist conditional sections");
+  }
+
+  const sections: Record<string, string> = {};
+  for (const heading of conditionalSectionOrder) {
+    sections[heading] = (rawSections[heading] || "").trim();
+    if (!sections[heading] || !hasExportMeaningfulText(sections[heading])) {
+      errors.push(`empty conditional section: ${heading}`);
+    }
+  }
+
+  if (countCodeFenceMarkers(body) % 2 !== 0) {
+    errors.push("unclosed code block");
+  }
+
+  const danglingCueLines = findDanglingCueLines(body);
+  if (danglingCueLines.length > 0) {
+    errors.push(`dangling cue line: ${danglingCueLines.join(" | ")}`);
+  }
+
+  const observedOrder = conditionalSectionOrder.map((heading) =>
+    CONDITIONAL_HANDOFF_SECTIONS.indexOf(heading)
+  );
+  const sortedOrder = [...observedOrder].sort((a, b) => a - b);
+  if (observedOrder.some((value, index) => value !== sortedOrder[index])) {
+    errors.push("conditional sections out of whitelist order");
+  }
+
+  if (errors.length > 0) {
+    return {
+      data: null,
+      errors,
+    };
+  }
+
+  return {
+    data: {
+      mode,
+      body,
+      sections,
+      contract: "conditional_handoff",
+      startedAt,
+      conversationTypes: conversationTypes || undefined,
+      stateOverview,
+    },
+    errors: [],
+  };
+}
+
+const EVAL_PATH_PATTERN =
+  /(?:[A-Za-z]:\\[^\s`"')]+|(?:\.?\.?(?:\/|\\))?(?:[\w.-]+(?:\/|\\))+[\w./\\-]*[\w-]+(?:\.[A-Za-z0-9]+)?)/g;
+const EVAL_COMMAND_PATTERN =
+  /(?:^|\s)(?:pnpm|npm|git|node|python|pytest|rg|gh|curl|yarn|tsx|ts-node)\b[^\n]*/im;
+const EVAL_API_PATTERN = /\b[A-Za-z_][A-Za-z0-9_]*\([^()\n]{0,80}\)/;
+const EVAL_BACKTICK_PATTERN = /`[^`\n]{2,120}`/;
+const EVAL_CODE_BLOCK_PATTERN = /```[\s\S]*?```/;
+const EVAL_LATEX_NOISE =
+  /(?:\\(?:boxed|lambda|frac|sum|int|alpha|beta|gamma|theta|cdot|times|left|right|begin|end)|\$\$|\\\(|\\\)|\\\[|\\\]|[_^][{(A-Za-z0-9])/i;
+
+function isEvalExplicitPathCandidate(value: string): boolean {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (
+    !compact ||
+    EVAL_LATEX_NOISE.test(compact) ||
+    /^[A-Za-z]\/[A-Za-z]$/.test(compact) ||
+    /^[0-9A-Za-z]+[-+*/][0-9A-Za-z]+$/.test(compact)
+  ) {
+    return false;
+  }
+
+  if (/^[A-Za-z]:\\/.test(compact)) {
+    return true;
+  }
+
+  if (!/[\\/]/.test(compact)) {
+    return false;
+  }
+
+  const segments = compact
+    .replace(/^\.{0,2}[\\/]/, "")
+    .split(/[\\/]+/)
+    .filter(Boolean);
+  if (segments.length === 0) {
+    return false;
+  }
+
+  if (
+    segments.length === 1 &&
+    !/\.[A-Za-z0-9]+$/.test(segments[0]) &&
+    segments[0].length < 6
+  ) {
+    return false;
+  }
+
+  return segments.some(
+    (segment) =>
+      /[A-Za-z]/.test(segment) &&
+      segment.replace(/\.[A-Za-z0-9]+$/, "").length >= 2 &&
+      !/^\\?[A-Za-z]+$/.test(segment)
+  );
+}
+
 function detectExportArtifactSignals(text: string): {
   hasCode: boolean;
   hasCommand: boolean;
   hasPath: boolean;
   hasApi: boolean;
 } {
+  const pathMatches = Array.from(text.matchAll(new RegExp(EVAL_PATH_PATTERN.source, "g")))
+    .map((match) => match[0])
+    .filter((value) => isEvalExplicitPathCandidate(value));
   return {
-    hasCode: /```[\s\S]*?```/m.test(text),
-    hasCommand: /(?:^|\s)(?:pnpm|npm|git|node|python|pytest|rg|gh|curl|yarn|tsx|ts-node)\b[^\n]*/im.test(
+    hasCode: EVAL_CODE_BLOCK_PATTERN.test(text),
+    hasCommand: EVAL_COMMAND_PATTERN.test(
       text
     ),
-    hasPath:
-      /(?:[A-Za-z]:\\[^\s`"')]+|(?:\.?\.?(?:\/|\\))?(?:[\w.-]+(?:\/|\\))+[\w./\\-]*[\w-]+(?:\.[A-Za-z0-9]+)?)/.test(
-        text
-      ),
+    hasPath: pathMatches.length > 0,
     hasApi:
-      /\b[A-Za-z_][A-Za-z0-9_]*\([^()\n]{0,80}\)/.test(text) ||
-      /`[^`\n]{2,120}`/.test(text),
+      EVAL_API_PATTERN.test(text) ||
+      EVAL_BACKTICK_PATTERN.test(text),
   };
 }
 
 function evaluateExportCaseQuality(
   mode: ExportEvalMode,
   raw: string,
-  parsed: { mode: ExportEvalMode; body: string; sections: Record<string, string> } | null,
+  parsed: ParsedExportMarkdown | null,
   messages: Message[]
 ): string[] {
   const issues = new Set<string>();
@@ -644,7 +972,8 @@ function evaluateExportCaseQuality(
       .filter(Boolean)
       .some((line) => hasExportMeaningfulText(line))
   ).length;
-  const minimumGroundedSections = mode === "compact" ? 3 : 4;
+  const minimumGroundedSections =
+    parsed.contract === "conditional_handoff" ? 1 : mode === "compact" ? 3 : 4;
   if (groundedSections < minimumGroundedSections) {
     issues.add("export_grounded_sections_insufficient");
   }
@@ -652,10 +981,14 @@ function evaluateExportCaseQuality(
   const transcript = messages.map((message) => message.content_text).join("\n");
   const sourceSignals = detectExportArtifactSignals(transcript);
   const outputSignals = detectExportArtifactSignals(parsed.body);
+  const explanationHeavy = Boolean(
+    parsed.contract === "conditional_handoff" &&
+      parsed.conversationTypes?.includes("explanation_teaching")
+  );
   const artifactLost =
     (sourceSignals.hasCode && !outputSignals.hasCode) ||
     (sourceSignals.hasCommand && !outputSignals.hasCommand) ||
-    (sourceSignals.hasPath && !outputSignals.hasPath) ||
+    (sourceSignals.hasPath && !outputSignals.hasPath && !explanationHeavy) ||
     (sourceSignals.hasApi && !outputSignals.hasApi);
 
   if (artifactLost) {
@@ -974,7 +1307,18 @@ async function main() {
 
     if (runMode === "mock") {
       if (kind === "export") {
-        raw = String(c.gold.reference || "").trim();
+        const reference =
+          shouldUseConditionalHandoffEval(exportMode)
+            ? c.gold.experimental_reference
+            : c.gold.reference;
+        raw = String(reference || "").trim();
+        if (!raw) {
+          throw new Error(
+            shouldUseConditionalHandoffEval(exportMode)
+              ? `mock export case ${c.id} is missing gold.experimental_reference for conditional_handoff`
+              : `mock export case ${c.id} is missing gold.reference`
+          );
+        }
         const parsedExport = parseStructured(kind, raw, exportMode);
         parsed = parsedExport.data;
         if (!parsed) {
@@ -986,7 +1330,8 @@ async function main() {
         const ref = JSON.parse(JSON.stringify(c.gold.reference));
         const has = (v: string) =>
           norm(textFromStructured(kind, ref, "")).includes(norm(v));
-        const missing = (c.gold.required_facts || []).filter(
+        const expectedFacts = c.gold.key_facts || c.gold.required_facts || [];
+        const missing = expectedFacts.filter(
           (f: string) => !has(f)
         );
         if (kind === "conversation") {
@@ -1117,7 +1462,7 @@ async function main() {
     }
 
     const text = textFromStructured(kind, parsed, raw);
-    const required = c.gold.required_facts || [];
+    const required = c.gold.key_facts || c.gold.required_facts || [];
     const forbidden = c.gold.forbidden_facts || [];
     const matched = required.filter((f: string) => norm(text).includes(norm(f)));
     const missed = required.filter((f: string) => !norm(text).includes(norm(f)));
@@ -1134,7 +1479,9 @@ async function main() {
           ? parsed?.suggested_focus?.length
             ? 1
             : 0
-          : parsed?.sections?.["## Next Steps"] || parsed?.sections?.["## Unresolved"]
+          : parsed?.sections?.["## Next Steps"] ||
+              parsed?.sections?.["## Unresolved"] ||
+              parsed?.sections?.["## Open Risks And Next Actions"]
             ? 1
             : 0;
 
@@ -1378,3 +1725,4 @@ main().catch((e) => {
   console.error("[eval:prompts] failed", e);
   process.exitCode = 1;
 });
+

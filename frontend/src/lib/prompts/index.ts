@@ -9,11 +9,11 @@ import {
 import {
   CURRENT_EXPORT_COMPACT_PROMPT,
   EXPERIMENTAL_EXPORT_COMPACT_PROMPT,
-} from "./exportCompact";
+} from "./export/compactComposer";
 import {
   CURRENT_EXPORT_SUMMARY_PROMPT,
   EXPERIMENTAL_EXPORT_SUMMARY_PROMPT,
-} from "./exportSummary";
+} from "./export/summaryComposer";
 import {
   CURRENT_WEEKLY_DIGEST_PROMPT,
   EXPERIMENTAL_WEEKLY_DIGEST_PROMPT,
@@ -25,14 +25,33 @@ import type {
 } from "./types";
 
 export type {
+  AnnotationConfidence,
+  AnnotationEnvelope,
+  AnnotationSource,
   CompactionPromptPayload,
+  CompactComposerInput,
+  ConversationAnnotation,
   ConversationSummaryPromptPayload,
+  ExportDataset,
+  ExportDatasetMessage,
+  ExportDatasetMetadata,
   ExportCompressionPromptPayload,
+  ExportDensity,
+  ExportDistillMode,
+  ExportPlannerPromptPayload,
+  ExportPlannerSignal,
+  HandoffEvidenceCompactorPromptPayload,
+  HandoffEvidenceSkeleton,
+  HandoffPlanningNotes,
+  KnowledgePlanningNotes,
+  MessageAnnotation,
+  PlanningNotesBase,
   PromptConfig,
   PromptPayloadMap,
   PromptType,
   PromptVariant,
   PromptVersion,
+  RepairInput,
   WeeklyDigestPromptPayload,
 } from "./types";
 

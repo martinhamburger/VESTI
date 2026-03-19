@@ -1,0 +1,53 @@
+{
+  "id": "export-007-compact-explanation-math-heavy",
+  "type": "export",
+  "mode": "compact",
+  "locale": "en",
+  "title": "Regularization walkthrough for eigenvalue intuition",
+  "platform": "Claude",
+  "created_at": 1773896400000,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Explain why adding \\lambda I changes the conditioning story. I am not asking for a code fix; I want the intuition behind (A^T A + \\lambda I)^{-1} and why tiny eigenvalues stop dominating.",
+      "timestamp": 1773896400000
+    },
+    {
+      "role": "ai",
+      "content": "The short version is that regularization shifts every eigenvalue away from zero. If A^T A has eigenvalues \\sigma_i^2, then A^T A + \\lambda I has eigenvalues \\sigma_i^2 + \\lambda, so directions that were unstable become bounded instead of exploding.",
+      "timestamp": 1773896760000
+    },
+    {
+      "role": "user",
+      "content": "Good, but keep it conceptual. I do not need file paths or API names here. I want the key understanding and the one or two steps that make the derivation click.",
+      "timestamp": 1773897240000
+    },
+    {
+      "role": "ai",
+      "content": "Then the handoff should preserve the understanding, not fabricate artifacts: adding \\lambda I is an eigenvalue shift, and that shift damps the directions that were previously unstable. The important bridge is from the spectral view to the conditioning intuition.",
+      "timestamp": 1773897600000
+    }
+  ],
+  "gold": {
+    "key_facts": [
+      "lambda I",
+      "eigenvalue shift",
+      "conditioning",
+      "key understanding"
+    ],
+    "required_facts": [
+      "lambda I",
+      "eigenvalue shift",
+      "conditioning",
+      "key understanding"
+    ],
+    "forbidden_facts": [
+      "Path:",
+      "Command:",
+      ".\\\\boxed",
+      "K/L"
+    ],
+    "reference": "## Background\n- Title: Regularization walkthrough for eigenvalue intuition\n- Platform: Claude\n- Context: The thread is an explanation-heavy discussion about why adding `\\lambda I` changes conditioning behavior in a regularized inverse.\n- Constraint: Preserve conceptual understanding and the key derivation steps without fabricating technical artifacts.\n\n## Key Questions\n- Why does adding `\\lambda I` keep tiny eigenvalues from dominating?\n- Which conceptual step links the spectral picture to the conditioning intuition?\n\n## Decisions And Answers\n- Treat the output as a conceptual handoff, not a code task.\n- Preserve the conclusion that adding `\\lambda I` shifts eigenvalues away from zero, which damps unstable directions.\n\n## Reusable Artifacts\n- Reference: key understanding\n- Reference: eigenvalue shift\n\n## Unresolved\n- A later pass could tighten the explanation of how the spectral view maps onto numerical stability language.",
+    "experimental_reference": "StartedAt: 2026-03-18T00:00:00Z\nConversation Type: explanation_teaching\n\n## State Overview\nThis thread is an explanation-focused handoff about why adding `\\lambda I` changes the conditioning story in a regularized inverse. The core problem is not to produce code or artifacts, but to preserve the conceptual bridge from eigenvalue shift to numerical stability intuition. The current state is that the next agent should inherit a clean conceptual model rather than a list of fake technical references.\n\n## Descriptive Anchors\n- `A^T A + \\lambda I`\n- `\\sigma_i^2 + \\lambda`\n\n## Key Understanding\n- The core understanding is that adding `\\lambda I` acts as an eigenvalue shift. If `A^T A` has tiny eigenvalues, then `A^T A + \\lambda I` moves those values away from zero, so the unstable directions stop dominating the inverse.\n- The teaching value of the thread is not in the formulas themselves but in the bridge they establish: spectral shift explains the conditioning intuition.\n\n## Open Risks And Next Actions\n- If this needs to be reused later, tighten the wording that links eigenvalue shift to numerical stability without expanding into a full derivation."
+  }
+}

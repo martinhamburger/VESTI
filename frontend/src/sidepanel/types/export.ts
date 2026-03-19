@@ -3,10 +3,12 @@ import type { LlmDiagnostic } from "~lib/services/llmService";
 
 export type ConversationExportFormat = ExportFormat;
 export type ConversationExportContentMode = "full" | "compact" | "summary";
+export type ConversationExportCompactVariant = "current" | "experimental";
 
 export interface ConversationExportConfig {
   conversationIds?: number[];
   contentMode: ConversationExportContentMode;
+  compactVariant?: ConversationExportCompactVariant;
   format: ConversationExportFormat;
 }
 

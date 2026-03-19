@@ -8,6 +8,7 @@ import {
 } from "~lib/conversations/timestamps";
 import type {
   ConversationExportConfig,
+  ConversationExportCompactVariant,
   ConversationExportContentMode,
   ConversationExportResult,
 } from "../types/export";
@@ -61,7 +62,8 @@ function resolveExportMime(format: string): string {
 function generateFilename(
   count: number,
   format: string,
-  mode: ConversationExportContentMode
+  mode: ConversationExportContentMode,
+  compactVariant: ConversationExportCompactVariant = "experimental"
 ): string {
   const date = new Date().toISOString().slice(0, 10);
   const modeSuffix = mode === "full" ? "" : `-${mode}`;
@@ -79,7 +81,28 @@ function markdownToPlainText(value: string): string {
     .trim();
 }
 
+function getCompactLineLabel(
+  compactVariant: ConversationExportCompactVariant | undefined
+): string {
+  return compactVariant === "experimental"
+    ? "Distilled handoff"
+    : "Compact handoff";
+}
+
 function getCompressionLabel(item: CompressedConversationExport): string {
+  if (item.mode === "compact") {
+    const lineLabel = getCompactLineLabel(item.compactVariant);
+    return item.source === "llm"
+      ? item.usedFallbackPrompt
+        ? `${lineLabel} (fallback prompt)`
+        : lineLabel
+      : `Deterministic ${lineLabel.toLowerCase()} fallback${
+          item.mode === "compact" && item.compactVariant === "experimental"
+            ? " [diagnostic]"
+            : ""
+        }${item.fallbackReason ? ` (${item.fallbackReason})` : ""}`;
+  }
+
   return item.source === "llm"
     ? item.usedFallbackPrompt
       ? "Current LLM settings (fallback prompt)"
@@ -92,7 +115,8 @@ function getCompressionLabel(item: CompressedConversationExport): string {
 function toMarkdown(
   dataset: ConversationExportDatasetItem[],
   mode: ConversationExportContentMode,
-  compressionMap: Map<number, CompressedConversationExport>
+  compressionMap: Map<number, CompressedConversationExport>,
+  compactVariant: ConversationExportCompactVariant = "experimental"
 ): string {
   const lines: string[] = [];
 
@@ -153,7 +177,11 @@ function toMarkdown(
       if (!compression) {
         throw new Error(`Missing compression payload for conversation ${conversation.id}`);
       }
-      lines.push(mode === "compact" ? "### Compact Handoff" : "### Summary Note");
+      lines.push(
+        mode === "compact"
+          ? "### Distilled Handoff"
+          : "### Summary Note"
+      );
       lines.push("");
       lines.push(compression.body);
       lines.push("");
@@ -169,7 +197,8 @@ function toMarkdown(
 function toText(
   dataset: ConversationExportDatasetItem[],
   mode: ConversationExportContentMode,
-  compressionMap: Map<number, CompressedConversationExport>
+  compressionMap: Map<number, CompressedConversationExport>,
+  compactVariant: ConversationExportCompactVariant = "experimental"
 ): string {
   const lines: string[] = [];
 
@@ -231,7 +260,8 @@ function toText(
 function toJson(
   dataset: ConversationExportDatasetItem[],
   mode: ConversationExportContentMode,
-  compressionMap: Map<number, CompressedConversationExport>
+  compressionMap: Map<number, CompressedConversationExport>,
+  compactVariant: ConversationExportCompactVariant = "experimental"
 ): string {
   const conversations = dataset.map((item) => {
     const { conversation, messages } = item;
@@ -267,10 +297,191 @@ function toJson(
       compressed_content: compression.body,
       compression: {
         mode: compression.mode,
+        compact_variant:
+          compression.mode === "compact" ? compression.compactVariant || "current" : null,
+        line_label:
+          compression.mode === "compact"
+            ? getCompactLineLabel(compression.compactVariant)
+            : null,
         source: compression.source,
         route: compression.route || null,
         used_fallback_prompt: compression.usedFallbackPrompt,
         fallback_reason: compression.fallbackReason || null,
+        review_ready: compression.reviewReady ?? null,
+        diagnostics: {
+          llm_attempt: {
+            primary: compression.llmAttemptMetrics?.primary
+              ? {
+                  prompt_chars:
+                    compression.llmAttemptMetrics.primary.promptChars,
+                  truncated_prompt_chars:
+                    compression.llmAttemptMetrics.primary.truncatedPromptChars,
+                  raw_output_chars:
+                    compression.llmAttemptMetrics.primary.rawOutputChars,
+	                  normalized_output_chars:
+	                    compression.llmAttemptMetrics.primary.normalizedOutputChars,
+	                  finish_reason:
+	                    compression.llmAttemptMetrics.primary.finishReason || null,
+	                  usage: {
+	                    prompt_tokens:
+	                      compression.llmAttemptMetrics.primary.promptTokens ?? null,
+	                    completion_tokens:
+	                      compression.llmAttemptMetrics.primary.completionTokens ?? null,
+	                    total_tokens:
+	                      compression.llmAttemptMetrics.primary.totalTokens ?? null,
+	                  },
+	                  proxy_max_tokens: {
+	                    requested:
+	                      compression.llmAttemptMetrics.primary
+	                        .requestedMaxTokens ?? null,
+	                    effective:
+	                      compression.llmAttemptMetrics.primary
+	                        .effectiveMaxTokens ?? null,
+	                    limit:
+	                      compression.llmAttemptMetrics.primary
+	                        .proxyMaxTokensLimit ?? null,
+	                  },
+	                  incomplete_output_risk:
+	                    compression.llmAttemptMetrics.primary.incompleteOutputRisk ??
+	                    false,
+                  invalid_reason:
+                    compression.llmAttemptMetrics.primary.invalidReason || null,
+                  continuation: compression.llmAttemptMetrics.primary.continuation
+                    ? {
+                        raw_output_chars:
+                          compression.llmAttemptMetrics.primary.continuation
+                            .rawOutputChars,
+	                        normalized_output_chars:
+	                          compression.llmAttemptMetrics.primary.continuation
+	                            .normalizedOutputChars,
+	                        finish_reason:
+	                          compression.llmAttemptMetrics.primary.continuation
+	                            .finishReason || null,
+	                        usage: {
+	                          prompt_tokens:
+	                            compression.llmAttemptMetrics.primary.continuation
+	                              .promptTokens ?? null,
+	                          completion_tokens:
+	                            compression.llmAttemptMetrics.primary.continuation
+	                              .completionTokens ?? null,
+	                          total_tokens:
+	                            compression.llmAttemptMetrics.primary.continuation
+	                              .totalTokens ?? null,
+	                        },
+	                        proxy_max_tokens: {
+	                          requested:
+	                            compression.llmAttemptMetrics.primary.continuation
+	                              .requestedMaxTokens ?? null,
+	                          effective:
+	                            compression.llmAttemptMetrics.primary.continuation
+	                              .effectiveMaxTokens ?? null,
+	                          limit:
+	                            compression.llmAttemptMetrics.primary.continuation
+	                              .proxyMaxTokensLimit ?? null,
+	                        },
+	                      }
+	                    : null,
+	                }
+              : null,
+            fallback_prompt: compression.llmAttemptMetrics?.fallbackPrompt
+              ? {
+                  prompt_chars:
+                    compression.llmAttemptMetrics.fallbackPrompt.promptChars,
+                  truncated_prompt_chars:
+                    compression.llmAttemptMetrics.fallbackPrompt
+                      .truncatedPromptChars,
+                  raw_output_chars:
+                    compression.llmAttemptMetrics.fallbackPrompt.rawOutputChars,
+	                  normalized_output_chars:
+	                    compression.llmAttemptMetrics.fallbackPrompt
+	                      .normalizedOutputChars,
+	                  finish_reason:
+	                    compression.llmAttemptMetrics.fallbackPrompt.finishReason ||
+	                    null,
+	                  usage: {
+	                    prompt_tokens:
+	                      compression.llmAttemptMetrics.fallbackPrompt.promptTokens ??
+	                      null,
+	                    completion_tokens:
+	                      compression.llmAttemptMetrics.fallbackPrompt
+	                        .completionTokens ?? null,
+	                    total_tokens:
+	                      compression.llmAttemptMetrics.fallbackPrompt.totalTokens ??
+	                      null,
+	                  },
+	                  proxy_max_tokens: {
+	                    requested:
+	                      compression.llmAttemptMetrics.fallbackPrompt
+	                        .requestedMaxTokens ?? null,
+	                    effective:
+	                      compression.llmAttemptMetrics.fallbackPrompt
+	                        .effectiveMaxTokens ?? null,
+	                    limit:
+	                      compression.llmAttemptMetrics.fallbackPrompt
+	                        .proxyMaxTokensLimit ?? null,
+	                  },
+	                  incomplete_output_risk:
+	                    compression.llmAttemptMetrics.fallbackPrompt
+	                      .incompleteOutputRisk ?? false,
+                  invalid_reason:
+                    compression.llmAttemptMetrics.fallbackPrompt.invalidReason ||
+                    null,
+                  continuation: compression.llmAttemptMetrics.fallbackPrompt
+                    .continuation
+                    ? {
+                        raw_output_chars:
+                          compression.llmAttemptMetrics.fallbackPrompt
+                            .continuation.rawOutputChars,
+	                        normalized_output_chars:
+	                          compression.llmAttemptMetrics.fallbackPrompt
+	                            .continuation.normalizedOutputChars,
+	                        finish_reason:
+	                          compression.llmAttemptMetrics.fallbackPrompt
+	                            .continuation.finishReason || null,
+	                        usage: {
+	                          prompt_tokens:
+	                            compression.llmAttemptMetrics.fallbackPrompt
+	                              .continuation.promptTokens ?? null,
+	                          completion_tokens:
+	                            compression.llmAttemptMetrics.fallbackPrompt
+	                              .continuation.completionTokens ?? null,
+	                          total_tokens:
+	                            compression.llmAttemptMetrics.fallbackPrompt
+	                              .continuation.totalTokens ?? null,
+	                        },
+	                        proxy_max_tokens: {
+	                          requested:
+	                            compression.llmAttemptMetrics.fallbackPrompt
+	                              .continuation.requestedMaxTokens ?? null,
+	                          effective:
+	                            compression.llmAttemptMetrics.fallbackPrompt
+	                              .continuation.effectiveMaxTokens ?? null,
+	                          limit:
+	                            compression.llmAttemptMetrics.fallbackPrompt
+	                              .continuation.proxyMaxTokensLimit ?? null,
+	                        },
+	                      }
+	                    : null,
+	                }
+              : null,
+          },
+          delivered_artifact: {
+            raw_output_chars:
+              compression.deliveredArtifactMetrics?.rawOutputChars ?? null,
+            normalized_output_chars:
+              compression.deliveredArtifactMetrics?.normalizedOutputChars ?? null,
+            serialized_output_chars:
+              compression.deliveredArtifactMetrics?.serializedOutputChars ?? null,
+            transcript_chars:
+              compression.deliveredArtifactMetrics?.transcriptChars ?? null,
+            absolute_min_chars:
+              compression.deliveredArtifactMetrics?.absoluteMinChars ?? null,
+            soft_min_chars:
+              compression.deliveredArtifactMetrics?.softMinChars ?? null,
+          },
+          integrity_warnings: compression.integrityWarnings || [],
+          soft_compression_warning: compression.softCompressionWarning || null,
+        },
       },
     };
   });
@@ -280,6 +491,7 @@ function toJson(
       exported_at: new Date().toISOString(),
       count: dataset.length,
       content_mode: mode,
+      compact_variant: mode === "compact" ? compactVariant : null,
       conversations,
     },
     null,
@@ -294,11 +506,16 @@ function serializeExport(
 ): string {
   switch (config.format) {
     case "md":
-      return toMarkdown(dataset, config.contentMode, compressionMap);
+      return toMarkdown(
+        dataset,
+        config.contentMode,
+        compressionMap,
+        config.compactVariant
+      );
     case "txt":
-      return toText(dataset, config.contentMode, compressionMap);
+      return toText(dataset, config.contentMode, compressionMap, config.compactVariant);
     case "json":
-      return toJson(dataset, config.contentMode, compressionMap);
+      return toJson(dataset, config.contentMode, compressionMap, config.compactVariant);
     default:
       throw new Error(`Unsupported format: ${config.format}`);
   }
@@ -315,7 +532,10 @@ export async function exportConversations(
   if (config.contentMode !== "full") {
     const compressed = await compressExportDataset(
       dataset,
-      config.contentMode as ExportCompressionMode
+      config.contentMode as ExportCompressionMode,
+      {
+        compactVariant: config.compactVariant,
+      }
     );
     compressionMap = toCompressionMap(compressed.items);
     notice = compressed.notice;
@@ -324,7 +544,12 @@ export async function exportConversations(
   const content = serializeExport(dataset, config, compressionMap);
   return {
     content,
-    filename: generateFilename(conversations.length, config.format, config.contentMode),
+    filename: generateFilename(
+      conversations.length,
+      config.format,
+      config.contentMode,
+      config.compactVariant
+    ),
     mime: resolveExportMime(config.format),
     notice,
   };

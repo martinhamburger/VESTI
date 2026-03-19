@@ -55,12 +55,27 @@ export interface CallModelScopeOptions {
   stream?: boolean;
 }
 
+export interface InferenceUsage {
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+}
+
+export interface ProxyTokenMetrics {
+  requestedMaxTokens: number | null;
+  effectiveMaxTokens: number | null;
+  proxyMaxTokensLimit: number | null;
+}
+
 export interface ModelScopeCallResult {
   content: string;
   mode: ModelScopeMode;
   streamStage: StreamExecutionStage;
   streamReason: string;
   contentSource?: "content" | "reasoning_content";
+  finishReason?: string | null;
+  usage?: InferenceUsage | null;
+  proxyTokenMetrics?: ProxyTokenMetrics | null;
 }
 
 export interface InferenceCallResult extends ModelScopeCallResult {
@@ -78,7 +93,23 @@ type ModelScopeResponse = {
   choices?: Array<{
     message?: { content?: unknown; reasoning_content?: unknown };
     delta?: { content?: unknown; reasoning_content?: unknown };
+    finish_reason?: unknown;
+    finishReason?: unknown;
+    stop_reason?: unknown;
+    stopReason?: unknown;
   }>;
+  usage?: {
+    prompt_tokens?: unknown;
+    promptTokens?: unknown;
+    input_tokens?: unknown;
+    inputTokens?: unknown;
+    completion_tokens?: unknown;
+    completionTokens?: unknown;
+    output_tokens?: unknown;
+    outputTokens?: unknown;
+    total_tokens?: unknown;
+    totalTokens?: unknown;
+  };
 };
 
 interface ParsedLlmErrorPayload {
@@ -240,6 +271,94 @@ function extractMessageFromPayload(value: unknown): string {
     if (typeof nestedMessage === "string") return nestedMessage;
   }
   return "";
+}
+
+function extractFinishReason(data: ModelScopeResponse): string | null {
+  const choice = data.choices?.[0];
+  return (
+    toNullableString(choice?.finish_reason) ||
+    toNullableString(choice?.finishReason) ||
+    toNullableString(choice?.stop_reason) ||
+    toNullableString(choice?.stopReason)
+  );
+}
+
+function extractUsage(data: ModelScopeResponse): InferenceUsage | null {
+  const usage = data.usage;
+  if (!usage || typeof usage !== "object") {
+    return null;
+  }
+
+  const promptTokens =
+    toNullableNumber(usage.prompt_tokens) ??
+    toNullableNumber(usage.promptTokens) ??
+    toNullableNumber(usage.input_tokens) ??
+    toNullableNumber(usage.inputTokens);
+  const completionTokens =
+    toNullableNumber(usage.completion_tokens) ??
+    toNullableNumber(usage.completionTokens) ??
+    toNullableNumber(usage.output_tokens) ??
+    toNullableNumber(usage.outputTokens);
+  const totalTokens =
+    toNullableNumber(usage.total_tokens) ??
+    toNullableNumber(usage.totalTokens);
+
+  if (promptTokens === null && completionTokens === null && totalTokens === null) {
+    return null;
+  }
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+  };
+}
+
+function extractProxyTokenMetrics(response: Response): ProxyTokenMetrics | null {
+  const requestedMaxTokens = toNullableNumber(
+    response.headers.get("x-proxy-requested-max-tokens")
+  );
+  const effectiveMaxTokens = toNullableNumber(
+    response.headers.get("x-proxy-effective-max-tokens")
+  );
+  const proxyMaxTokensLimit = toNullableNumber(
+    response.headers.get("x-proxy-max-tokens-limit")
+  );
+
+  if (
+    requestedMaxTokens === null &&
+    effectiveMaxTokens === null &&
+    proxyMaxTokensLimit === null
+  ) {
+    return null;
+  }
+
+  return {
+    requestedMaxTokens,
+    effectiveMaxTokens,
+    proxyMaxTokensLimit,
+  };
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function toNullableString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized ? normalized : null;
 }
 
 async function parseErrorPayload(response: Response): Promise<ParsedLlmErrorPayload> {
@@ -507,6 +626,9 @@ ${STRICT_JSON_SYSTEM_PROMPT}` },
           streamStage: streamDecision.stage,
           streamReason: streamDecision.reason,
           contentSource: "content",
+          finishReason: extractFinishReason(promptJsonData),
+          usage: extractUsage(promptJsonData),
+          proxyTokenMetrics: extractProxyTokenMetrics(promptJsonResponse),
         };
       }
 
@@ -523,6 +645,9 @@ ${STRICT_JSON_SYSTEM_PROMPT}` },
           streamStage: streamDecision.stage,
           streamReason: streamDecision.reason,
           contentSource: "reasoning_content",
+          finishReason: extractFinishReason(promptJsonData),
+          usage: extractUsage(promptJsonData),
+          proxyTokenMetrics: extractProxyTokenMetrics(promptJsonResponse),
         };
       }
 
@@ -547,6 +672,9 @@ ${STRICT_JSON_SYSTEM_PROMPT}` },
             streamStage: streamDecision.stage,
             streamReason: streamDecision.reason,
             contentSource: "content",
+            finishReason: extractFinishReason(data),
+            usage: extractUsage(data),
+            proxyTokenMetrics: extractProxyTokenMetrics(jsonResponse),
           };
         }
 
@@ -563,6 +691,9 @@ ${STRICT_JSON_SYSTEM_PROMPT}` },
             streamStage: streamDecision.stage,
             streamReason: streamDecision.reason,
             contentSource: "reasoning_content",
+            finishReason: extractFinishReason(data),
+            usage: extractUsage(data),
+            proxyTokenMetrics: extractProxyTokenMetrics(jsonResponse),
           };
         }
 
@@ -636,6 +767,9 @@ ${STRICT_JSON_SYSTEM_PROMPT}` },
     streamStage: streamDecision.stage,
     streamReason: streamDecision.reason,
     contentSource: "content",
+    finishReason: extractFinishReason(data),
+    usage: extractUsage(data),
+    proxyTokenMetrics: extractProxyTokenMetrics(response),
   };
 }
 

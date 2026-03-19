@@ -99,6 +99,7 @@ export function TimelinePage({
   onSelectConversation,
   refreshToken,
 }: TimelinePageProps) {
+  const compactExportVariant = "experimental" as const;
   const {
     headerMode,
     query,
@@ -120,7 +121,6 @@ export function TimelinePage({
     tone: "default" | "warning" | "error";
     title?: string;
     detail?: string;
-    technicalSummary?: string;
     hint?: string;
   } | null>(null);
   const [copyJustSucceeded, setCopyJustSucceeded] = useState(false);
@@ -172,7 +172,6 @@ export function TimelinePage({
       copySuccessTimerRef.current = null;
     }, 1800);
   }, [clearCopySuccess]);
-
   const firstCapturedTodayCount = stats?.firstCapturedTodayCount ?? 0;
   const platformDistribution = stats?.platformDistribution ?? null;
   const dateSummary = getDatePresetSummary(datePreset);
@@ -273,12 +272,11 @@ export function TimelinePage({
       const actionHint =
         action === "download"
           ? `Saved as ${result.filename}.`
-          : "Copied current export to clipboard.";
+          : "Copied export to clipboard.";
 
       if (
         result.notice?.title ||
         result.notice?.detail ||
-        result.notice?.technicalSummary ||
         result.notice?.hint
       ) {
         return {
@@ -286,7 +284,6 @@ export function TimelinePage({
           tone: result.notice.tone,
           title: result.notice.title,
           detail: result.notice.detail,
-          technicalSummary: result.notice.technicalSummary,
           hint: result.notice.hint
             ? `${result.notice.hint} ${actionHint}`
             : actionHint,
@@ -297,11 +294,11 @@ export function TimelinePage({
         message:
           action === "download"
             ? result.notice
-              ? `${result.notice.message} Saved as ${result.filename}.`
+            ? `${result.notice.message} Saved as ${result.filename}.`
               : `Exported ${result.filename}`
             : result.notice
-              ? `${result.notice.message} Copied current export to clipboard.`
-              : `Copied current ${result.filename.split(".").pop()?.toUpperCase() || "export"} export to clipboard.`,
+              ? `${result.notice.message} Copied export to clipboard.`
+              : `Copied ${result.filename.split(".").pop()?.toUpperCase() || "export"} export to clipboard.`,
         tone: result.notice?.tone ?? "default",
       };
     },
@@ -318,6 +315,8 @@ export function TimelinePage({
       try {
         const result = await exportConversations(selectedConversations, {
           contentMode: exportMode,
+          compactVariant:
+            exportMode === "compact" ? compactExportVariant : undefined,
           format,
         });
         if (action === "download") {
@@ -337,7 +336,6 @@ export function TimelinePage({
               detail:
                 result.notice?.detail ||
                 getErrorMessage(error),
-              technicalSummary: result.notice?.technicalSummary,
               hint: result.notice?.hint
                 ? `${result.notice.hint} Check clipboard permissions or use Download instead.`
                 : "Check clipboard permissions or use Download instead.",
@@ -368,6 +366,7 @@ export function TimelinePage({
       buildExportFeedback,
       clearCopySuccess,
       closePanel,
+      compactExportVariant,
       exportMode,
       markCopySuccess,
       selectedConversations,
@@ -648,20 +647,20 @@ export function TimelinePage({
 
         {/* Batch action bar */}
         {isBatchMode && (
-          <BatchActionBar
-            mode={activeBatchMode}
-            exportMode={exportMode}
-            selectedExportFormat={selectedExportFormat}
-            selectedCount={selectedCount}
+        <BatchActionBar
+          mode={activeBatchMode}
+          exportMode={exportMode}
+          selectedExportFormat={selectedExportFormat}
+          selectedCount={selectedCount}
             totalCount={totalCount}
             actionKey={batchActionKey}
             deleteConfirmValue={deleteConfirmValue}
             clipboardAvailable={clipboardAvailable}
             copyJustSucceeded={copyJustSucceeded}
-            feedback={batchFeedback}
-            onDeleteConfirmValueChange={setDeleteConfirmValue}
-            onExportModeChange={handleExportModeChange}
-            onExportFormatChange={handleExportFormatChange}
+          feedback={batchFeedback}
+          onDeleteConfirmValueChange={setDeleteConfirmValue}
+          onExportModeChange={handleExportModeChange}
+          onExportFormatChange={handleExportFormatChange}
             onSelectAll={isAllSelected ? handleClearSelection : selectAll}
             onClearSelection={handleClearSelection}
             onToggleExportPanel={handleToggleExportPanel}

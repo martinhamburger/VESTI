@@ -1,0 +1,56 @@
+{
+  "id": "export-005-compact-decision-rationale",
+  "type": "export",
+  "mode": "compact",
+  "locale": "en",
+  "title": "Bounded repair policy for export pipeline",
+  "platform": "Claude",
+  "created_at": 1773806400000,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Do not let repair recurse. If export output fails validation, one repair pass is fine, but it must not reopen E2 or create a retry tree.",
+      "timestamp": 1773806400000
+    },
+    {
+      "role": "ai",
+      "content": "Locked. We'll treat repair as a bounded exception path after final contract failure, with maxRepairAttempts = 1 inside export_workflow_runner_spec.md.",
+      "timestamp": 1773806760000
+    },
+    {
+      "role": "user",
+      "content": "Good. Capture the reason, not just the rule. The rationale is that loop-like repair would hide whether prompt quality or workflow topology is the real problem.",
+      "timestamp": 1773807240000
+    },
+    {
+      "role": "ai",
+      "content": "Understood. In the handoff we should state the decision, the chosen path, and the rationale: preserve bounded behavior so prompt debugging stays local to a stage instead of dissolving into a retry tree.",
+      "timestamp": 1773807600000
+    },
+    {
+      "role": "user",
+      "content": "Also keep the concrete artifact refs: export_workflow_runner_spec.md and exportCompression.ts.",
+      "timestamp": 1773808080000
+    },
+    {
+      "role": "ai",
+      "content": "Artifacts noted: documents/prompt_engineering/export_workflow_runner_spec.md, frontend/src/sidepanel/utils/exportCompression.ts, and the phrase maxRepairAttempts = 1.",
+      "timestamp": 1773808440000
+    }
+  ],
+  "gold": {
+    "required_facts": [
+      "maxRepairAttempts = 1",
+      "export_workflow_runner_spec.md",
+      "exportCompression.ts",
+      "rationale",
+      "retry tree"
+    ],
+    "forbidden_facts": [
+      "Kubernetes",
+      "Kafka"
+    ],
+    "reference": "## Background\n- Title: Bounded repair policy for export pipeline\n- Platform: Claude\n- Context: The thread is locking repair as a bounded exception path in the export pipeline so contract failures stay debuggable.\n- Constraint: Repair may run once after final validation failure, but it must not reopen E2 or create a retry tree.\n\n## Key Questions\n- How do we keep repair bounded without hiding whether the real problem is prompt quality or workflow topology?\n\n## Decisions And Answers\n- Decision: Enforce `maxRepairAttempts = 1` and keep repair as a one-shot exception path.\n  Answer: Allow a single repair call only after final contract failure, without reopening upstream stages.\n  Rationale: A loop-like repair path would blur whether the failure came from prompt quality or from a broken workflow boundary.\n\n## Reusable Artifacts\n- Path: documents/prompt_engineering/export_workflow_runner_spec.md\n- Path: frontend/src/sidepanel/utils/exportCompression.ts\n- Reference: maxRepairAttempts = 1\n- Reference: retry tree\n\n## Unresolved\n- The exact repair prompt wording still needs tuning once more live export samples are available.",
+    "experimental_reference": "StartedAt: 2026-03-17T00:00:00Z\nConversation Type: decision\n\n## State Overview\nThis thread is about locking a bounded repair policy for the export pipeline so validation failures remain diagnosable. The core problem is to allow a single repair escape hatch without letting repair loops hide whether the real fault comes from prompt quality or from workflow topology. The current state is that repair is being pinned to `maxRepairAttempts = 1` after final contract failure, and the next agent inherits a workflow that must stay explicitly bounded.\n\n## Decisions And Reasoning\n- Keep repair bounded with `maxRepairAttempts = 1` and allow it only after final contract failure.\n  Why: the chosen path preserves a clear workflow boundary and keeps prompt debugging local to a stage.\n\n## Failed Or Rejected Paths\n- Rejected: a loop-like repair path that can reopen upstream work or create a retry tree.\n  Why it was rejected: it would hide whether the real problem is prompt quality or workflow topology.\n\n## Descriptive Anchors\n- `documents/prompt_engineering/export_workflow_runner_spec.md`\n- `frontend/src/sidepanel/utils/exportCompression.ts`\n- `maxRepairAttempts = 1`\n- `retry tree`\n\n## Open Risks And Next Actions\n- The exact repair prompt wording still needs tuning once more live export samples are available."
+  }
+}
