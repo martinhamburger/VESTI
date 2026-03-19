@@ -48,6 +48,16 @@ export interface ExportCompressionPromptPayload {
   messages: Message[];
   locale?: "zh" | "en";
   profile?: ExportPromptProfile;
+  strategyGuidance?: {
+    dialogueShape: string;
+    confidence: number;
+    routeWeights: Array<{
+      shape: string;
+      weight: number;
+    }>;
+    priorities: string[];
+    requiredSignals: string[];
+  };
 }
 
 export interface PromptVersion<TPayload> {

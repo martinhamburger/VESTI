@@ -39,6 +39,61 @@ export type ExportCompressionInvalidReasonCode =
   | "export_grounded_sections_insufficient"
   | "export_artifact_signal_missing";
 
+type CompressionDialogueShape =
+  | "debug_troubleshooting"
+  | "architecture_tradeoff"
+  | "learning_explanation"
+  | "process_alignment"
+  | "decision_support"
+  | "general";
+
+type CompressionScoreMode = "observe";
+type CompressionClassifierSource = "rules_only" | "rules_plus_llm_review";
+
+interface CompressionRouteWeight {
+  shape: CompressionDialogueShape;
+  weight: number;
+}
+
+interface CompressionSegmentObservation {
+  segmentIndex: number;
+  startMessageIndex: number;
+  endMessageIndex: number;
+  dialogueShape: CompressionDialogueShape;
+  confidence: number;
+}
+
+type CompressionGateRecommendation = "none" | "suggest_fallback";
+
+interface CompressionGateThreshold {
+  quality: number;
+  mssCoverage: number;
+  artifactPreservation: number;
+}
+
+interface GuardedFallbackConfig {
+  enabled: boolean;
+  rolloutPercent: number;
+  minMessages: number;
+}
+
+interface LlmStrategyReviewConfig {
+  enabled: boolean;
+  lowConfidenceThreshold: number;
+  ambiguityDeltaThreshold: number;
+  minMessages: number;
+  maxTranscriptChars: number;
+}
+
+interface CompressionLlmReview {
+  reviewed: boolean;
+  agreed: boolean | null;
+  suggestedShape?: CompressionDialogueShape;
+  suggestedConfidence?: number;
+  reason?: string;
+  errorCode?: string;
+}
+
 export interface ConversationExportDatasetItem {
   conversation: Conversation;
   messages: Message[];
@@ -58,6 +113,46 @@ export interface CompressedConversationExport {
   exportPromptProfile?: ExportPromptProfile;
   primaryInvalidReason?: ExportCompressionInvalidReasonCode;
   fallbackInvalidReason?: ExportCompressionInvalidReasonCode;
+  dialogueShape?: CompressionDialogueShape;
+  strategyConfidence?: number;
+  qualityScore?: number;
+  mssCoverage?: number;
+  missingMssSignals?: string[];
+  scoreMode?: CompressionScoreMode;
+  routeWeights?: CompressionRouteWeight[];
+  segmentObservations?: CompressionSegmentObservation[];
+  gateRecommendation?: CompressionGateRecommendation;
+  gateReasons?: string[];
+  gateThresholds?: CompressionGateThreshold;
+  gateApplied?: boolean;
+  guardedFallbackConfig?: GuardedFallbackConfig;
+  classifierSource?: CompressionClassifierSource;
+  llmReview?: CompressionLlmReview;
+}
+
+interface CompressionStrategySignals {
+  questionDensity: number;
+  constraintDensity: number;
+  decisionDensity: number;
+  unresolvedDensity: number;
+  artifactDensity: number;
+  bilingualMixScore: number;
+}
+
+interface CompressionStrategyPlan {
+  dialogueShape: CompressionDialogueShape;
+  confidence: number;
+  priorities: string[];
+  routeWeights: CompressionRouteWeight[];
+}
+
+interface CompressionQualityEvaluation {
+  overall: number;
+  mssCoverage: number;
+  groundedness: number;
+  artifactPreservation: number;
+  pseudoStructureRate: number;
+  missingSignals: string[];
 }
 
 interface ExportCompressionAdapter {
@@ -79,6 +174,8 @@ interface ExportCompressionFailureContext {
   exportPromptProfile?: ExportPromptProfile;
   primaryInvalidReason?: ExportCompressionInvalidReasonCode;
   fallbackInvalidReason?: ExportCompressionInvalidReasonCode;
+  classifierSource?: CompressionClassifierSource;
+  llmReview?: CompressionLlmReview;
 }
 
 class ExportCompressionValidationError extends Error {
@@ -114,6 +211,19 @@ const PROMPT_BUDGETS: Record<
   },
 };
 const MIN_VALID_OUTPUT_LENGTH = 48;
+const COMPRESSION_SCORE_MODE: CompressionScoreMode = "observe";
+const GUARDED_FALLBACK_CONFIG: GuardedFallbackConfig = {
+  enabled: false,
+  rolloutPercent: 0,
+  minMessages: 6,
+};
+const LLM_STRATEGY_REVIEW_CONFIG: LlmStrategyReviewConfig = {
+  enabled: false,
+  lowConfidenceThreshold: 0.68,
+  ambiguityDeltaThreshold: 0.12,
+  minMessages: 8,
+  maxTranscriptChars: 6000,
+};
 const QUESTION_CUE =
   /(?:[?？]$|^(?:how|why|what|which|should|can|could|would|is|are|do|does|did|where|when|whether|how do|how should|what should|如何|为什么|为何|怎么|是否|能否|需不需要|应该|要不要))/i;
 const CONSTRAINT_CUE =
@@ -159,6 +269,30 @@ const EXPECTED_HEADINGS: Record<ExportCompressionMode, string[]> = {
   ],
 };
 
+const GATE_THRESHOLDS_BY_SHAPE: Record<CompressionDialogueShape, CompressionGateThreshold> = {
+  debug_troubleshooting: { quality: 0.72, mssCoverage: 0.7, artifactPreservation: 1 },
+  architecture_tradeoff: { quality: 0.68, mssCoverage: 0.65, artifactPreservation: 0.8 },
+  learning_explanation: { quality: 0.64, mssCoverage: 0.6, artifactPreservation: 0 },
+  process_alignment: { quality: 0.62, mssCoverage: 0.6, artifactPreservation: 0 },
+  decision_support: { quality: 0.64, mssCoverage: 0.62, artifactPreservation: 0 },
+  general: { quality: 0.6, mssCoverage: 0.55, artifactPreservation: 0 },
+};
+
+const MSS_RULES: Record<CompressionDialogueShape, string[]> = {
+  debug_troubleshooting: [
+    "questions",
+    "constraints",
+    "decisions",
+    "artifacts",
+    "unresolved",
+  ],
+  architecture_tradeoff: ["questions", "constraints", "decisions", "artifacts"],
+  learning_explanation: ["questions", "decisions", "role_moves"],
+  process_alignment: ["constraints", "decisions", "unresolved"],
+  decision_support: ["questions", "constraints", "decisions", "unresolved"],
+  general: ["questions", "decisions", "artifacts"],
+};
+
 const ROUTE_STATUS: Record<
   ExportCompressionRoute,
   { enabled: boolean; note: string }
@@ -182,6 +316,12 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function clamp01(value: number): number {
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
 function shorten(value: string, maxChars = 180): string {
   const normalized = normalizeWhitespace(value);
   if (normalized.length <= maxChars) {
@@ -203,8 +343,12 @@ function detectLocale(): "zh" | "en" {
 
 function buildPromptPayload(
   item: ConversationExportDatasetItem,
-  profile: ExportPromptProfile
+  profile: ExportPromptProfile,
+  plan?: CompressionStrategyPlan
 ): ExportCompressionPromptPayload {
+  const requiredSignals = plan
+    ? getRequiredSignalsFromPlan(plan)
+    : MSS_RULES.general;
   return {
     conversationTitle: item.conversation.title,
     conversationPlatform: item.conversation.platform,
@@ -212,6 +356,15 @@ function buildPromptPayload(
     messages: item.messages,
     locale: detectLocale(),
     profile,
+    strategyGuidance: plan
+      ? {
+          dialogueShape: plan.dialogueShape,
+          confidence: plan.confidence,
+          routeWeights: plan.routeWeights,
+          priorities: plan.priorities,
+          requiredSignals,
+        }
+      : undefined,
   };
 }
 
@@ -271,6 +424,464 @@ function splitIntoSentences(text: string): string[] {
     .flatMap((line) => line.split(/(?<=[。！？!?])\s*|(?<=[.!?])\s+/))
     .map((line) => stripBulletPrefix(line.trim()))
     .filter((line) => line && !line.startsWith("```"));
+}
+
+function buildStrategySignals(messages: Message[]): CompressionStrategySignals {
+  const total = Math.max(messages.length, 1);
+  const questions = collectQuestionCandidates(messages, 6).length;
+  const constraints = collectConstraintLines(messages, 6).length;
+  const decisions = collectDecisionLines(messages, 8).length;
+  const unresolved = collectUnresolvedLines(messages, 6).length;
+  const transcript = messages.map((message) => message.content_text).join("\n");
+  const asciiWords = countAsciiWords(transcript);
+  const cjkChars = countCjkChars(transcript);
+  const artifactSignal = detectArtifactSignals(messages);
+  const artifactDensity =
+    [
+      artifactSignal.hasCode,
+      artifactSignal.hasCommand,
+      artifactSignal.hasPath,
+      artifactSignal.hasApi,
+    ].filter(Boolean).length / 4;
+
+  return {
+    questionDensity: clamp01(questions / total),
+    constraintDensity: clamp01(constraints / total),
+    decisionDensity: clamp01(decisions / total),
+    unresolvedDensity: clamp01(unresolved / total),
+    artifactDensity,
+    bilingualMixScore:
+      asciiWords > 0 && cjkChars > 0
+        ? clamp01(Math.min(asciiWords / 120, cjkChars / 220))
+        : 0,
+  };
+}
+
+function toRouteWeights(
+  scoreMap: Record<CompressionDialogueShape, number>
+): CompressionRouteWeight[] {
+  const entries = Object.entries(scoreMap) as Array<
+    [CompressionDialogueShape, number]
+  >;
+  const total = entries.reduce((sum, [, score]) => sum + Math.max(score, 0), 0);
+  if (total <= 0) {
+    return [{ shape: "general", weight: 1 }];
+  }
+  return entries
+    .map(([shape, score]) => ({
+      shape,
+      weight: Number((Math.max(score, 0) / total).toFixed(4)),
+    }))
+    .sort((a, b) => b.weight - a.weight);
+}
+
+function buildShapeScoreMap(
+  signals: CompressionStrategySignals
+): Record<CompressionDialogueShape, number> {
+  const map: Record<CompressionDialogueShape, number> = {
+    debug_troubleshooting:
+      signals.artifactDensity * 0.34 +
+      signals.unresolvedDensity * 0.24 +
+      signals.decisionDensity * 0.22 +
+      signals.constraintDensity * 0.2,
+    architecture_tradeoff:
+      signals.decisionDensity * 0.36 +
+      signals.constraintDensity * 0.28 +
+      signals.questionDensity * 0.22 +
+      signals.artifactDensity * 0.14,
+    learning_explanation:
+      signals.questionDensity * 0.44 +
+      signals.decisionDensity * 0.26 +
+      (1 - signals.artifactDensity) * 0.18 +
+      signals.bilingualMixScore * 0.12,
+    process_alignment:
+      signals.constraintDensity * 0.44 +
+      signals.unresolvedDensity * 0.26 +
+      signals.decisionDensity * 0.2 +
+      signals.questionDensity * 0.1,
+    decision_support:
+      signals.questionDensity * 0.34 +
+      signals.constraintDensity * 0.32 +
+      signals.decisionDensity * 0.24 +
+      signals.unresolvedDensity * 0.1,
+    general:
+      0.24 +
+      (1 - Math.max(signals.questionDensity, signals.decisionDensity)) * 0.32 +
+      signals.bilingualMixScore * 0.08,
+  };
+
+  return map;
+}
+
+function buildSegmentObservations(
+  messages: Message[],
+  segmentSize = 12
+): CompressionSegmentObservation[] {
+  const ordered = toOrderedMessages(messages);
+  if (ordered.length <= segmentSize) {
+    return [];
+  }
+
+  const observations: CompressionSegmentObservation[] = [];
+  let segmentIndex = 0;
+  for (let start = 0; start < ordered.length; start += segmentSize) {
+    const end = Math.min(ordered.length, start + segmentSize);
+    const segment = ordered.slice(start, end);
+    const segmentPlan = buildStrategyPlan(segment);
+    observations.push({
+      segmentIndex,
+      startMessageIndex: start,
+      endMessageIndex: end - 1,
+      dialogueShape: segmentPlan.dialogueShape,
+      confidence: Number(segmentPlan.confidence.toFixed(3)),
+    });
+    segmentIndex += 1;
+  }
+
+  return observations;
+}
+
+function buildStrategyPlan(messages: Message[]): CompressionStrategyPlan {
+  const signals = buildStrategySignals(messages);
+  const routeWeights = toRouteWeights(buildShapeScoreMap(signals));
+  const top = routeWeights[0] || { shape: "general" as const, weight: 1 };
+
+  if (top.shape === "debug_troubleshooting") {
+    return {
+      dialogueShape: "debug_troubleshooting",
+      confidence: clamp01(0.55 + top.weight * 0.45),
+      priorities: [
+        "retain_environment",
+        "retain_attempt_sequence",
+        "retain_artifacts",
+        "retain_unresolved",
+      ],
+      routeWeights,
+    };
+  }
+
+  if (top.shape === "architecture_tradeoff") {
+    return {
+      dialogueShape: "architecture_tradeoff",
+      confidence: clamp01(0.52 + top.weight * 0.46),
+      priorities: [
+        "retain_tradeoff_matrix",
+        "retain_constraints",
+        "retain_decision_rationale",
+        "retain_artifacts",
+      ],
+      routeWeights,
+    };
+  }
+
+  if (top.shape === "learning_explanation") {
+    return {
+      dialogueShape: "learning_explanation",
+      confidence: clamp01(0.5 + top.weight * 0.44),
+      priorities: [
+        "retain_core_concepts",
+        "retain_derivation_steps",
+        "retain_misconception_fixes",
+      ],
+      routeWeights,
+    };
+  }
+
+  if (top.shape === "process_alignment") {
+    return {
+      dialogueShape: "process_alignment",
+      confidence: clamp01(0.5 + top.weight * 0.44),
+      priorities: [
+        "retain_constraints",
+        "retain_decisions",
+        "retain_unresolved",
+      ],
+      routeWeights,
+    };
+  }
+
+  if (top.shape === "decision_support") {
+    return {
+      dialogueShape: "decision_support",
+      confidence: clamp01(0.5 + top.weight * 0.42),
+      priorities: [
+        "retain_question",
+        "retain_constraints",
+        "retain_alternatives",
+        "retain_risks",
+      ],
+      routeWeights,
+    };
+  }
+
+  return {
+    dialogueShape: "general",
+    confidence: clamp01(0.45 + top.weight * 0.35 + signals.bilingualMixScore * 0.16),
+    priorities: ["retain_questions", "retain_decisions", "retain_artifacts"],
+    routeWeights,
+  };
+}
+
+function isRouteAmbiguous(plan: CompressionStrategyPlan): boolean {
+  const first = plan.routeWeights[0]?.weight || 0;
+  const second = plan.routeWeights[1]?.weight || 0;
+  return first - second <= LLM_STRATEGY_REVIEW_CONFIG.ambiguityDeltaThreshold;
+}
+
+function shouldRunLlmStrategyReview(
+  item: ConversationExportDatasetItem,
+  plan: CompressionStrategyPlan
+): boolean {
+  if (!LLM_STRATEGY_REVIEW_CONFIG.enabled) {
+    return false;
+  }
+  if (item.messages.length < LLM_STRATEGY_REVIEW_CONFIG.minMessages) {
+    return false;
+  }
+  return (
+    plan.confidence < LLM_STRATEGY_REVIEW_CONFIG.lowConfidenceThreshold ||
+    isRouteAmbiguous(plan)
+  );
+}
+
+function buildStrategyReviewPrompt(
+  item: ConversationExportDatasetItem,
+  plan: CompressionStrategyPlan
+): string {
+  const transcript = toOrderedMessages(item.messages)
+    .map((message, index) => {
+      const role = message.role === "user" ? "user" : "assistant";
+      return `${index + 1}. [${role}] ${shorten(message.content_text, 240)}`;
+    })
+    .join("\n")
+    .slice(0, LLM_STRATEGY_REVIEW_CONFIG.maxTranscriptChars);
+  const topWeights = plan.routeWeights
+    .slice(0, 3)
+    .map((entry) => `${entry.shape}:${entry.weight.toFixed(2)}`)
+    .join(", ");
+
+  return `Review the conversation and classify dialogue shape.
+
+Candidate shapes:
+- debug_troubleshooting
+- architecture_tradeoff
+- learning_explanation
+- process_alignment
+- decision_support
+- general
+
+Current rules decision:
+- dominant_shape: ${plan.dialogueShape}
+- confidence: ${plan.confidence.toFixed(2)}
+- top_weights: ${topWeights || "general:1.00"}
+
+Transcript:
+${transcript}
+
+Return strict JSON only:
+{"suggested_shape":"...","suggested_confidence":0.0,"reason":"..."}`;
+}
+
+function normalizeDialogueShape(value: string | undefined): CompressionDialogueShape {
+  switch ((value || "").trim()) {
+    case "debug_troubleshooting":
+    case "architecture_tradeoff":
+    case "learning_explanation":
+    case "process_alignment":
+    case "decision_support":
+    case "general":
+      return value as CompressionDialogueShape;
+    default:
+      return "general";
+  }
+}
+
+function parseStrategyReviewResult(content: string): {
+  suggestedShape: CompressionDialogueShape;
+  suggestedConfidence: number;
+  reason: string;
+} | null {
+  try {
+    const parsed = JSON.parse(content) as {
+      suggested_shape?: string;
+      suggested_confidence?: number;
+      reason?: string;
+    };
+    return {
+      suggestedShape: normalizeDialogueShape(parsed.suggested_shape),
+      suggestedConfidence: clamp01(Number(parsed.suggested_confidence ?? 0.5)),
+      reason: shorten(parsed.reason || "llm_review", 180),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getSignalCandidates(
+  item: ConversationExportDatasetItem,
+  signal: string
+): string[] {
+  switch (signal) {
+    case "questions":
+      return collectQuestionCandidates(item.messages, 4);
+    case "constraints":
+      return collectConstraintLines(item.messages, 4);
+    case "decisions":
+      return collectDecisionLines(item.messages, 5);
+    case "artifacts":
+      return collectArtifactLines(item.messages, 5);
+    case "unresolved":
+      return collectUnresolvedLines(item.messages, 4);
+    case "role_moves":
+      return collectRoleAwareTurns(item.messages, 4);
+    default:
+      return [];
+  }
+}
+
+function normalizeForMatch(value: string): string {
+  return normalizeWhitespace(value)
+    .toLowerCase()
+    .replace(/[`*_#>\-]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function isCandidateCoveredByBody(candidate: string, body: string): boolean {
+  const normalizedCandidate = normalizeForMatch(candidate).replace(/[?？。.!]$/g, "");
+  if (!normalizedCandidate) {
+    return false;
+  }
+  const normalizedBody = normalizeForMatch(body);
+  if (normalizedBody.includes(normalizedCandidate)) {
+    return true;
+  }
+  const shortCandidate = normalizedCandidate.slice(0, 26).trim();
+  return shortCandidate.length >= 12 && normalizedBody.includes(shortCandidate);
+}
+
+function evaluateCompressionQuality(
+  body: string,
+  item: ConversationExportDatasetItem,
+  mode: ExportCompressionMode,
+  plan: CompressionStrategyPlan
+): CompressionQualityEvaluation {
+  const sections = extractSections(body, mode);
+  const groundedness = sections
+    ? countGroundedSections(sections) / EXPECTED_HEADINGS[mode].length
+    : 0;
+  const pseudoStructureRate = 1 - groundedness;
+  const artifactPreservation = preservesArtifactSignal(body, item.messages) ? 1 : 0;
+  const requiredSignals = getRequiredSignalsFromPlan(plan);
+
+  let eligibleSignals = 0;
+  let coveredSignals = 0;
+  const missingSignals: string[] = [];
+
+  for (const signal of requiredSignals) {
+    const candidates = getSignalCandidates(item, signal);
+    if (candidates.length === 0) {
+      continue;
+    }
+    eligibleSignals += 1;
+    const covered = candidates.some((candidate) =>
+      isCandidateCoveredByBody(candidate, body)
+    );
+    if (covered) {
+      coveredSignals += 1;
+    } else {
+      missingSignals.push(signal);
+    }
+  }
+
+  const mssCoverage = eligibleSignals === 0 ? 1 : coveredSignals / eligibleSignals;
+  const overall = clamp01(
+    mssCoverage * 0.45 + groundedness * 0.35 + artifactPreservation * 0.2
+  );
+
+  return {
+    overall,
+    mssCoverage,
+    groundedness,
+    artifactPreservation,
+    pseudoStructureRate,
+    missingSignals,
+  };
+}
+
+function getRequiredSignalsFromPlan(plan: CompressionStrategyPlan): string[] {
+  const activeShapes = plan.routeWeights
+    .filter((entry, index) => index < 2 && entry.weight >= 0.2)
+    .map((entry) => entry.shape);
+  return unique(
+    (activeShapes.length > 0 ? activeShapes : [plan.dialogueShape]).flatMap(
+      (shape) => MSS_RULES[shape]
+    )
+  );
+}
+
+function resolveGateThreshold(plan: CompressionStrategyPlan): CompressionGateThreshold {
+  const dominant = plan.routeWeights[0]?.shape || plan.dialogueShape;
+  return GATE_THRESHOLDS_BY_SHAPE[dominant] || GATE_THRESHOLDS_BY_SHAPE.general;
+}
+
+function deriveGateRecommendation(
+  quality: CompressionQualityEvaluation,
+  plan: CompressionStrategyPlan
+): {
+  recommendation: CompressionGateRecommendation;
+  reasons: string[];
+  thresholds: CompressionGateThreshold;
+} {
+  const thresholds = resolveGateThreshold(plan);
+  const reasons: string[] = [];
+
+  if (quality.overall < thresholds.quality) {
+    reasons.push("quality_below_threshold");
+  }
+  if (quality.mssCoverage < thresholds.mssCoverage) {
+    reasons.push("mss_below_threshold");
+  }
+  if (quality.artifactPreservation < thresholds.artifactPreservation) {
+    reasons.push("artifact_below_threshold");
+  }
+
+  return {
+    recommendation: reasons.length > 0 ? "suggest_fallback" : "none",
+    reasons,
+    thresholds,
+  };
+}
+
+function shouldApplyGuardedFallback(
+  recommendation: CompressionGateRecommendation,
+  conversationId: number,
+  messageCount: number
+): boolean {
+  if (recommendation !== "suggest_fallback") {
+    return false;
+  }
+  if (!GUARDED_FALLBACK_CONFIG.enabled) {
+    return false;
+  }
+  if (messageCount < GUARDED_FALLBACK_CONFIG.minMessages) {
+    return false;
+  }
+  return isInGuardedFallbackRollout(conversationId);
+}
+
+function isInGuardedFallbackRollout(conversationId: number): boolean {
+  const rolloutPercent = Math.max(
+    0,
+    Math.min(100, GUARDED_FALLBACK_CONFIG.rolloutPercent)
+  );
+  if (rolloutPercent <= 0) {
+    return false;
+  }
+  if (rolloutPercent >= 100) {
+    return true;
+  }
+  const bucket = Math.abs(conversationId) % 100;
+  return bucket < rolloutPercent;
 }
 
 function scoreCandidate(value: string): number {
@@ -538,16 +1149,108 @@ function buildSummaryTldr(
   );
 }
 
+interface FallbackExtractionBudget {
+  questions: number;
+  constraints: number;
+  decisions: number;
+  artifacts: number;
+  unresolved: number;
+  roleMoves: number;
+  tags: number;
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function resolveFallbackExtractionBudget(
+  mode: ExportCompressionMode,
+  plan: CompressionStrategyPlan
+): FallbackExtractionBudget {
+  const budget: FallbackExtractionBudget =
+    mode === "compact"
+      ? {
+          questions: 3,
+          constraints: 2,
+          decisions: 4,
+          artifacts: 5,
+          unresolved: 3,
+          roleMoves: 3,
+          tags: 5,
+        }
+      : {
+          questions: 2,
+          constraints: 2,
+          decisions: 3,
+          artifacts: 5,
+          unresolved: 3,
+          roleMoves: 4,
+          tags: 5,
+        };
+
+  const topWeights = plan.routeWeights.slice(0, 2);
+  for (const { shape, weight } of topWeights) {
+    const gain = Math.max(0, weight);
+    switch (shape) {
+      case "debug_troubleshooting":
+        budget.artifacts += gain * 2.2;
+        budget.unresolved += gain * 1.4;
+        budget.decisions += gain * 1.2;
+        budget.constraints += gain * 0.8;
+        break;
+      case "architecture_tradeoff":
+        budget.decisions += gain * 2.0;
+        budget.constraints += gain * 1.2;
+        budget.artifacts += gain * 1.1;
+        break;
+      case "learning_explanation":
+        budget.questions += gain * 1.4;
+        budget.roleMoves += gain * 2.0;
+        budget.decisions += gain * 1.0;
+        break;
+      case "process_alignment":
+        budget.constraints += gain * 2.0;
+        budget.unresolved += gain * 1.8;
+        budget.decisions += gain * 0.8;
+        break;
+      case "decision_support":
+        budget.questions += gain * 1.8;
+        budget.constraints += gain * 1.8;
+        budget.decisions += gain * 1.2;
+        budget.unresolved += gain * 1.0;
+        break;
+      case "general":
+        budget.questions += gain * 0.5;
+        budget.decisions += gain * 0.5;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return {
+    questions: clampInt(budget.questions, 1, 8),
+    constraints: clampInt(budget.constraints, 1, 8),
+    decisions: clampInt(budget.decisions, 2, 9),
+    artifacts: clampInt(budget.artifacts, 2, 10),
+    unresolved: clampInt(budget.unresolved, 1, 8),
+    roleMoves: clampInt(budget.roleMoves, 2, 8),
+    tags: clampInt(budget.tags, 3, 8),
+  };
+}
+
 function buildCompactFallback(
   item: ConversationExportDatasetItem,
-  reason: string
+  reason: string,
+  plan: CompressionStrategyPlan
 ): string {
+  const budget = resolveFallbackExtractionBudget("compact", plan);
   const messages = item.messages;
-  const questions = collectQuestionCandidates(messages, 3);
-  const constraints = collectConstraintLines(messages, 2);
-  const decisions = collectDecisionLines(messages, 4);
-  const artifacts = collectArtifactLines(messages, 5);
-  const unresolved = collectUnresolvedLines(messages, 3);
+  const questions = collectQuestionCandidates(messages, budget.questions);
+  const constraints = collectConstraintLines(messages, budget.constraints);
+  const decisions = collectDecisionLines(messages, budget.decisions);
+  const artifacts = collectArtifactLines(messages, budget.artifacts);
+  const unresolved = collectUnresolvedLines(messages, budget.unresolved);
 
   const background = [
     `- Title: ${item.conversation.title || "(untitled)"}`,
@@ -577,16 +1280,18 @@ function buildCompactFallback(
 
 function buildSummaryFallback(
   item: ConversationExportDatasetItem,
-  reason: string
+  reason: string,
+  plan: CompressionStrategyPlan
 ): string {
+  const budget = resolveFallbackExtractionBudget("summary", plan);
   const messages = item.messages;
-  const questions = collectQuestionCandidates(messages, 2);
-  const constraints = collectConstraintLines(messages, 2);
-  const decisions = collectDecisionLines(messages, 3);
-  const artifacts = collectArtifactLines(messages, 5);
-  const unresolved = collectUnresolvedLines(messages, 3);
-  const roleAwareMoves = collectRoleAwareTurns(messages, 4);
-  const tags = collectPotentialTags(item.conversation, messages, 5);
+  const questions = collectQuestionCandidates(messages, budget.questions);
+  const constraints = collectConstraintLines(messages, budget.constraints);
+  const decisions = collectDecisionLines(messages, budget.decisions);
+  const artifacts = collectArtifactLines(messages, budget.artifacts);
+  const unresolved = collectUnresolvedLines(messages, budget.unresolved);
+  const roleAwareMoves = collectRoleAwareTurns(messages, budget.roleMoves);
+  const tags = collectPotentialTags(item.conversation, messages, budget.tags);
 
   const problemFrame = [
     item.conversation.title || "Untitled conversation",
@@ -622,12 +1327,20 @@ function buildLocalFallback(
   mode: ExportCompressionMode,
   reason: string,
   diagnostic?: LlmDiagnostic | null,
-  failureContext?: ExportCompressionFailureContext | null
+  failureContext?: ExportCompressionFailureContext | null,
+  strategyPlan?: CompressionStrategyPlan,
+  gateAppliedOverride = false,
+  classifierSource: CompressionClassifierSource = "rules_only",
+  llmReview: CompressionLlmReview = { reviewed: false, agreed: null }
 ): CompressedConversationExport {
+  const plan = strategyPlan || buildStrategyPlan(item.messages);
   const body =
     mode === "compact"
-      ? buildCompactFallback(item, reason)
-      : buildSummaryFallback(item, reason);
+      ? buildCompactFallback(item, reason, plan)
+      : buildSummaryFallback(item, reason, plan);
+  const quality = evaluateCompressionQuality(body, item, mode, plan);
+  const gate = deriveGateRecommendation(quality, plan);
+  const segments = buildSegmentObservations(item.messages);
 
   return {
     conversation: item.conversation,
@@ -643,6 +1356,21 @@ function buildLocalFallback(
     exportPromptProfile: failureContext?.exportPromptProfile,
     primaryInvalidReason: failureContext?.primaryInvalidReason,
     fallbackInvalidReason: failureContext?.fallbackInvalidReason,
+    dialogueShape: plan.dialogueShape,
+    strategyConfidence: plan.confidence,
+    qualityScore: quality.overall,
+    mssCoverage: quality.mssCoverage,
+    missingMssSignals: quality.missingSignals,
+    scoreMode: COMPRESSION_SCORE_MODE,
+    routeWeights: plan.routeWeights,
+    segmentObservations: segments,
+    gateRecommendation: gate.recommendation,
+    gateReasons: gate.reasons,
+    gateThresholds: gate.thresholds,
+    gateApplied: gateAppliedOverride,
+    guardedFallbackConfig: GUARDED_FALLBACK_CONFIG,
+    classifierSource,
+    llmReview,
   };
 }
 
@@ -719,6 +1447,26 @@ function buildCompressionTechnicalSummary(
 
   if (result.fallbackInvalidReason) {
     parts.push(`Fallback: ${result.fallbackInvalidReason}`);
+  }
+
+  if (result.dialogueShape) {
+    parts.push(`Shape: ${result.dialogueShape}`);
+  }
+
+  if (typeof result.qualityScore === "number") {
+    parts.push(`Quality(observe): ${result.qualityScore.toFixed(2)}`);
+  }
+
+  if (typeof result.mssCoverage === "number") {
+    parts.push(`MSS: ${result.mssCoverage.toFixed(2)}`);
+  }
+
+  if (result.missingMssSignals && result.missingMssSignals.length > 0) {
+    parts.push(`Missing: ${result.missingMssSignals.join(",")}`);
+  }
+
+  if (result.gateRecommendation) {
+    parts.push(`Gate(observe): ${result.gateRecommendation}`);
   }
 
   return parts.length > 0 ? parts.join(" · ") : undefined;
@@ -846,10 +1594,57 @@ async function compressWithCurrentLlmSettings(
   item: ConversationExportDatasetItem,
   mode: ExportCompressionMode
 ): Promise<CompressedConversationExport> {
+  const strategyPlan = buildStrategyPlan(item.messages);
+  const segmentObservations = buildSegmentObservations(item.messages);
   const settings = await getLlmSettings();
   if (!settings) {
     throw new Error("LLM_SETTINGS_UNAVAILABLE");
   }
+
+  let llmReview: CompressionLlmReview = {
+    reviewed: false,
+    agreed: null,
+  };
+  if (shouldRunLlmStrategyReview(item, strategyPlan)) {
+    try {
+      const reviewPrompt = buildStrategyReviewPrompt(item, strategyPlan);
+      const review = await callInference(settings, reviewPrompt, {
+        systemPrompt:
+          "You are a strict dialogue classifier. Return JSON only with suggested_shape, suggested_confidence, reason.",
+      });
+      const parsed = parseStrategyReviewResult(review.content);
+      if (parsed) {
+        llmReview = {
+          reviewed: true,
+          agreed: parsed.suggestedShape === strategyPlan.dialogueShape,
+          suggestedShape: parsed.suggestedShape,
+          suggestedConfidence: parsed.suggestedConfidence,
+          reason: parsed.reason,
+        };
+      } else {
+        llmReview = {
+          reviewed: true,
+          agreed: null,
+          errorCode: "review_parse_failed",
+        };
+      }
+    } catch (error) {
+      const diagnostic = getLlmDiagnostic(error);
+      llmReview = {
+        reviewed: true,
+        agreed: null,
+        errorCode: diagnostic?.code || "review_call_failed",
+      };
+      logger.warn("llm", "Export strategy LLM review failed", {
+        mode,
+        conversationId: item.conversation.id,
+        errorCode: llmReview.errorCode,
+      });
+    }
+  }
+  const classifierSource: CompressionClassifierSource = llmReview.reviewed
+    ? "rules_plus_llm_review"
+    : "rules_only";
 
   const modelId = getEffectiveModelId(settings);
   const modelProfile = getLlmModelProfile(modelId);
@@ -858,7 +1653,7 @@ async function compressWithCurrentLlmSettings(
   const prompt = getPrompt(mode === "compact" ? "exportCompact" : "exportSummary", {
     variant: "current",
   });
-  const payload = buildPromptPayload(item, exportProfile);
+  const payload = buildPromptPayload(item, exportProfile, strategyPlan);
   const primaryPrompt = truncateForContext(
     prompt.userTemplate(payload),
     promptBudget.primary
@@ -870,6 +1665,63 @@ async function compressWithCurrentLlmSettings(
   const primaryBody = normalizeCompressionBody(primary.content);
   const primaryValidation = validateCompressionOutput(primaryBody, item, mode);
   if (primaryValidation.valid) {
+    const quality = evaluateCompressionQuality(
+      primaryBody,
+      item,
+      mode,
+      strategyPlan
+    );
+    const gate = deriveGateRecommendation(quality, strategyPlan);
+    const applyGuardedFallback = shouldApplyGuardedFallback(
+      gate.recommendation,
+      item.conversation.id,
+      item.messages.length
+    );
+    logger.info("llm", "Export compression quality observed", {
+      route: "current_llm_settings",
+      mode,
+      conversationId: item.conversation.id,
+      dialogueShape: strategyPlan.dialogueShape,
+      strategyConfidence: strategyPlan.confidence,
+      routeWeights: strategyPlan.routeWeights,
+      qualityScore: quality.overall,
+      mssCoverage: quality.mssCoverage,
+      pseudoStructureRate: quality.pseudoStructureRate,
+      artifactPreservation: quality.artifactPreservation,
+      missingMssSignals: quality.missingSignals,
+      gateRecommendation: gate.recommendation,
+      gateReasons: gate.reasons,
+      segmentObservationCount: segmentObservations.length,
+      scoreMode: COMPRESSION_SCORE_MODE,
+      guardedFallbackEnabled: GUARDED_FALLBACK_CONFIG.enabled,
+      guardedFallbackRolloutPercent: GUARDED_FALLBACK_CONFIG.rolloutPercent,
+      guardedFallbackMinMessages: GUARDED_FALLBACK_CONFIG.minMessages,
+      gateApplied: applyGuardedFallback,
+    });
+    if (applyGuardedFallback) {
+      logger.info("llm", "Guarded fallback applied after primary pass", {
+        route: "current_llm_settings",
+        mode,
+        conversationId: item.conversation.id,
+        dialogueShape: strategyPlan.dialogueShape,
+        gateReasons: gate.reasons,
+      });
+      return buildLocalFallback(
+        item,
+        mode,
+        "guarded_fallback_gate",
+        undefined,
+        {
+          route: "current_llm_settings",
+          modelId,
+          exportPromptProfile: exportProfile,
+        },
+        strategyPlan,
+        true,
+        classifierSource,
+        llmReview
+      );
+    }
     return {
       conversation: item.conversation,
       messages: item.messages,
@@ -878,6 +1730,21 @@ async function compressWithCurrentLlmSettings(
       source: "llm",
       route: "current_llm_settings",
       usedFallbackPrompt: false,
+      dialogueShape: strategyPlan.dialogueShape,
+      strategyConfidence: strategyPlan.confidence,
+      qualityScore: quality.overall,
+      mssCoverage: quality.mssCoverage,
+      missingMssSignals: quality.missingSignals,
+      scoreMode: COMPRESSION_SCORE_MODE,
+      routeWeights: strategyPlan.routeWeights,
+      segmentObservations,
+      gateRecommendation: gate.recommendation,
+      gateReasons: gate.reasons,
+      gateThresholds: gate.thresholds,
+      gateApplied: false,
+      guardedFallbackConfig: GUARDED_FALLBACK_CONFIG,
+      classifierSource,
+      llmReview,
     };
   }
 
@@ -888,6 +1755,9 @@ async function compressWithCurrentLlmSettings(
     modelId,
     exportPromptProfile: exportProfile,
     invalidReason: primaryValidation.issueCode,
+    dialogueShape: strategyPlan.dialogueShape,
+    strategyConfidence: strategyPlan.confidence,
+    routeWeights: strategyPlan.routeWeights,
   });
 
   const fallbackPrompt = truncateForContext(
@@ -900,6 +1770,64 @@ async function compressWithCurrentLlmSettings(
   const fallbackBody = normalizeCompressionBody(fallback.content);
   const fallbackValidation = validateCompressionOutput(fallbackBody, item, mode);
   if (fallbackValidation.valid) {
+    const quality = evaluateCompressionQuality(
+      fallbackBody,
+      item,
+      mode,
+      strategyPlan
+    );
+    const gate = deriveGateRecommendation(quality, strategyPlan);
+    const applyGuardedFallback = shouldApplyGuardedFallback(
+      gate.recommendation,
+      item.conversation.id,
+      item.messages.length
+    );
+    logger.info("llm", "Export compression quality observed", {
+      route: "current_llm_settings",
+      mode,
+      conversationId: item.conversation.id,
+      dialogueShape: strategyPlan.dialogueShape,
+      strategyConfidence: strategyPlan.confidence,
+      routeWeights: strategyPlan.routeWeights,
+      qualityScore: quality.overall,
+      mssCoverage: quality.mssCoverage,
+      pseudoStructureRate: quality.pseudoStructureRate,
+      artifactPreservation: quality.artifactPreservation,
+      missingMssSignals: quality.missingSignals,
+      gateRecommendation: gate.recommendation,
+      gateReasons: gate.reasons,
+      segmentObservationCount: segmentObservations.length,
+      scoreMode: COMPRESSION_SCORE_MODE,
+      guardedFallbackEnabled: GUARDED_FALLBACK_CONFIG.enabled,
+      guardedFallbackRolloutPercent: GUARDED_FALLBACK_CONFIG.rolloutPercent,
+      guardedFallbackMinMessages: GUARDED_FALLBACK_CONFIG.minMessages,
+      gateApplied: applyGuardedFallback,
+    });
+    if (applyGuardedFallback) {
+      logger.info("llm", "Guarded fallback applied after fallback pass", {
+        route: "current_llm_settings",
+        mode,
+        conversationId: item.conversation.id,
+        dialogueShape: strategyPlan.dialogueShape,
+        gateReasons: gate.reasons,
+      });
+      return buildLocalFallback(
+        item,
+        mode,
+        "guarded_fallback_gate",
+        undefined,
+        {
+          route: "current_llm_settings",
+          modelId,
+          exportPromptProfile: exportProfile,
+          primaryInvalidReason: primaryValidation.issueCode,
+        },
+        strategyPlan,
+        true,
+        classifierSource,
+        llmReview
+      );
+    }
     return {
       conversation: item.conversation,
       messages: item.messages,
@@ -908,6 +1836,21 @@ async function compressWithCurrentLlmSettings(
       source: "llm",
       route: "current_llm_settings",
       usedFallbackPrompt: true,
+      dialogueShape: strategyPlan.dialogueShape,
+      strategyConfidence: strategyPlan.confidence,
+      qualityScore: quality.overall,
+      mssCoverage: quality.mssCoverage,
+      missingMssSignals: quality.missingSignals,
+      scoreMode: COMPRESSION_SCORE_MODE,
+      routeWeights: strategyPlan.routeWeights,
+      segmentObservations,
+      gateRecommendation: gate.recommendation,
+      gateReasons: gate.reasons,
+      gateThresholds: gate.thresholds,
+      gateApplied: false,
+      guardedFallbackConfig: GUARDED_FALLBACK_CONFIG,
+      classifierSource,
+      llmReview,
     };
   }
 
@@ -919,6 +1862,9 @@ async function compressWithCurrentLlmSettings(
     exportPromptProfile: exportProfile,
     invalidReason: fallbackValidation.issueCode,
     primaryInvalidReason: primaryValidation.issueCode,
+    dialogueShape: strategyPlan.dialogueShape,
+    strategyConfidence: strategyPlan.confidence,
+    routeWeights: strategyPlan.routeWeights,
   });
 
   throw new ExportCompressionValidationError(
@@ -931,6 +1877,8 @@ async function compressWithCurrentLlmSettings(
       exportPromptProfile: exportProfile,
       primaryInvalidReason: primaryValidation.issueCode,
       fallbackInvalidReason: fallbackValidation.issueCode,
+      classifierSource,
+      llmReview,
     }
   );
 }
@@ -1012,6 +1960,67 @@ ${diagnostic.technicalSummary}`
   };
 }
 
+function buildObservationSummary(results: CompressedConversationExport[]) {
+  const byShape: Partial<Record<CompressionDialogueShape, number>> = {};
+  const byDominantShape: Partial<Record<CompressionDialogueShape, number>> = {};
+  const gateSuggestionByShape: Partial<Record<CompressionDialogueShape, number>> = {};
+  const scored = results.filter(
+    (result) =>
+      typeof result.qualityScore === "number" &&
+      typeof result.mssCoverage === "number"
+  );
+
+  for (const result of results) {
+    if (!result.dialogueShape) {
+      continue;
+    }
+    byShape[result.dialogueShape] = (byShape[result.dialogueShape] || 0) + 1;
+    const dominant = result.routeWeights?.[0]?.shape || result.dialogueShape;
+    byDominantShape[dominant] = (byDominantShape[dominant] || 0) + 1;
+    if (result.gateRecommendation === "suggest_fallback") {
+      gateSuggestionByShape[dominant] =
+        (gateSuggestionByShape[dominant] || 0) + 1;
+    }
+  }
+
+  const segmentedCount = results.filter(
+    (result) => (result.segmentObservations?.length || 0) > 0
+  ).length;
+
+  const averageQuality =
+    scored.length === 0
+      ? null
+      : scored.reduce((sum, result) => sum + (result.qualityScore || 0), 0) /
+        scored.length;
+  const averageMssCoverage =
+    scored.length === 0
+      ? null
+      : scored.reduce((sum, result) => sum + (result.mssCoverage || 0), 0) /
+        scored.length;
+
+  return {
+    scoredCount: scored.length,
+    total: results.length,
+    averageQuality,
+    averageMssCoverage,
+    byShape,
+    byDominantShape,
+    gateSuggestionByShape,
+    gateSuggestionCount: results.filter(
+      (result) => result.gateRecommendation === "suggest_fallback"
+    ).length,
+    gateAppliedCount: results.filter((result) => result.gateApplied).length,
+    llmReviewCount: results.filter((result) => result.llmReview?.reviewed).length,
+    llmReviewDisagreementCount: results.filter(
+      (result) => result.llmReview?.reviewed && result.llmReview.agreed === false
+    ).length,
+    segmentedCount,
+    scoreMode: COMPRESSION_SCORE_MODE,
+    guardedFallbackConfig: GUARDED_FALLBACK_CONFIG,
+    llmStrategyReviewConfig: LLM_STRATEGY_REVIEW_CONFIG,
+  };
+}
+
 export function isExportCompressionRouteEnabled(
   route: ExportCompressionRoute
 ): boolean {
@@ -1026,6 +2035,7 @@ export function getExportCompressionRouteInfo() {
   return {
     active: ACTIVE_EXPORT_COMPRESSION_ROUTE,
     status: ROUTE_STATUS,
+    guardedFallback: GUARDED_FALLBACK_CONFIG,
     futureCandidates: {
       modelscope: [...FUTURE_MODELSCOPE_EXPORT_MODEL_CANDIDATES],
       moonshotDirect: [...FUTURE_MOONSHOT_DIRECT_EXPORT_MODEL_CANDIDATES],
@@ -1076,9 +2086,26 @@ export async function compressExportDataset(
         primaryInvalidReason: failureContext?.primaryInvalidReason,
         fallbackInvalidReason: failureContext?.fallbackInvalidReason,
       });
-      items.push(buildLocalFallback(item, mode, reason, diagnostic, failureContext));
+      items.push(
+        buildLocalFallback(
+          item,
+          mode,
+          reason,
+          diagnostic,
+          failureContext,
+          undefined,
+          false,
+          failureContext?.classifierSource || "rules_only",
+          failureContext?.llmReview || { reviewed: false, agreed: null }
+        )
+      );
     }
   }
+
+  logger.info("llm", "Export compression observation summary", {
+    mode,
+    ...buildObservationSummary(items),
+  });
 
   return {
     items,

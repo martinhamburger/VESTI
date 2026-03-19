@@ -38,3 +38,14 @@ Then consult canonical directories such as:
 
 Historical handoff files are preserved in place.
 When a handoff becomes durable guidance, that guidance should be rewritten into a canonical directory rather than treating the handoff itself as the active spec.
+
+## New Planned Handoff (2026-03-18)
+
+- `2026-03-18-export-compression-non-architectural-improvement-plan.md`
+	- scope: documentation-first, non-disruptive compression quality improvement
+	- constraints: no architecture rewrite, no protocol break, rollback-first rollout
+	- focus: evidence preservation, pseudo-structure reduction, bilingual robustness
+- `2026-03-19-export-compression-observe-mode-landing.md`
+	- scope: landed observe-mode routing/scoring changes for export compression
+	- constraints: JSON/TXT/MD download contract unchanged, guarded fallback still off
+	- focus: strategy guidance, internal quality observation, prompt/version governance

@@ -55,6 +55,28 @@ function toTranscript(messages: Message[]): string {
     .join("\n");
 }
 
+function buildStrategyGuidanceBlock(
+  payload: ExportCompressionPromptPayload
+): string {
+  const strategy = payload.strategyGuidance;
+  if (!strategy) {
+    return "- Strategy: general\n- RequiredSignals: questions, decisions, artifacts";
+  }
+
+  const weights = strategy.routeWeights
+    .slice(0, 3)
+    .map((entry) => `${entry.shape}:${entry.weight.toFixed(2)}`)
+    .join(", ");
+
+  return [
+    `- Strategy: ${strategy.dialogueShape}`,
+    `- StrategyConfidence: ${strategy.confidence.toFixed(2)}`,
+    `- RouteWeights(top): ${weights || "general:1.00"}`,
+    `- Priorities: ${strategy.priorities.join(", ") || "retain_questions, retain_decisions, retain_artifacts"}`,
+    `- RequiredSignals: ${strategy.requiredSignals.join(", ") || "questions, decisions, artifacts"}`,
+  ].join("\n");
+}
+
 function buildCompactPrompt(payload: ExportCompressionPromptPayload): string {
   const isStepProfile = payload.profile === "step_flash_concise";
   const brevityRule = isStepProfile
@@ -77,6 +99,9 @@ Metadata:
 Transcript:
 ${toTranscript(payload.messages)}
 
+Routing-first strategy guidance:
+${buildStrategyGuidanceBlock(payload)}
+
 Output requirements:
 1) Use the exact headings listed in the system prompt.
 2) Optimize for AI handoff, not for skimming: preserve background, key asks, decisions, constraints, artifacts, and unresolved work.
@@ -88,7 +113,8 @@ Output requirements:
 8) ${brevityRule}
 9) If evidence is sparse, keep the structure and use conservative placeholders.
 10) Write the final output in ${payload.locale === "en" ? "natural English" : "natural Chinese"}.
-11) Output markdown only.`;
+11) Route evidence selection by strategy guidance first, then render into the fixed heading shell.
+12) Output markdown only.`;
 }
 
 function buildCompactFallbackPrompt(
@@ -113,12 +139,15 @@ Use ${payload.locale === "en" ? "English" : "Chinese"}.
 Output markdown only.
 
 Transcript:
-${toTranscript(payload.messages)}`;
+${toTranscript(payload.messages)}
+
+Routing-first strategy guidance:
+${buildStrategyGuidanceBlock(payload)}`;
 }
 
 export const CURRENT_EXPORT_COMPACT_PROMPT: PromptVersion<ExportCompressionPromptPayload> = {
-  version: "v1.2.0-export-compact-kimi-step-profiled",
-  createdAt: "2026-03-16",
+  version: "v1.2.1-export-compact-kimi-step-profiled",
+  createdAt: "2026-03-19",
   description:
     "High-fidelity compact export handoff prompt with Kimi-rich and Step-concise profiles.",
   system: EXPORT_COMPACT_SYSTEM,
@@ -128,8 +157,8 @@ export const CURRENT_EXPORT_COMPACT_PROMPT: PromptVersion<ExportCompressionPromp
 };
 
 export const EXPERIMENTAL_EXPORT_COMPACT_PROMPT: PromptVersion<ExportCompressionPromptPayload> = {
-  version: "v1.2.0-export-compact-kimi-step-profiled-exp",
-  createdAt: "2026-03-16",
+  version: "v1.2.1-export-compact-kimi-step-profiled-exp",
+  createdAt: "2026-03-19",
   description: "Experimental profiled compact export handoff variant.",
   system: EXPORT_COMPACT_SYSTEM,
   fallbackSystem: "You are a cautious technical export assistant. Output markdown only.",

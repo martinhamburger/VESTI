@@ -56,6 +56,28 @@ function toTranscript(messages: Message[]): string {
     .join("\n");
 }
 
+function buildStrategyGuidanceBlock(
+  payload: ExportCompressionPromptPayload
+): string {
+  const strategy = payload.strategyGuidance;
+  if (!strategy) {
+    return "- Strategy: general\n- RequiredSignals: questions, decisions, artifacts";
+  }
+
+  const weights = strategy.routeWeights
+    .slice(0, 3)
+    .map((entry) => `${entry.shape}:${entry.weight.toFixed(2)}`)
+    .join(", ");
+
+  return [
+    `- Strategy: ${strategy.dialogueShape}`,
+    `- StrategyConfidence: ${strategy.confidence.toFixed(2)}`,
+    `- RouteWeights(top): ${weights || "general:1.00"}`,
+    `- Priorities: ${strategy.priorities.join(", ") || "retain_questions, retain_decisions, retain_artifacts"}`,
+    `- RequiredSignals: ${strategy.requiredSignals.join(", ") || "questions, decisions, artifacts"}`,
+  ].join("\n");
+}
+
 function buildSummaryPrompt(payload: ExportCompressionPromptPayload): string {
   const isStepProfile = payload.profile === "step_flash_concise";
   const profileInstruction = isStepProfile
@@ -78,6 +100,9 @@ Metadata:
 Transcript:
 ${toTranscript(payload.messages)}
 
+Routing-first strategy guidance:
+${buildStrategyGuidanceBlock(payload)}
+
 Output requirements:
 1) Use the exact headings listed in the system prompt.
 2) Keep this optimized for future recall: crisp TL;DR, problem framing, key moves, reusable snippets, next steps, and tags.
@@ -89,7 +114,8 @@ Output requirements:
 8) Keep bullets concise and grounded.
 9) If evidence is sparse, keep the structure and use conservative placeholders.
 10) Write the final output in ${payload.locale === "en" ? "natural English" : "natural Chinese"}.
-11) Output markdown only.`;
+11) Route evidence selection by strategy guidance first, then render into the fixed heading shell.
+12) Output markdown only.`;
 }
 
 function buildSummaryFallbackPrompt(
@@ -120,12 +146,15 @@ Requirements:
 7) Output markdown only.
 
 Transcript:
-${toTranscript(payload.messages)}`;
+${toTranscript(payload.messages)}
+
+Routing-first strategy guidance:
+${buildStrategyGuidanceBlock(payload)}`;
 }
 
 export const CURRENT_EXPORT_SUMMARY_PROMPT: PromptVersion<ExportCompressionPromptPayload> = {
-  version: "v1.2.0-export-summary-kimi-step-profiled",
-  createdAt: "2026-03-16",
+  version: "v1.2.1-export-summary-kimi-step-profiled",
+  createdAt: "2026-03-19",
   description:
     "Summary export prompt for human-readable notes with Kimi-rich and Step-concise profiles.",
   system: EXPORT_SUMMARY_SYSTEM,
@@ -135,8 +164,8 @@ export const CURRENT_EXPORT_SUMMARY_PROMPT: PromptVersion<ExportCompressionPromp
 };
 
 export const EXPERIMENTAL_EXPORT_SUMMARY_PROMPT: PromptVersion<ExportCompressionPromptPayload> = {
-  version: "v1.2.0-export-summary-kimi-step-profiled-exp",
-  createdAt: "2026-03-16",
+  version: "v1.2.1-export-summary-kimi-step-profiled-exp",
+  createdAt: "2026-03-19",
   description: "Experimental profiled summary export variant.",
   system: EXPORT_SUMMARY_SYSTEM,
   fallbackSystem: "You are a concise technical export assistant. Output markdown only.",

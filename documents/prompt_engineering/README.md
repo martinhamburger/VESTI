@@ -34,6 +34,7 @@ Documentation explains contracts, architecture, inventory, and evaluation. Runti
 - `model_settings.md`
 - `embedding_proxy_contract_v2_0.md`
 - `export_multi_agent_architecture.md`
+- `export_non_disruptive_engineering_architecture.md`
 - `export_prompt_contract.md`
 - `export_eval_and_drift_gate.md`
 - `export_prompt_inventory.md`

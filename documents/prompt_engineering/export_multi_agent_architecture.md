@@ -80,3 +80,28 @@ That path is documented in:
 - `export_compression_current_architecture.md`
 
 This document is the forward-looking canonical architecture for the next cleanup and decomposition phase.
+
+Implementation blueprint for non-disruptive execution is documented in:
+- `export_non_disruptive_engineering_architecture.md`
+
+## Non-Architectural Improvement Guardrails (2026-03-18)
+
+This iteration is constrained to non-architectural improvements only.
+
+Hard constraints:
+- no stage-boundary changes for the bounded chain `E0 -> E1 -> E2 -> E3`
+- no new orchestrator layer
+- no autonomous loop, retry tree, or reflective extra stage
+- `Compact` and `Summary` still diverge only at `E3`
+- `Full` remains deterministic local export outside the agent chain
+
+Allowed in this iteration:
+- E1 strategy enrichment within existing stage semantics
+- E2 evidence selection and validation refinement within existing stage semantics
+- prompt wording refinement under existing output contracts
+- fallback diagnostics and observability enrichment
+
+Explicitly disallowed in this iteration:
+- changing runtime stage ownership
+- changing pipeline control flow
+- introducing breaking output-protocol changes

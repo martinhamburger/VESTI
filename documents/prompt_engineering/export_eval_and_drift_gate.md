@@ -56,3 +56,36 @@ Repo-wide eval thresholds remain anchored in:
 - `eval/rubrics/thresholds.json`
 
 This document does not redefine global scoring thresholds. It adds export-specific review obligations on top of the shared gate.
+
+## Non-Disruptive Quality Gates For Compression (2026-03-18)
+
+These gates improve compression quality without changing architecture or shipping output protocol.
+
+Additional export-specific review metrics:
+- minimum sufficient statistics (MSS) coverage per dialogue shape
+- artifact preservation rate for code, commands, and file paths
+- grounded section density by mode
+- pseudo-structure rate (sections present but evidentially empty)
+
+Recommended dialogue-shape buckets:
+- debugging and troubleshooting
+- architecture tradeoff discussion
+- learning and explanation
+- process alignment and collaboration rules
+- decision support
+
+Rollout policy:
+- Phase 1: score-only observation mode
+- Phase 2: soft warning with fallback recommendation
+- Phase 3: guarded fallback linkage under feature flag
+
+Compatibility constraints in this cycle:
+- shipping heading contracts for `Compact` and `Summary` remain unchanged
+- current invalid-reason code taxonomy remains unchanged
+
+## Current Observe-Mode Landing Rule (2026-03-19)
+
+For the current landed implementation:
+- observe-mode metrics are allowed in logs and internal runtime state
+- observe-mode metrics are not part of the shipping JSON/TXT/MD download contract in this commit
+- guarded fallback recommendation may be computed internally, but activation remains off by default
