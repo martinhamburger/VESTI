@@ -1,6 +1,7 @@
 import type { IParser, ParsedMessage } from "../IParser";
 import type { Platform } from "../../../types";
 import {
+  collapseNodesToNearestRoots,
   closestAnySelector,
   extractEarliestTimeFromSelectors,
   hasAnySelector,
@@ -13,6 +14,10 @@ import {
   uniqueNodesInDocumentOrder,
 } from "../shared/selectorUtils";
 import { extractAstFromElement } from "../shared/astExtractor";
+import {
+  cloneAndSanitizeMessageContent,
+  getCitationNoiseProfile,
+} from "../shared/citationNoise";
 import { resolveCanonicalMessageText } from "../shared/canonicalMessageText";
 import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
 import { logger } from "../../../utils/logger";
@@ -34,6 +39,10 @@ const SELECTORS = {
     "[data-testid^='conversation-turn']",
     "[data-testid*='conversation-turn']",
     "[data-message-id]",
+  ],
+  hardMessageRoots: [
+    "[data-message-id][data-message-author-role='user']",
+    "[data-message-id][data-message-author-role='assistant']",
   ],
   preferredMessageContent: [
     "[data-message-content]",
@@ -76,6 +85,9 @@ const SELECTORS = {
     "[data-testid*='share']",
     "[class*='action-bar']",
     "[class*='toolbar']",
+    "[data-testid*='thinking']",
+    "[data-testid*='reasoning']",
+    "[data-testid*='thought']",
     "[contenteditable='true']",
     "[aria-label*='copy' i]",
     "[aria-label*='read aloud' i]",
@@ -101,6 +113,10 @@ const SELECTORS = {
     /^search chats$/i,
     /^chatgpt can make mistakes\.?/i,
     /^upgrade plan$/i,
+    /^thought for\s+\d+s(?:\s+show more)?(?:\s+done)?$/i,
+    /^\u5df2\u601d\u8003\s*\d+\s*s$/i,
+    /^show more$/i,
+    /^done$/i,
   ],
   roleAncestorHints: [
     "[data-message-author-role]",
@@ -146,6 +162,8 @@ const CODE_BLOCK_HINT_EXCLUDE_SELECTOR = [
   ".cm-content",
   "[class*='cm-content']",
 ].join(", ");
+const CHATGPT_THINKING_DURATION_PATTERN =
+  "(?:\\u5df2\\u601d\\u8003\\s*\\d+\\s*s?|thought for\\s+\\d+\\s*s?)";
 
 function parseLanguageFromClassName(value: string): string | null {
   const classTokens = value.split(/\s+/).filter(Boolean);
@@ -222,13 +240,14 @@ function extractLanguageTextHint(element: Element): string | null {
 }
 
 type MessageRole = "user" | "ai";
-
 type ExtractionSource = "selector" | "anchor";
 
 interface ParserStats {
   source: ExtractionSource;
   totalCandidates: number;
   keptMessages: number;
+  hard_boundary_mode_used: boolean;
+  hard_boundary_roots: number;
   roleDistribution: Record<MessageRole, number>;
   droppedUnknownRole: number;
   droppedNoise: number;
@@ -245,6 +264,8 @@ interface ExtractionResult {
   source: ExtractionSource;
   messages: ParsedMessage[];
   totalCandidates: number;
+  hardBoundaryModeUsed: boolean;
+  hardBoundaryRoots: number;
   droppedUnknownRole: number;
   droppedNoise: number;
   degradedNodesCount: number;
@@ -255,6 +276,11 @@ interface ParsedNodeResult {
   message: ParsedMessage;
   astNodeCount: number;
   degradedNodesCount: number;
+}
+
+interface SanitizedContentResult {
+  content: Element;
+  citations: ParsedMessage["citations"];
 }
 
 export class ChatGPTParser implements IParser {
@@ -288,6 +314,8 @@ export class ChatGPTParser implements IParser {
       source: chosen.source,
       totalCandidates: chosen.totalCandidates,
       keptMessages: dedupedMessages.length,
+      hard_boundary_mode_used: chosen.hardBoundaryModeUsed,
+      hard_boundary_roots: chosen.hardBoundaryRoots,
       roleDistribution: { user: 0, ai: 0 },
       droppedUnknownRole: chosen.droppedUnknownRole,
       droppedNoise: chosen.droppedNoise + (chosen.messages.length - dedupedMessages.length),
@@ -333,7 +361,8 @@ export class ChatGPTParser implements IParser {
   }
 
   private extractUsingSelectorStrategy(perfMode: AstPerfMode): ExtractionResult {
-    const rawCandidates = this.collectSelectorCandidates();
+    const hardBoundaryRoots = this.getHardMessageRoots();
+    const rawCandidates = this.collectSelectorCandidates(hardBoundaryRoots);
     const normalized = normalizeCandidateNodes(rawCandidates, {
       minTextLength: 2,
       noiseContainerSelectors: SELECTORS.noiseContainers,
@@ -367,6 +396,8 @@ export class ChatGPTParser implements IParser {
       source: "selector",
       messages,
       totalCandidates: rawCandidates.length,
+      hardBoundaryModeUsed: hardBoundaryRoots.length > 0,
+      hardBoundaryRoots: hardBoundaryRoots.length,
       droppedUnknownRole,
       droppedNoise,
       degradedNodesCount,
@@ -381,6 +412,8 @@ export class ChatGPTParser implements IParser {
         source: "anchor",
         messages: [],
         totalCandidates: 0,
+        hardBoundaryModeUsed: false,
+        hardBoundaryRoots: 0,
         droppedUnknownRole: 0,
         droppedNoise: 0,
         degradedNodesCount: 0,
@@ -388,10 +421,21 @@ export class ChatGPTParser implements IParser {
       };
     }
 
-    const rawCandidates = uniqueNodesInDocumentOrder([
-      ...queryAllWithinUnique(mainRoot, SELECTORS.userRoleAnchors),
-      ...this.collectCopyActionCandidates(mainRoot),
-    ]);
+    const hardBoundaryRoots = this.getHardMessageRoots(mainRoot);
+    const rawCandidates =
+      hardBoundaryRoots.length > 0
+        ? collapseNodesToNearestRoots(
+            [
+              ...hardBoundaryRoots,
+              ...queryAllWithinUnique(mainRoot, SELECTORS.userRoleAnchors),
+              ...this.collectCopyActionCandidates(mainRoot),
+            ],
+            SELECTORS.hardMessageRoots,
+          )
+        : uniqueNodesInDocumentOrder([
+            ...queryAllWithinUnique(mainRoot, SELECTORS.userRoleAnchors),
+            ...this.collectCopyActionCandidates(mainRoot),
+          ]);
 
     const normalized = normalizeCandidateNodes(rawCandidates, {
       minTextLength: 2,
@@ -426,6 +470,8 @@ export class ChatGPTParser implements IParser {
       source: "anchor",
       messages,
       totalCandidates: rawCandidates.length,
+      hardBoundaryModeUsed: hardBoundaryRoots.length > 0,
+      hardBoundaryRoots: hardBoundaryRoots.length,
       droppedUnknownRole,
       droppedNoise,
       degradedNodesCount,
@@ -433,7 +479,19 @@ export class ChatGPTParser implements IParser {
     };
   }
 
-  private collectSelectorCandidates(): Element[] {
+  private collectSelectorCandidates(hardBoundaryRoots: Element[]): Element[] {
+    if (hardBoundaryRoots.length > 0) {
+      const collapsed = collapseNodesToNearestRoots(
+        [
+          ...hardBoundaryRoots,
+          ...queryAllUnique([...SELECTORS.userRoleAnchors, ...SELECTORS.assistantRoleAnchors]),
+          ...queryAllUnique(SELECTORS.turnBlocks),
+        ],
+        SELECTORS.hardMessageRoots,
+      );
+      return collapsed.length > 0 ? collapsed : hardBoundaryRoots;
+    }
+
     const combinedCandidates: Element[] = [
       ...queryAllUnique([...SELECTORS.userRoleAnchors, ...SELECTORS.assistantRoleAnchors]),
     ];
@@ -477,7 +535,9 @@ export class ChatGPTParser implements IParser {
       }
     }
 
-    return uniqueNodesInDocumentOrder(nodesBySignature.values());
+    const deduped = uniqueNodesInDocumentOrder(nodesBySignature.values());
+    const collapsed = collapseNodesToNearestRoots(deduped, SELECTORS.hardMessageRoots);
+    return collapsed.length > 0 ? collapsed : deduped;
   }
 
   private resolveActionAnchorMessageNode(anchor: Element, root: Element): Element | null {
@@ -514,7 +574,8 @@ export class ChatGPTParser implements IParser {
     if (!role) return null;
 
     const contentEl = this.resolveContentElement(node, role);
-    const sanitizedContent = this.sanitizeContentElement(contentEl);
+    const sanitized = this.prepareSanitizedContent(contentEl);
+    const sanitizedContent = sanitized.content;
     const ast = extractAstFromElement(sanitizedContent, {
       platform: "ChatGPT",
       perfMode,
@@ -533,6 +594,7 @@ export class ChatGPTParser implements IParser {
         contentAst: ast.root,
         contentAstVersion: ast.root ? "ast_v1" : null,
         degradedNodesCount: ast.degradedNodesCount,
+        citations: sanitized.citations ?? [],
         htmlContent: sanitizedContent.innerHTML,
       },
       astNodeCount: ast.astNodeCount,
@@ -541,6 +603,13 @@ export class ChatGPTParser implements IParser {
   }
 
   private resolveContentElement(node: Element, role: MessageRole): Element {
+    if (role === "ai") {
+      const aiPreferred = this.resolveAiPreferredContentElement(node);
+      if (aiPreferred) {
+        return aiPreferred;
+      }
+    }
+
     const preferredSelectors =
       role === "user" ? SELECTORS.userMessageContent : SELECTORS.preferredMessageContent;
     const preferred = queryFirstWithin(node, preferredSelectors);
@@ -551,18 +620,48 @@ export class ChatGPTParser implements IParser {
     return queryFirstWithin(node, SELECTORS.messageContent) ?? node;
   }
 
+  private resolveAiPreferredContentElement(node: Element): Element | null {
+    const attributeCandidates = queryAllWithinUnique(node, [
+      "[data-message-content]",
+      "[data-testid*='message-content']",
+    ]).filter((candidate) => {
+      const text = this.cleanExtractedText(this.extractVisibleText(candidate));
+      return text.length > 0 && !this.isThinkingControlOnlyText(text);
+    });
+
+    const lastAttributeCandidate = attributeCandidates[attributeCandidates.length - 1];
+    return lastAttributeCandidate ?? null;
+  }
+
   private sanitizeContentElement(source: Element): Element {
-    const clone = source.cloneNode(true) as Element;
-    const selector = SELECTORS.removableContentSelectors.join(", ");
-    clone.querySelectorAll(selector).forEach((node) => node.remove());
-    this.normalizeCodeBlocks(clone);
-    return clone;
+    return this.prepareSanitizedContent(source).content;
   }
 
   private extractSanitizedText(node: Element, role: MessageRole): string {
     const contentEl = this.resolveContentElement(node, role);
     const sanitized = this.sanitizeContentElement(contentEl);
     return this.cleanExtractedText(this.extractVisibleText(sanitized));
+  }
+
+  private getHardMessageRoots(root?: Element): Element[] {
+    if (root) {
+      return queryAllWithinUnique(root, SELECTORS.hardMessageRoots);
+    }
+    return queryAllUnique(SELECTORS.hardMessageRoots);
+  }
+
+  private prepareSanitizedContent(source: Element): SanitizedContentResult {
+    const result = cloneAndSanitizeMessageContent(
+      source,
+      getCitationNoiseProfile("ChatGPT"),
+    );
+    const selector = SELECTORS.removableContentSelectors.join(", ");
+    result.clone.querySelectorAll(selector).forEach((node) => node.remove());
+    this.normalizeCodeBlocks(result.clone);
+    return {
+      content: result.clone,
+      citations: result.citations,
+    };
   }
 
   private normalizeCodeBlocks(root: Element): void {
@@ -633,7 +732,10 @@ export class ChatGPTParser implements IParser {
       if (token) return token;
     }
 
-    const classCandidates = [contentElement.className?.toString() ?? "", preBlock.className?.toString() ?? ""];
+    const classCandidates = [
+      contentElement.className?.toString() ?? "",
+      preBlock.className?.toString() ?? "",
+    ];
     for (const candidate of classCandidates) {
       const language = parseLanguageFromClassName(candidate);
       const token = normalizeLanguageToken(language);
@@ -804,10 +906,18 @@ export class ChatGPTParser implements IParser {
 
     text = text
       .replace(/^(?:copy|edit|retry|regenerate|share|read aloud)\s+/i, "")
+      .replace(new RegExp(`^${CHATGPT_THINKING_DURATION_PATTERN}\\s*`, "i"), "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
     text = text
+      .replace(
+        new RegExp(
+          `(?:^|\\n)\\s*${CHATGPT_THINKING_DURATION_PATTERN}(?:\\s+(?:show more|done))*\\s*(?=\\n|$)`,
+          "gi",
+        ),
+        "\n",
+      )
       .replace(
         /(?:^|\n)\s*(?:copy|edit|retry|regenerate|share|read aloud|show more|done)\s*(?=\n|$)/gi,
         "\n",
@@ -816,6 +926,18 @@ export class ChatGPTParser implements IParser {
       .trim();
 
     return text;
+  }
+
+  private isThinkingControlOnlyText(text: string): boolean {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return false;
+    }
+
+    return (
+      new RegExp(`^${CHATGPT_THINKING_DURATION_PATTERN}$`, "i").test(normalized) ||
+      /^(?:show more|done)$/i.test(normalized)
+    );
   }
 
   private dedupeNearDuplicates(messages: ParsedMessage[]): ParsedMessage[] {
@@ -842,6 +964,10 @@ export class ChatGPTParser implements IParser {
     selectorResult: ExtractionResult,
     anchorResult: ExtractionResult,
   ): ExtractionResult {
+    if (selectorResult.hardBoundaryModeUsed !== anchorResult.hardBoundaryModeUsed) {
+      return selectorResult.hardBoundaryModeUsed ? selectorResult : anchorResult;
+    }
+
     const selectorScore = this.scoreExtraction(selectorResult);
     const anchorScore = this.scoreExtraction(anchorResult);
 
@@ -865,11 +991,27 @@ export class ChatGPTParser implements IParser {
   private logStats(stats: ParserStats, messages: ParsedMessage[]): void {
     logger.info("parser", "ChatGPT parse stats", stats);
 
+    if (stats.hard_boundary_mode_used) {
+      logger.info("parser", "ChatGPT hard boundary mode active", {
+        source: stats.source,
+        hardBoundaryRoots: stats.hard_boundary_roots,
+        keptMessages: stats.keptMessages,
+      });
+    }
+
     if (stats.source === "anchor") {
       logger.warn("parser", "ChatGPT parser used anchor fallback", {
         totalCandidates: stats.totalCandidates,
         keptMessages: stats.keptMessages,
         roleDistribution: stats.roleDistribution,
+      });
+    }
+
+    if (stats.hard_boundary_mode_used && stats.keptMessages > stats.hard_boundary_roots) {
+      logger.warn("parser", "ChatGPT hard boundary produced extra logical messages", {
+        source: stats.source,
+        hardBoundaryRoots: stats.hard_boundary_roots,
+        keptMessages: stats.keptMessages,
       });
     }
 

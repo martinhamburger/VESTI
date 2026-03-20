@@ -114,6 +114,21 @@ The web dashboard depends on the following internal edge contract as of rc8:
 
 These are internal engineering contracts used to keep `Network` self-sufficient. They are not public API commitments.
 
+## 6.1 Reader / package boundary
+
+The web dashboard also depends on the canonical content-package direction defined in:
+- `documents/capture_engine/`
+- `documents/reader_pipeline/`
+
+For web work, this now implies:
+- web title must come from app-shell metadata, not from the largest body heading
+- web reader must converge on the same rich message package consumed by sidepanel reader
+- `citations[]` and `artifacts[]` are sidecars, not body-tail text
+- `content_text` may remain as fallback plain text, but must not be treated as the only truth source for rich messages
+
+The explicit draft contract for this web-facing layer lives in:
+- `web_dashboard_reader_render_contract.md`
+
 ## 7. Non-goals for this spec version
 
 This spec does not define:

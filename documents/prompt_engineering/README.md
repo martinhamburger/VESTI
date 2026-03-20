@@ -46,6 +46,22 @@ This package is designed to answer:
 - how the future bounded chain should be implemented
 - where cross-platform ingestion stops and export begins
 
+## 2026-03 content package update
+
+When reading this directory, treat the following assumptions as inherited from the canonical
+capture / reader docs:
+
+- app-shell metadata must be resolved before body parsing
+- exported title cannot be inferred from the largest body heading
+- `semantic_ast_v2` is the target rich-structure truth source for table / math / code fidelity
+- `citations[]` and `artifacts[]` are message sidecars, not body text
+- `normalized_html_snapshot` is expected only for rich-structure or artifact-bearing messages
+
+For export-facing design work, this means `documents/prompt_engineering/` now depends explicitly
+on:
+- `documents/capture_engine/`
+- `documents/reader_pipeline/`
+
 ## Active canonical docs
 
 - `export_ai_handoff_architecture.md`

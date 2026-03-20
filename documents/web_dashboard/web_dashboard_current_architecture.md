@@ -134,12 +134,26 @@ Before the rest of time-driven `Network` behavior is treated as a finalized cont
 ### 5.5 Historical document split
 Older web/dashboard knowledge is currently spread across dated memos and handoffs. This file replaces them as the canonical ?current architecture? entry for web surfaces while leaving those older files intact as evidence.
 
+### 5.6 Reader parity is still incomplete
+
+Current web/library detail rendering remains more text-centric than the sidepanel reader.
+
+Practical current-state observations:
+- the active Library detail surface still renders `message.content_text` directly
+- web-side message detail does not yet consume the same rich renderer contract as sidepanel
+- citation / artifact sidecars are not yet first-class web detail surfaces
+
+This means web currently has:
+- shared or near-shared time semantics
+- but incomplete structure semantics relative to sidepanel reader
+
 ## 6. Current canonical sources
 
 For web work, the preferred source order is now:
 1. `documents/web_dashboard/web_dashboard_engineering_spec.md`
 2. `documents/web_dashboard/web_dashboard_current_architecture.md`
-3. `documents/web_dashboard/web_dashboard_rc8_repairs.md`
-4. `documents/web_dashboard/web_dashboard_technical_roadmap.md`
+3. `documents/web_dashboard/web_dashboard_reader_render_contract.md`
+4. `documents/web_dashboard/web_dashboard_rc8_repairs.md`
+5. `documents/web_dashboard/web_dashboard_technical_roadmap.md`
 
 Older handoffs remain useful for historical context, but are not the primary norm-setting layer anymore.

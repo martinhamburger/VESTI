@@ -52,3 +52,18 @@ This file no longer serves as the canonical source for:
 - prompt artifact governance
 - export-specific drift policy
 - long-term prompt inventory
+
+## 2026-03 limitation note
+
+The current shipped compression path remains meaningfully text-centric.
+
+Practical implications:
+- transcript assembly still depends heavily on `message.content_text`
+- title is not yet formally documented here as app-shell-only metadata
+- `citations[]` and `artifacts[]` are not yet first-class prompt inputs
+- rich table / math / code fidelity still depends on how clean `content_text` already is upstream
+
+So this path should be understood as:
+- shipped and operational
+- compatible with current export UX
+- not yet the final package-aware consumer model defined by newer capture / reader docs

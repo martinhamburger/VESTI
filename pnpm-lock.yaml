@@ -28,6 +28,9 @@ importers:
         specifier: ^2.0.0
         version: 2.0.0
     devDependencies:
+      '@playwright/test':
+        specifier: ^1.55.0
+        version: 1.58.2
       '@types/react':
         specifier: 18.2.48
         version: 18.2.48
@@ -226,7 +229,7 @@ importers:
         version: 1.2.8(@types/react-dom@18.2.18)(@types/react@18.2.48)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       '@vercel/analytics':
         specifier: 1.6.1
-        version: 1.6.1(next@16.1.6(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0))(react@18.2.0)(svelte@4.2.2)(vue@3.3.4)
+        version: 1.6.1(next@16.1.6(@playwright/test@1.58.2)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0))(react@18.2.0)(svelte@4.2.2)(vue@3.3.4)
       '@vesti/ui':
         specifier: file:../packages/vesti-ui
         version: link:../packages/vesti-ui
@@ -256,7 +259,7 @@ importers:
         version: 0.564.0(react@18.2.0)
       next:
         specifier: 16.1.6
-        version: 16.1.6(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0)
+        version: 16.1.6(@playwright/test@1.58.2)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
@@ -1787,6 +1790,11 @@ packages:
   '@plasmohq/parcel-transformer-vue@0.5.0':
     resolution: {integrity: sha512-/3oVbajt+DRqtbM0RkKFtfyZR8DVjcsYpj1jHqPParGVBiXwgP0D/8Bj5p5/5Iqihs08gzasTcjKcwQKKdj0og==}
     engines: {parcel: '>= 2.7.0'}
+
+  '@playwright/test@1.58.2':
+    resolution: {integrity: sha512-akea+6bHYBBfA9uQqSYmlJXn61cTa+jbO87xVLCWbTqbWadRVmhxlXATaOjOgcBaWU4ePo0wB41KMFv3o35IXA==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   '@pnpm/config.env-replace@1.1.0':
     resolution: {integrity: sha512-htyl8TWnKL7K/ESFa1oW2UB5lVDxuF5DpM7tBi6Hu2LNL3mWkIzNLG6N4zoCUP1lCKNxWy/3iu8mS8MvToGd6w==}
@@ -3504,6 +3512,11 @@ packages:
     resolution: {integrity: sha512-MGIE4HOvQCeUCzmlHs0vXpih4ysz4wg9qiSAu6cd42lVwPbTM1TjV7RusoyQqMmk/95gdQZX72u+YW+c3eEpFQ==}
     engines: {node: '>=14.14'}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -4434,6 +4447,16 @@ packages:
 
   plasmo@0.90.5:
     resolution: {integrity: sha512-VRFsRCHTKCDSRz7ZGmN4hCFqrHE8z7vDYqJK63v5gjRs+EUFdfEciQyGhPmG5NkT+yPvmMZO+R/j1HU/pg2BKA==}
+    hasBin: true
+
+  playwright-core@1.58.2:
+    resolution: {integrity: sha512-yZkEtftgwS8CsfYo7nm0KE8jsvm6i/PTgVtB8DL726wNf6H2IMsDuxCpJj59KDaxCtSnrWan2AeDqM7JBaultg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.58.2:
+    resolution: {integrity: sha512-vA30H8Nvkq/cPBnNw4Q8TWz1EJyqgpuinBcHET0YVJVFldr8JDNiU9LaWAE1KqSkRYazuaBhTpB5ZzShOezQ6A==}
+    engines: {node: '>=18'}
     hasBin: true
 
   postcss-import@15.1.0:
@@ -6845,6 +6868,10 @@ snapshots:
       - walrus
       - whiskers
 
+  '@playwright/test@1.58.2':
+    dependencies:
+      playwright: 1.58.2
+
   '@pnpm/config.env-replace@1.1.0': {}
 
   '@pnpm/network.ca-file@1.0.2':
@@ -7907,9 +7934,9 @@ snapshots:
 
   '@types/unist@2.0.11': {}
 
-  '@vercel/analytics@1.6.1(next@16.1.6(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0))(react@18.2.0)(svelte@4.2.2)(vue@3.3.4)':
+  '@vercel/analytics@1.6.1(next@16.1.6(@playwright/test@1.58.2)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0))(react@18.2.0)(svelte@4.2.2)(vue@3.3.4)':
     optionalDependencies:
-      next: 16.1.6(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0)
+      next: 16.1.6(@playwright/test@1.58.2)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0)
       react: 18.2.0
       svelte: 4.2.2
       vue: 3.3.4
@@ -8506,6 +8533,9 @@ snapshots:
       graceful-fs: 4.2.11
       jsonfile: 6.2.0
       universalify: 2.0.1
+
+  fsevents@2.3.2:
+    optional: true
 
   fsevents@2.3.3:
     optional: true
@@ -9335,7 +9365,7 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  next@16.1.6(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0):
+  next@16.1.6(@playwright/test@1.58.2)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(sass@1.98.0):
     dependencies:
       '@next/env': 16.1.6
       '@swc/helpers': 0.5.15
@@ -9354,6 +9384,7 @@ snapshots:
       '@next/swc-linux-x64-musl': 16.1.6
       '@next/swc-win32-arm64-msvc': 16.1.6
       '@next/swc-win32-x64-msvc': 16.1.6
+      '@playwright/test': 1.58.2
       sass: 1.98.0
       sharp: 0.34.5
     transitivePeerDependencies:
@@ -9541,6 +9572,14 @@ snapshots:
       - velocityjs
       - walrus
       - whiskers
+
+  playwright-core@1.58.2: {}
+
+  playwright@1.58.2:
+    dependencies:
+      playwright-core: 1.58.2
+    optionalDependencies:
+      fsevents: 2.3.2
 
   postcss-import@15.1.0(postcss@8.5.8):
     dependencies:

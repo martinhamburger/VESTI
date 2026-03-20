@@ -187,3 +187,32 @@ phase 1 的默认方向是：
 开始。
 
 只有先把输入统一和标注好，`E0` 才能继续保持 deterministic，后续 `AI Handoff` 和 `Knowledge Export` 的 bounded chain 才有稳定输入面可用。
+
+## 2026-03 package-boundary addendum
+
+The normalization boundary now needs one earlier stage and four explicit package rules:
+
+### `P-1 app_shell_interceptor`
+
+Before `P0`, the system must resolve:
+- conversation title
+- session identity
+- page-level app-shell status
+
+This stage exists because body payload must not overwrite app metadata. In practical terms,
+正文里的 `<h1>` or large heading text is never the default title source.
+
+### Export-facing package rules
+
+For all post-`E0` prompt and workflow documents, assume the upstream package distinguishes:
+- `canonical_plain_text`
+- `semantic_ast_v2`
+- `normalized_html_snapshot?`
+- `citations[]`
+- `artifacts[]`
+- `message_meta`
+
+And also assume:
+- `citations[]` and `artifacts[]` are sidecars, not body fragments
+- `normalized_html_snapshot` is rich-only, not full-message by default
+- downstream prompt stages must not assume citation / artifact evidence still lives inside body text

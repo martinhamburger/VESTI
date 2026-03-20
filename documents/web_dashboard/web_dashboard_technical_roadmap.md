@@ -52,6 +52,13 @@ Until then, the current playback timeline should be treated as provisional and s
 - add web-surface-focused debug views or structured logs for late data, empty graph, and adapter failure modes
 - make regression diagnosis cheaper without requiring deep runtime forensics every time
 
+### 3.5 Reader / package-aware parity
+Near-term web work should now assume:
+- web detail readers must stop depending on `message.content_text` alone
+- sidepanel and web should converge on one reader rendering contract
+- `citations[]` and `artifacts[]` must appear as dedicated sidecar sections, not as body-tail text
+- export should become package-aware before web-specific summary or compression UX grows further
+
 ## 4. Medium-term roadmap
 
 ### 4.1 Dedicated web state contracts
@@ -62,6 +69,17 @@ The dashboard increasingly deserves explicit local contracts for:
 - partial capability states
 
 This is especially important for `Network` and `Explore`, where user trust depends on understanding whether the system is empty, loading, or degraded.
+
+### 4.1.1 Minimal adapter evolution
+The web layer should evolve toward a minimal web-facing reader package rather than keep layering
+behavior on top of raw storage records.
+
+The next implementation stage should treat the following as the minimum target:
+- conversation-level derived time helpers
+- canonical plain-text fallback per message
+- rich structure handle / version marker per message
+- sidecar `citations[]`
+- sidecar `artifacts[]`
 
 ### 4.2 Web-specific spec maturity
 The new `documents/web_dashboard/` directory should become the durable source of truth for:
@@ -95,3 +113,8 @@ This roadmap does not commit to:
 - redesigning global IA or component-system contracts
 
 Those belong to other document families unless they directly alter web dashboard behavior.
+
+## 7. Related contract
+
+For the explicit web-facing draft contract, see:
+- `web_dashboard_reader_render_contract.md`

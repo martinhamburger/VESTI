@@ -1,6 +1,11 @@
 {
   "name": "vesti-monorepo",
   "private": true,
+  "scripts": {
+    "pw:auth": "node ./scripts/playwright/bootstrap-auth.mjs",
+    "pw:state": "node ./scripts/playwright/export-storage-state.mjs",
+    "pw:sample": "node ./scripts/playwright/dom-sample.mjs"
+  },
   "workspaces": [
     "frontend",
     "vesti-web",
@@ -13,6 +18,7 @@
     "remark-gfm": "^2.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@types/react": "18.2.48",
     "@types/react-dom": "18.2.18"
   },

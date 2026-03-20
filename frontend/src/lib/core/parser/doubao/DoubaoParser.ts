@@ -12,6 +12,10 @@ import {
   uniqueNodesInDocumentOrder,
 } from "../shared/selectorUtils";
 import { extractAstFromElement } from "../shared/astExtractor";
+import {
+  cloneAndSanitizeMessageContent,
+  getCitationNoiseProfile,
+} from "../shared/citationNoise";
 import { resolveCanonicalMessageText } from "../shared/canonicalMessageText";
 import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
 import { logger } from "../../../utils/logger";
@@ -712,7 +716,10 @@ export class DoubaoParser implements IParser {
   }
 
   private sanitizeContentElement(source: Element): Element {
-    const clone = source.cloneNode(true) as Element;
+    const { clone } = cloneAndSanitizeMessageContent(
+      source,
+      getCitationNoiseProfile("Doubao"),
+    );
 
     for (const selector of SELECTORS.inlineNoiseSelectors) {
       clone.querySelectorAll(selector).forEach((node) => node.remove());

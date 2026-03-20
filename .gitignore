@@ -42,3 +42,4 @@ agent.private.md
 skills/_local/
 skills/.local/
 skills/**/private/
+.playwright-auth/

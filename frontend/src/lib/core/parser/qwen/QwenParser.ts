@@ -1,6 +1,7 @@
 import type { IParser, ParsedMessage } from "../IParser";
 import type { Platform } from "../../../types";
 import {
+  collapseNodesToNearestRoots,
   closestAnySelector,
   extractEarliestTimeFromSelectors,
   normalizeCandidateNodes,
@@ -11,11 +12,17 @@ import {
   uniqueNodesInDocumentOrder,
 } from "../shared/selectorUtils";
 import { extractAstFromElement } from "../shared/astExtractor";
+import {
+  cloneAndSanitizeMessageContent,
+  getCitationNoiseProfile,
+} from "../shared/citationNoise";
 import { resolveCanonicalMessageText } from "../shared/canonicalMessageText";
 import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
 import { logger } from "../../../utils/logger";
 
 const USER_ROLE_ANCHORS = [
+  "[data-testid='send_message']",
+  "[data-testid*='send_message']",
   ".questionItem",
   "[data-role='user']",
   "[data-author='user']",
@@ -29,13 +36,14 @@ const USER_ROLE_ANCHORS = [
 ];
 
 const ASSISTANT_ROLE_ANCHORS = [
+  "[data-testid='receive_message']",
+  "[data-testid*='receive_message']",
   "[data-role='assistant']",
   "[data-author='assistant']",
   "[data-message-author-role='assistant']",
   "[data-testid*='assistant']",
   "[data-testid*='answer']",
   "[data-testid*='response']",
-  "[data-testid*='receive_message']",
   "[class*='assistant-message']",
   "[class*='message-assistant']",
   "[class*='answer']",
@@ -70,7 +78,9 @@ const ROLE_ANCESTOR_HINTS = [
 const SELECTORS = {
   userRoleAnchors: USER_ROLE_ANCHORS,
   assistantRoleAnchors: ASSISTANT_ROLE_ANCHORS,
+  hardMessageRoots: ['[data-testid="message-block-container"]'],
   roleAnchors: [
+    '[data-testid="message-block-container"]',
     ".bubble-element",
     "[data-testid*='message']",
     ...USER_ROLE_ANCHORS,
@@ -79,6 +89,7 @@ const SELECTORS = {
   copyActionAnchors: COPY_ACTION_ANCHORS,
   roleAncestorHints: ROLE_ANCESTOR_HINTS,
   turnBlocks: [
+    '[data-testid="message-block-container"]',
     "[data-msgid]",
     "[data-message-id]",
     ".chat-message-item",
@@ -89,6 +100,7 @@ const SELECTORS = {
     "[role='listitem']",
   ],
   messageContent: [
+    '[data-testid="message_text_content"]',
     ".qwen-markdown",
     ".chat-response-message .qwen-markdown",
     ".chat-response-message",
@@ -103,6 +115,7 @@ const SELECTORS = {
     "[class*='bubble']",
   ],
   preferredMessageContent: [
+    '[data-testid="message_text_content"]',
     ".qwen-markdown",
     ".chat-response-message",
     "[class*='chat-response-message']",
@@ -133,6 +146,16 @@ const SELECTORS = {
     "[class*='edit-history']",
     "[data-testid*='edit-history']",
     "[data-testid*='history-switch']",
+    ".response-message-footer",
+    ".qwen-chat-package-comp-new-action-control",
+    ".qwen-markdown-table-header",
+    ".copy-response-button",
+    ".qwen-thinking-selector",
+    ".message-input-right-button",
+    ".message-input-container",
+    ".chat-layout-input-container",
+    ".chat-container-statement",
+    "#voice-input-button",
     "[data-testid*='action-bar']",
     "[data-testid='action-bar-copy']",
     "[data-testid*='action-copy']",
@@ -205,6 +228,9 @@ const ROOT_SELECTORS = [
 ];
 
 const ROOT_MESSAGE_HINTS = [
+  '[data-testid="message-block-container"]',
+  "[data-testid='send_message']",
+  "[data-testid='receive_message']",
   ".questionItem",
   ".bubble-element",
   "[data-role='user']",
@@ -480,7 +506,8 @@ export class QwenParser implements IParser {
   }
 
   private extractUsingSelectorStrategy(root: Element, perfMode: AstPerfMode): ExtractionResult {
-    const rawCandidates = this.collectMessageCandidates(root);
+    const hardBoundaryRoots = this.queryAllUniqueWithin(root, SELECTORS.hardMessageRoots);
+    const rawCandidates = this.collectMessageCandidates(root, hardBoundaryRoots);
     const normalized = normalizeCandidateNodes(rawCandidates, {
       minTextLength: 2,
       noiseContainerSelectors: SELECTORS.noiseContainers,
@@ -521,7 +548,10 @@ export class QwenParser implements IParser {
   }
 
   private extractUsingAnchorStrategy(root: Element, perfMode: AstPerfMode): ExtractionResult {
-    const anchors = this.queryAllUniqueWithin(root, SELECTORS.roleAnchors);
+    const hardBoundaryRoots = this.queryAllUniqueWithin(root, SELECTORS.hardMessageRoots);
+    const anchors = hardBoundaryRoots.length > 0
+      ? hardBoundaryRoots
+      : this.queryAllUniqueWithin(root, SELECTORS.roleAnchors);
     if (anchors.length === 0) {
       return {
         source: "anchor",
@@ -534,9 +564,12 @@ export class QwenParser implements IParser {
       };
     }
 
-    const resolved = uniqueNodesInDocumentOrder(
-      anchors.map((anchor) => this.resolveAnchorNode(anchor)).filter(Boolean) as Element[],
-    );
+    const resolved =
+      hardBoundaryRoots.length > 0
+        ? collapseNodesToNearestRoots(anchors, SELECTORS.hardMessageRoots)
+        : uniqueNodesInDocumentOrder(
+            anchors.map((anchor) => this.resolveAnchorNode(anchor)).filter(Boolean) as Element[],
+          );
 
     const messages: ParsedMessage[] = [];
     let droppedNoise = 0;
@@ -581,7 +614,19 @@ export class QwenParser implements IParser {
     return anchor;
   }
 
-  private collectMessageCandidates(root: Element): Element[] {
+  private collectMessageCandidates(root: Element, hardBoundaryRoots: Element[]): Element[] {
+    if (hardBoundaryRoots.length > 0) {
+      return collapseNodesToNearestRoots(
+        [
+          ...hardBoundaryRoots,
+          ...this.queryAllUniqueWithin(root, SELECTORS.roleAnchors),
+          ...this.collectCopyActionCandidates(root),
+          ...this.queryAllUniqueWithin(root, SELECTORS.turnBlocks),
+        ],
+        SELECTORS.hardMessageRoots,
+      );
+    }
+
     const combinedCandidates: Element[] = [...this.queryAllUniqueWithin(root, SELECTORS.roleAnchors)];
     combinedCandidates.push(...this.collectCopyActionCandidates(root));
 
@@ -613,7 +658,9 @@ export class QwenParser implements IParser {
       }
     }
 
-    return uniqueNodesInDocumentOrder(resolvedNodes);
+    const deduped = uniqueNodesInDocumentOrder(resolvedNodes);
+    const collapsed = collapseNodesToNearestRoots(deduped, SELECTORS.hardMessageRoots);
+    return collapsed.length > 0 ? collapsed : deduped;
   }
 
   private resolveActionAnchorMessageNode(anchor: Element): Element | null {
@@ -861,7 +908,10 @@ export class QwenParser implements IParser {
   }
 
   private sanitizeContentElement(source: Element): Element {
-    const clone = source.cloneNode(true) as Element;
+    const { clone } = cloneAndSanitizeMessageContent(
+      source,
+      getCitationNoiseProfile("Qwen"),
+    );
 
     for (const selector of SELECTORS.inlineNoiseSelectors) {
       clone.querySelectorAll(selector).forEach((node) => node.remove());

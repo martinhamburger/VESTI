@@ -4,6 +4,8 @@ import { db } from "../../db/schema";
 import type { ConversationRecord, MessageRecord } from "../../db/schema";
 import { enforceStorageWriteGuard } from "../../db/storageLimits";
 import { isAstRoot } from "../../utils/astText";
+import { normalizeMessageArtifacts } from "../../utils/messageArtifacts";
+import { normalizeMessageCitations } from "../../utils/messageCitations";
 
 function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
@@ -17,6 +19,8 @@ function buildParsedSignatures(messages: ParsedMessage[]): string[] {
       contentAst: message.contentAst ?? null,
       contentAstVersion: message.contentAstVersion ?? null,
       degradedNodesCount: message.degradedNodesCount,
+      citations: message.citations ?? [],
+      artifacts: message.artifacts ?? [],
     })
   );
 }
@@ -36,6 +40,8 @@ function buildStoredSignatures(messages: MessageRecord[]): string[] {
         contentAst: isAstRoot(message.content_ast) ? message.content_ast : null,
         contentAstVersion: message.content_ast_version ?? null,
         degradedNodesCount: message.degraded_nodes_count,
+        citations: message.citations ?? [],
+        artifacts: message.artifacts ?? [],
       })
     );
 }
@@ -62,15 +68,41 @@ function buildSignature(params: {
   contentAst: unknown | null;
   contentAstVersion: string | null | undefined;
   degradedNodesCount: number | undefined;
+  citations: unknown;
+  artifacts: unknown;
 }): string {
-  const { role, contentText, contentAst, contentAstVersion, degradedNodesCount } = params;
+  const {
+    role,
+    contentText,
+    contentAst,
+    contentAstVersion,
+    degradedNodesCount,
+    citations,
+    artifacts,
+  } = params;
   const astSignature = contentAst ? JSON.stringify(contentAst) : "";
+  const citationSignature = JSON.stringify(
+    normalizeMessageCitations(citations).map((citation) => ({
+      label: citation.label,
+      href: citation.href,
+      host: citation.host,
+      sourceType: citation.sourceType,
+    }))
+  );
+  const artifactSignature = JSON.stringify(
+    normalizeMessageArtifacts(artifacts).map((artifact) => ({
+      kind: artifact.kind,
+      label: artifact.label ?? "",
+    }))
+  );
   return [
     role,
     normalizeText(contentText),
     contentAstVersion ?? "",
     normalizeDegradedNodesCount(degradedNodesCount),
     astSignature,
+    citationSignature,
+    artifactSignature,
   ].join("|");
 }
 
@@ -146,6 +178,8 @@ export async function deduplicateAndSave(
         content_ast: message.contentAst ?? null,
         content_ast_version: message.contentAstVersion ?? null,
         degraded_nodes_count: normalizeDegradedNodesCount(message.degradedNodesCount),
+        citations: normalizeMessageCitations(message.citations ?? []),
+        artifacts: normalizeMessageArtifacts(message.artifacts ?? []),
         created_at: message.timestamp ?? baseTimestamp + index,
       }));
 
@@ -204,6 +238,8 @@ export async function deduplicateAndSave(
       content_ast: message.contentAst ?? null,
       content_ast_version: message.contentAstVersion ?? null,
       degraded_nodes_count: normalizeDegradedNodesCount(message.degradedNodesCount),
+      citations: normalizeMessageCitations(message.citations ?? []),
+      artifacts: normalizeMessageArtifacts(message.artifacts ?? []),
       created_at: message.timestamp ?? baseTimestamp + index,
     }));
 

@@ -14,6 +14,7 @@ This directory is the stable entrypoint for:
 - current architecture and data/message flow
 - repair history for web-view regressions
 - forward technical roadmap for dashboard / library / explore / network
+- web-facing schema and reader/web rendering contracts
 
 ## Boundaries
 
@@ -42,13 +43,16 @@ This directory is the stable entrypoint for:
   - repair ledger for web-view regressions, starting with the rc8 Network edge fix
 - `web_dashboard_technical_roadmap.md`
   - forward roadmap for web-surface engineering evolution
+- `web_dashboard_reader_render_contract.md`
+  - minimal web-facing schema draft and reader/web render contract draft
 
 ## Recommended reading order
 
 1. `web_dashboard_engineering_spec.md`
 2. `web_dashboard_current_architecture.md`
-3. `web_dashboard_rc8_repairs.md`
-4. `web_dashboard_technical_roadmap.md`
+3. `web_dashboard_reader_render_contract.md`
+4. `web_dashboard_rc8_repairs.md`
+5. `web_dashboard_technical_roadmap.md`
 
 ## Primary source inputs
 

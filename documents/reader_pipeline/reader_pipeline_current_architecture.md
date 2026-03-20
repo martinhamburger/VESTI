@@ -78,6 +78,38 @@ JSON export 较强，但 MD / TXT 和 compression prompt 过去更依赖 `conten
 `vesti-web` 过去没有完整跟上扩展侧 `Conversation` 时间字段。
 再加上一些 prototype-only 的展示逻辑，web 端尤其容易发生语义漂移。
 
+### 4.6 Reader / Web Still Do Not Share One Rich-Structure Renderer
+
+当前 sidepanel reader 已经具备 AST-first 渲染能力，但 web / library 仍明显更 text-centric：
+- web library / preview 仍直接渲染 `message.content_text`
+- web reader 并未真正复用 sidepanel 的 rich renderer contract
+- citation / artifact 仍缺少 sidecar 区域，容易重新退化为正文尾巴或直接消失
+
+这意味着“有 AST”与“所有阅读表面都真正消费 AST”之间仍有明显距离。
+
+### 4.7 Export Is Still Split Between Package-Aware JSON And Text-Centric Body Exports
+
+当前导出链路并不统一：
+- JSON 已能带 `content_ast` 与部分 message metadata
+- MD / TXT 仍以 `message.content_text` 为正文主输入
+- citation / artifact 只能作为局部补丁追加，而不是从稳定 package contract 派生
+
+这使得 export 是当前最先需要 package-aware 的 consumer，
+因为它同时暴露标题、正文、表格、citation、artifact 的全部信息密度。
+
+### 4.8 Insights And Compression Are Still Deeply Text-Centric
+
+现有 `insightGenerationService`、`exportCompression`、`exportConversations`
+大量直接消费 `message.content_text`：
+- transcript 拼装依赖 `content_text`
+- sentence splitting / excerpt building 依赖 `content_text`
+- artifact signal 目前主要依赖正文中的文本线索，而不是 sidecar metadata
+
+这并不等于它们立刻需要 package-aware 实现，但意味着文档必须先明确：
+- `content_text` 只是 canonical plain text fallback
+- 在 package-aware rollout 前，insights / compression 不得假设 `content_text` 承载全部 rich structure
+- `citations[] / artifacts[]` 的存在将改变未来 prompt 输入边界
+
 ## 5. Current Time Display Matrix
 
 截至当前实现，Threads 页和 reader / web 至少同时使用三种时间：
@@ -155,8 +187,9 @@ JSON export 较强，但 MD / TXT 和 compression prompt 过去更依赖 `conten
 
 1. 先统一文案和展示语义，明确每个表面到底在表达哪一个时间
 2. 保持 `originAt / captureFreshnessAt / recordModifiedAt` 作为唯一 shared helper
-3. sidepanel、export、insights、web 全部对齐
-4. 再继续推进 attachment / artifact / citation 等 richer content package
+3. 先让 `reader / web / export` 对齐 shared conversation package
+4. 明确 `citations[] / artifacts[] / semantic_ast_v2` 的消费 contract
+5. 最后再推进 `insights / compression` 从 text-centric 迁移到 package-aware
 
 ## 8.1 Current Exclusion: Network
 
@@ -178,4 +211,4 @@ JSON export 较强，但 MD / TXT 和 compression prompt 过去更依赖 `conten
 ## 9. Decision Statement
 
 reader pipeline 当前不是“没有架构”，而是“主通道已经存在，但共享 consumer contract 还不够强”。
-现在最需要解决的不是单个页面显示错时间，而是同一条线程在多条消费链路里是否共享同一套结构和时间语义。
+现在最需要解决的不是单个页面显示错时间，而是同一条线程在多条消费链路里是否共享同一套结构、时间语义，以及正文/sidecar 分离后的同一份 conversation package。

@@ -3,6 +3,7 @@ import type {
   Conversation,
   ExportPayload,
   Message,
+  MessageCitation,
   SummaryRecord,
   WeeklyReportRecord,
 } from "../types";
@@ -203,6 +204,18 @@ function groupMessages(messages: Message[]): Map<number, Message[]> {
   return byConversation;
 }
 
+function formatExportCitationLines(citations: MessageCitation[], format: "txt" | "md"): string[] {
+  if (citations.length === 0) {
+    return [];
+  }
+
+  if (format === "md") {
+    return citations.map((citation) => `- [${citation.label}](${citation.href}) (${citation.host})`);
+  }
+
+  return citations.map((citation) => `- ${citation.label} — ${citation.href}`);
+}
+
 function groupAnnotations(annotations: Annotation[]): Map<number, Annotation[]> {
   const byConversation = new Map<number, Annotation[]>();
   const sorted = [...annotations].sort((a, b) => a.created_at - b.created_at);
@@ -248,6 +261,7 @@ export function buildExportJsonV1(dataset: ExportDataset): ExportPayload {
         ...item,
         content_ast: item.content_ast ?? null,
         content_ast_version: item.content_ast_version ?? null,
+        citations: item.citations ?? [],
         degraded_nodes_count:
           typeof item.degraded_nodes_count === "number" &&
           Number.isFinite(item.degraded_nodes_count)
@@ -310,6 +324,10 @@ export function buildExportTxtV1(dataset: ExportDataset): ExportPayload {
       const role = message.role === "user" ? "User" : "AI";
       lines.push(`${role}: [${toLocalDateTime(message.created_at)}]`);
       lines.push(message.content_text);
+      if ((message.citations ?? []).length > 0) {
+        lines.push("Sources:");
+        lines.push(...formatExportCitationLines(message.citations ?? [], "txt"));
+      }
       const messageAnnotations = annotationByMessage.get(message.id) ?? [];
       for (const annotation of messageAnnotations) {
         const dayLabel = annotation.days_after === 1 ? "day" : "days";
@@ -390,6 +408,12 @@ export function buildExportMdV1(dataset: ExportDataset): ExportPayload {
       lines.push(`### ${role} [${toLocalDateTime(message.created_at)}]`);
       lines.push("");
       lines.push(message.content_text);
+      if ((message.citations ?? []).length > 0) {
+        lines.push("");
+        lines.push("#### Sources");
+        lines.push("");
+        lines.push(...formatExportCitationLines(message.citations ?? [], "md"));
+      }
       const messageAnnotations = annotationByMessage.get(message.id) ?? [];
       if (messageAnnotations.length > 0) {
         lines.push("");

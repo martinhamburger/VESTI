@@ -288,3 +288,60 @@ interface RepairInput {
 - `cross_platform_conversation_normalization_architecture.md`
 - `export_workflow_runner_spec.md`
 - `export_prompt_contract.md`
+
+## 2026-03 dataset shape extension
+
+The export-facing dataset contract should now assume the following `E0` message shape, even if the
+runtime still stages some fields incrementally:
+
+```ts
+interface ExportDatasetMetadata {
+  title?: string; // app-shell metadata, never inferred from body heading
+  url?: string;
+  sessionIdentity?: string;
+  startedAt?: string;
+  capturedAt?: string;
+  selectedMessageCount: number;
+}
+
+interface ExportDatasetMessage {
+  id: string;
+  role: "user" | "assistant" | "system" | "tool";
+  createdAt?: string;
+  canonicalPlainText: string;
+  semanticAstVersion?: "ast_v2";
+  normalizedHtmlSnapshotRef?: string;
+  citations?: DatasetCitation[];
+  artifacts?: DatasetArtifact[];
+  artifactRefs?: string[];
+}
+
+interface DatasetCitation {
+  label: string;
+  href: string;
+  host: string;
+  sourceType: "inline_pill" | "search_card" | "reference_list" | "unknown";
+  occurrenceRole?: "body_inline" | "sidecar_only" | "unknown";
+}
+
+interface DatasetArtifact {
+  kind:
+    | "canvas"
+    | "preview"
+    | "code_artifact"
+    | "download_card"
+    | "standalone_artifact"
+    | "unknown";
+  label?: string;
+  captureMode?: "presence_only" | "embedded_dom_snapshot" | "standalone_artifact";
+  renderDimensions?: { width: number; height: number };
+  plainTextRef?: string;
+  markdownSnapshotRef?: string;
+  normalizedHtmlSnapshotRef?: string;
+}
+```
+
+Rules:
+- `canonicalPlainText` is fallback body text, not the only structure source
+- `citations[]` and `artifacts[]` are message sidecars
+- `normalizedHtmlSnapshotRef` is expected only for rich-structure or artifact-bearing messages

@@ -35,6 +35,8 @@ import {
   getConversationOriginAt,
 } from "../conversations/timestamps";
 import { SUPPORTED_PLATFORMS, normalizePlatform } from "../platform";
+import { normalizeMessageArtifacts } from "../utils/messageArtifacts";
+import { normalizeMessageCitations } from "../utils/messageCitations";
 import { db } from "./schema";
 import { enforceStorageWriteGuard, getStorageUsageSnapshot } from "./storageLimits";
 import type {
@@ -355,6 +357,8 @@ function toMessage(record: MessageRecord): Message {
     content_ast: (record.content_ast ?? null) as Message["content_ast"],
     content_ast_version: record.content_ast_version ?? null,
     degraded_nodes_count: degradedNodesCount,
+    citations: normalizeMessageCitations(record.citations),
+    artifacts: normalizeMessageArtifacts(record.artifacts),
   };
 }
 

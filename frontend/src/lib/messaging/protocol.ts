@@ -25,6 +25,8 @@ import type {
   ExploreAskOptions,
   Note,
   SearchConversationMatchesQuery,
+  MessageCitation,
+  MessageArtifact,
 } from "../types";
 import type { AstRoot, AstVersion } from "../types/ast";
 
@@ -81,6 +83,8 @@ export interface ParsedMessage {
   contentAst?: AstRoot | null;
   contentAstVersion?: AstVersion | null;
   degradedNodesCount?: number;
+  citations?: MessageCitation[];
+  artifacts?: MessageArtifact[];
   htmlContent?: string;
   timestamp?: number;
 }

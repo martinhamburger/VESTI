@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Copy, Check, ChevronDown } from "lucide-react";
+import { Copy, Check, ChevronDown, Link2 } from "lucide-react";
 import type { Message, Platform } from "~lib/types";
 import type { AstRoot } from "~lib/types/ast";
 import { AstMessageRenderer } from "./AstMessageRenderer";
+import { DisclosureSection } from "./DisclosureSection";
 import { PLATFORM_TONE } from "./platformTone";
 import {
   buildFallbackSegments,
@@ -196,6 +197,35 @@ export function MessageBubble({
           />
         ) : null}
       </div>
+
+      {(message.citations ?? []).length > 0 ? (
+        <div className="mt-3">
+          <DisclosureSection
+            title="Sources"
+            description={`${message.citations?.length ?? 0} linked source${(message.citations?.length ?? 0) === 1 ? "" : "s"}`}
+            icon={<Link2 className="h-3.5 w-3.5" strokeWidth={1.75} />}
+          >
+            <div className="space-y-2">
+              {(message.citations ?? []).map((citation) => (
+                <a
+                  key={citation.href}
+                  href={citation.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block rounded-lg border border-border-subtle bg-bg-primary/80 px-3 py-2 transition-colors hover:bg-bg-secondary/70"
+                >
+                  <div className="text-[12px] font-medium text-text-primary">
+                    {citation.label}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-text-tertiary">
+                    {citation.host}
+                  </div>
+                </a>
+              ))}
+            </div>
+          </DisclosureSection>
+        </div>
+      ) : null}
 
       <div className={`reader-expand-row ${canCollapse ? "has-btn" : ""}`}>
         {canCollapse ? (

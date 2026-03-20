@@ -86,6 +86,24 @@ export function closestAnySelector(root: Element, selectors: string[]): Element 
   return null;
 }
 
+export function collapseNodesToNearestRoots(
+  nodes: Iterable<Element>,
+  selectors: string[],
+): Element[] {
+  const collapsed: Element[] = [];
+
+  for (const node of uniqueNodesInDocumentOrder(nodes)) {
+    const root = matchesAnySelector(node, selectors)
+      ? node
+      : closestAnySelector(node, selectors);
+    if (root) {
+      collapsed.push(root);
+    }
+  }
+
+  return uniqueNodesInDocumentOrder(collapsed);
+}
+
 export function normalizeCandidateNodes(
   nodes: Element[],
   options: CandidateNormalizationOptions = {},
