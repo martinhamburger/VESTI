@@ -1,33 +1,28 @@
-﻿import type { IParser, ParsedMessage } from "../IParser";
+import type { IParser, ParsedMessage } from "../IParser";
 import type { Platform } from "../../../types";
-import {
-  extractEarliestTimeFromSelectors,
-  queryAllUnique,
-  queryAllWithinUnique,
-  queryFirst,
-  queryFirstWithin,
-  safeTextContent,
-  uniqueNodesInDocumentOrder,
-} from "../shared/selectorUtils";
+import { extractEarliestTimeFromSelectors, queryAllUnique, queryFirst, queryFirstWithin, safeTextContent, uniqueNodesInDocumentOrder } from "../shared/selectorUtils";
 import { extractAstFromElement } from "../shared/astExtractor";
+import { resolveCanonicalMessageText } from "../shared/canonicalMessageText";
 import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
 import { logger } from "../../../utils/logger";
+import { createMessageArtifact } from "../../../utils/messageArtifacts";
 
 const SELECTORS = {
-  userNodes: [".hyc-component-text .hyc-content-text"],
+  messageRoots: [".agent-chat__bubble"],
+  userRoots: [".agent-chat__bubble--human"],
+  aiRoots: [".agent-chat__bubble--ai"],
+  userContent: [
+    ".hyc-content-text",
+    ".hyc-component-text .hyc-content-text",
+    ".agent-chat__bubble__content",
+  ],
+  aiSpeechRoots: [
+    ".agent-chat__speech-text",
+    ".hyc-content-md",
+    ".hyc-common-markdown",
+  ],
+  aiFinalNodes: [".hyc-common-markdown:not(.hyc-common-markdown-style-cot)"],
   cotParagraphs: [".hyc-component-deepsearch-cot__think__content__item-text .ybc-p"],
-  finalNodes: [".hyc-common-markdown:not(.hyc-common-markdown-style-cot)"],
-  anchorRoots: [
-    ".hyc-component-text",
-    ".hyc-component-deepsearch-cot__think",
-    ".hyc-common-markdown:not(.hyc-common-markdown-style-cot)",
-  ],
-  cotNoiseContainers: [
-    ".hyc-component-deepsearch-cot__think__header-container",
-    ".hyc-component-deepsearch-cot__think__content__item-search",
-    ".hyc-component-deepsearch-cot__think__content__item__docs",
-    ".hyc-component-deepsearch-cot__think__content__item__docs__number",
-  ],
   title: [
     ".hyc-page-title",
     ".hyc-page-header h1",
@@ -43,25 +38,13 @@ const SELECTORS = {
     "[class*='typing']",
     "[class*='generating']",
   ],
-  noiseContainers: [
-    "form",
-    "footer",
-    "nav",
-    "[role='navigation']",
-    "[data-testid*='composer']",
-    "[contenteditable='true']",
-  ],
-  noiseTextPatterns: [
-    /^new chat$/i,
-    /^retry$/i,
-    /^edit$/i,
-    /^copy$/i,
-    /^yuanbao can make mistakes\.?/i,
-    /^\u5df2\u5b8c\u6210\u6df1\u5ea6\u641c\u7d22.*$/i,
-    /^\u627e\u5230\u4e86\s*\d+\s*\u7bc7\u76f8\u5173\u8d44\u6599$/i,
-  ],
   sourceTimes: ["time[datetime]", "article time[datetime]"],
   uiNoiseSelectors: [
+    ".agent-chat__conv--ai__toolbar",
+    ".agent-chat__conv--human__toolbar",
+    ".ToolbarCopy_copyIconWrap__PfQIm",
+    ".Toolbar_icon__xGP8b",
+    ".Repeat_icon__oL8u_",
     ".hyc-component-deepsearch-cot__think__header-container",
     ".hyc-component-deepsearch-cot__think__header__toggle",
     ".hyc-component-deepsearch-cot__think__content__item-search",
@@ -70,9 +53,22 @@ const SELECTORS = {
     ".hyc-component-deepsearch-cot__think__content__item__doc",
     ".hyc-component-deepsearch-cot__think__content__item__doc__title",
     ".hyc-component-deepsearch-cot__think__content__item__doc__title__text",
+    ".agent-dialogue__tool",
+    ".agent-dialogue__tool__download",
+    ".index_pc_download_pure__iGyre",
+    ".agent-dialogue__content--common__input",
+    ".agent-chat__input-box",
+    ".agent-dialogue__content-copyright",
+    ".agent-chat__scroll-arrow",
+    ".agent-dialogue__content-split-pane__code",
+    "#yuanbao-canvas-container",
+    ".hyc-card-box-process-list",
     "button",
     "svg",
   ],
+  artifactPreview: [".hyc-card-box-process-list"],
+  artifactCanvas: ["#yuanbao-canvas-container"],
+  artifactCodePane: [".agent-dialogue__content-split-pane__code"],
 };
 
 const TITLE_PLATFORM_SUFFIX_PATTERN =
@@ -88,15 +84,13 @@ const SESSION_ID_QUERY_KEYS = [
   "session_id",
   "id",
 ];
-
 const SESSION_ID_PATTERNS = [
-  /\/a\/chat\/s\/([a-zA-Z0-9_-]{8,})/i,
-  /\/chat\/([a-zA-Z0-9_-]{8,})/i,
+  /\/chat\/[^/]+\/([a-zA-Z0-9-]{8,})/i,
+  /\/chat\/([a-zA-Z0-9-]{8,})/i,
   /\/conversation\/([a-zA-Z0-9_-]{8,})/i,
   /\/c\/([a-zA-Z0-9_-]{8,})/i,
   /\/s\/([a-zA-Z0-9_-]{8,})/i,
 ];
-
 const INVALID_SESSION_IDS = new Set([
   "chat",
   "new",
@@ -106,19 +100,10 @@ const INVALID_SESSION_IDS = new Set([
   "library",
 ]);
 
-const NOISE_LINE_PATTERNS = [
-  /^(copy|edit|retry|like|dislike|share)$/i,
-  /^(references?|\u5f15\u7528)$/i,
-  /^\u5df2\u5b8c\u6210\u6df1\u5ea6\u641c\u7d22.*$/i,
-  /^\u627e\u5230\u4e86\s*\d+\s*\u7bc7\u76f8\u5173\u8d44\u6599$/i,
-];
-
 type MessageRole = "user" | "ai";
-type ExtractionSource = "selector" | "anchor";
-type SemanticCandidateKind = "user" | "cot" | "final";
 
 interface ParserStats {
-  source: ExtractionSource;
+  source: "selector" | "anchor";
   totalCandidates: number;
   keptMessages: number;
   roleDistribution: Record<MessageRole, number>;
@@ -134,7 +119,7 @@ interface ParserStats {
 }
 
 interface ExtractionResult {
-  source: ExtractionSource;
+  source: "selector" | "anchor";
   totalCandidates: number;
   droppedNoise: number;
   droppedUnknownRole: number;
@@ -143,20 +128,10 @@ interface ExtractionResult {
   astNodeCount: number;
 }
 
-interface ParsedNodeResult {
+interface ParsedRootResult {
   message: ParsedMessage;
   degradedNodesCount: number;
   astNodeCount: number;
-}
-
-interface SemanticCandidate {
-  kind: SemanticCandidateKind;
-  node: Element;
-}
-
-interface NormalizedSemanticCandidates {
-  candidates: SemanticCandidate[];
-  droppedNoise: number;
 }
 
 export class YuanbaoParser implements IParser {
@@ -254,117 +229,61 @@ export class YuanbaoParser implements IParser {
   }
 
   private extractUsingSelectorStrategy(perfMode: AstPerfMode): ExtractionResult {
-    const rawCandidates = this.collectSemanticCandidatesBySelector();
-    return this.buildMessagesFromCandidates(rawCandidates, perfMode, "selector");
+    const roots = uniqueNodesInDocumentOrder(queryAllUnique(SELECTORS.messageRoots));
+    return this.buildMessagesFromRoots(roots, perfMode, "selector");
   }
 
   private extractUsingAnchorStrategy(perfMode: AstPerfMode): ExtractionResult {
-    const rawCandidates = this.collectSemanticCandidatesByAnchor();
-    return this.buildMessagesFromCandidates(rawCandidates, perfMode, "anchor");
+    const anchors = uniqueNodesInDocumentOrder([
+      ...queryAllUnique(SELECTORS.userContent),
+      ...queryAllUnique(SELECTORS.aiSpeechRoots),
+      ...queryAllUnique(SELECTORS.aiFinalNodes),
+    ]);
+    const roots = uniqueNodesInDocumentOrder(
+      anchors
+        .map((anchor) => anchor.closest(".agent-chat__bubble"))
+        .filter(Boolean) as Element[],
+    );
+    return this.buildMessagesFromRoots(roots, perfMode, "anchor");
   }
 
-  private buildMessagesFromCandidates(
-    rawCandidates: SemanticCandidate[],
+  private buildMessagesFromRoots(
+    roots: Element[],
     perfMode: AstPerfMode,
-    source: ExtractionSource,
+    source: "selector" | "anchor",
   ): ExtractionResult {
-    const normalized = this.normalizeSemanticCandidates(rawCandidates);
-
+    const aiRoots = roots.filter((root) => this.inferRole(root) === "ai");
+    const latestAiRoot = aiRoots[aiRoots.length - 1] ?? null;
     const messages: ParsedMessage[] = [];
-    let droppedNoise = normalized.droppedNoise;
+    let droppedNoise = 0;
     let droppedUnknownRole = 0;
     let degradedNodesCount = 0;
     let astNodeCount = 0;
 
-    let pendingCotTexts: string[] = [];
-    let pendingCotElements: Element[] = [];
-
-    for (const candidate of normalized.candidates) {
-      if (candidate.kind === "user") {
-        pendingCotTexts = [];
-        pendingCotElements = [];
-
-        const parsed = this.parseSingleNodeMessage(candidate.node, "user", perfMode);
-        if (!parsed) {
+    for (const root of roots) {
+      const parsed = this.parseMessageRoot(root, perfMode, root === latestAiRoot);
+      if (!parsed) {
+        if (this.inferRole(root)) {
+          droppedNoise += 1;
+        } else {
           droppedUnknownRole += 1;
-          continue;
         }
-        if (!parsed.message.textContent.trim()) {
-          droppedNoise += 1;
-          continue;
-        }
-
-        messages.push(parsed.message);
-        degradedNodesCount += parsed.degradedNodesCount;
-        astNodeCount += parsed.astNodeCount;
         continue;
       }
 
-      if (candidate.kind === "cot") {
-        const cotElement = this.sanitizeContentElement(candidate.node);
-        const cotText = this.cleanExtractedText(this.extractVisibleText(cotElement));
-        if (!cotText) {
-          droppedNoise += 1;
-          continue;
-        }
-
-        pendingCotTexts.push(cotText);
-        pendingCotElements.push(cotElement);
-        continue;
-      }
-
-      const finalElement = this.sanitizeContentElement(candidate.node);
-      const finalText = this.cleanExtractedText(this.extractVisibleText(finalElement));
-      if (!finalText) {
+      if (!parsed.message.textContent.trim()) {
         droppedNoise += 1;
         continue;
       }
 
-      const merged = document.createElement("div");
-      let textContent = finalText;
-
-      if (pendingCotTexts.length > 0) {
-        const cotSection = document.createElement("section");
-        cotSection.setAttribute("data-vesti-yuanbao-cot", "true");
-        for (const cotElement of pendingCotElements) {
-          const fragment = document.createElement("div");
-          fragment.setAttribute("data-vesti-yuanbao-cot-fragment", "true");
-          fragment.appendChild(cotElement.cloneNode(true));
-          cotSection.appendChild(fragment);
-        }
-        merged.appendChild(cotSection);
-        textContent = `${pendingCotTexts.join("\n\n")}\n\n---\n\n${finalText}`;
-      }
-
-      const finalSection = document.createElement("section");
-      finalSection.setAttribute("data-vesti-yuanbao-final", "true");
-      finalSection.appendChild(finalElement.cloneNode(true));
-      merged.appendChild(finalSection);
-
-      const ast = extractAstFromElement(merged, {
-        platform: "Yuanbao",
-        perfMode,
-      });
-
-      messages.push({
-        role: "ai",
-        textContent,
-        contentAst: ast.root,
-        contentAstVersion: ast.root ? "ast_v1" : null,
-        degradedNodesCount: ast.degradedNodesCount,
-        htmlContent: merged.innerHTML,
-      });
-
-      degradedNodesCount += ast.degradedNodesCount;
-      astNodeCount += ast.astNodeCount;
-
-      pendingCotTexts = [];
-      pendingCotElements = [];
+      messages.push(parsed.message);
+      degradedNodesCount += parsed.degradedNodesCount;
+      astNodeCount += parsed.astNodeCount;
     }
 
     return {
       source,
-      totalCandidates: rawCandidates.length,
+      totalCandidates: roots.length,
       droppedNoise,
       droppedUnknownRole,
       messages,
@@ -373,23 +292,44 @@ export class YuanbaoParser implements IParser {
     };
   }
 
-  private parseSingleNodeMessage(
-    node: Element,
-    role: MessageRole,
+  private parseMessageRoot(
+    root: Element,
     perfMode: AstPerfMode,
-  ): ParsedNodeResult | null {
-    const sanitized = this.sanitizeContentElement(node);
-    const textContent = this.cleanExtractedText(this.extractVisibleText(sanitized));
-    if (!textContent) return null;
+    isLatestAiRoot: boolean,
+  ): ParsedRootResult | null {
+    const role = this.inferRole(root);
+    if (!role) {
+      return null;
+    }
+
+    if (role === "user") {
+      return this.parseUserRoot(root, perfMode);
+    }
+
+    return this.parseAiRoot(root, perfMode, isLatestAiRoot);
+  }
+
+  private parseUserRoot(root: Element, perfMode: AstPerfMode): ParsedRootResult | null {
+    const contentSource = this.resolveUserContentRoot(root);
+    const sanitized = this.sanitizeContentElement(contentSource ?? root);
+    const fallbackText = this.cleanExtractedText(this.extractVisibleText(sanitized));
+    if (!fallbackText) {
+      return null;
+    }
 
     const ast = extractAstFromElement(sanitized, {
       platform: "Yuanbao",
       perfMode,
     });
+    const textContent = resolveCanonicalMessageText({
+      fallbackText,
+      ast: ast.root,
+      normalizeAstText: (value: string) => this.cleanExtractedText(value),
+    });
 
     return {
       message: {
-        role,
+        role: "user",
         textContent,
         contentAst: ast.root,
         contentAstVersion: ast.root ? "ast_v1" : null,
@@ -401,127 +341,104 @@ export class YuanbaoParser implements IParser {
     };
   }
 
-  private collectSemanticCandidatesBySelector(): SemanticCandidate[] {
-    const candidates: SemanticCandidate[] = [];
+  private parseAiRoot(
+    root: Element,
+    perfMode: AstPerfMode,
+    isLatestAiRoot: boolean,
+  ): ParsedRootResult | null {
+    const cotTexts: string[] = [];
+    const merged = document.createElement("div");
 
-    queryAllUnique(SELECTORS.userNodes).forEach((node) => {
-      candidates.push({ kind: "user", node });
-    });
+    const cotNodes = queryAllUnique(SELECTORS.cotParagraphs).filter((node) => root.contains(node));
+    if (cotNodes.length > 0) {
+      const cotSection = document.createElement("section");
+      cotSection.setAttribute("data-vesti-yuanbao-cot", "true");
 
-    queryAllUnique(SELECTORS.cotParagraphs).forEach((node) => {
-      candidates.push({ kind: "cot", node });
-    });
-
-    queryAllUnique(SELECTORS.finalNodes).forEach((node) => {
-      candidates.push({ kind: "final", node });
-    });
-
-    return candidates;
-  }
-
-  private collectSemanticCandidatesByAnchor(): SemanticCandidate[] {
-    const candidates: SemanticCandidate[] = [];
-
-    for (const anchor of queryAllUnique(SELECTORS.anchorRoots)) {
-      if (anchor.matches(".hyc-component-text")) {
-        const userNode = queryFirstWithin(anchor, [".hyc-content-text"]);
-        if (userNode) {
-          candidates.push({ kind: "user", node: userNode });
+      for (const cotNode of cotNodes) {
+        const sanitizedCot = this.sanitizeContentElement(cotNode);
+        const cotText = this.cleanExtractedText(this.extractVisibleText(sanitizedCot));
+        if (!cotText) {
+          continue;
         }
+
+        cotTexts.push(cotText);
+        const wrapper = document.createElement("div");
+        wrapper.setAttribute("data-vesti-yuanbao-cot-fragment", "true");
+        wrapper.appendChild(sanitizedCot);
+        cotSection.appendChild(wrapper);
       }
 
-      if (anchor.matches(".hyc-component-deepsearch-cot__think")) {
-        queryAllWithinUnique(anchor, SELECTORS.cotParagraphs).forEach((node) => {
-          candidates.push({ kind: "cot", node });
-        });
-      }
-
-      if (anchor.matches(".hyc-common-markdown:not(.hyc-common-markdown-style-cot)")) {
-        candidates.push({ kind: "final", node: anchor });
+      if (cotSection.childElementCount > 0) {
+        merged.appendChild(cotSection);
       }
     }
 
-    return candidates;
+    const finalSource = this.resolveAiFinalRoot(root) ?? this.resolveAiSpeechRoot(root);
+    if (!finalSource) {
+      return null;
+    }
+
+    const sanitizedFinal = this.sanitizeContentElement(finalSource);
+    const finalText = this.cleanExtractedText(this.extractVisibleText(sanitizedFinal));
+    if (!finalText && cotTexts.length === 0) {
+      return null;
+    }
+
+    const finalSection = document.createElement("section");
+    finalSection.setAttribute("data-vesti-yuanbao-final", "true");
+    finalSection.appendChild(sanitizedFinal);
+    merged.appendChild(finalSection);
+
+    const fallbackText =
+      cotTexts.length > 0 && finalText
+        ? `${cotTexts.join("\n\n")}\n\n---\n\n${finalText}`
+        : cotTexts.length > 0
+          ? cotTexts.join("\n\n")
+          : finalText;
+
+    const ast = extractAstFromElement(merged, {
+      platform: "Yuanbao",
+      perfMode,
+    });
+    const textContent = resolveCanonicalMessageText({
+      fallbackText,
+      ast: ast.root,
+      normalizeAstText: (value: string) => this.cleanExtractedText(value),
+    });
+
+    return {
+      message: {
+        role: "ai",
+        textContent,
+        contentAst: ast.root,
+        contentAstVersion: ast.root ? "ast_v1" : null,
+        degradedNodesCount: ast.degradedNodesCount,
+        artifacts: this.collectArtifacts(root, isLatestAiRoot),
+        htmlContent: merged.innerHTML,
+      },
+      degradedNodesCount: ast.degradedNodesCount,
+      astNodeCount: ast.astNodeCount,
+    };
   }
 
-  private normalizeSemanticCandidates(candidates: SemanticCandidate[]): NormalizedSemanticCandidates {
-    const byNode = new Map<Element, SemanticCandidate>();
-
-    for (const candidate of candidates) {
-      const existing = byNode.get(candidate.node);
-      if (!existing) {
-        byNode.set(candidate.node, candidate);
-        continue;
-      }
-
-      if (existing.kind === "cot" && candidate.kind !== "cot") {
-        byNode.set(candidate.node, candidate);
-      }
-    }
-
-    const orderedNodes = uniqueNodesInDocumentOrder(byNode.keys());
-    const kept: SemanticCandidate[] = [];
-    let droppedNoise = 0;
-
-    for (const node of orderedNodes) {
-      const candidate = byNode.get(node);
-      if (!candidate) continue;
-
-      if (this.isNoiseCandidate(candidate)) {
-        droppedNoise += 1;
-        continue;
-      }
-
-      const normalizedText = safeTextContent(node).replace(/\s+/g, " ").trim();
-      if (normalizedText.length < 2) {
-        droppedNoise += 1;
-        continue;
-      }
-
-      const matchesNoisePattern = SELECTORS.noiseTextPatterns.some((pattern) =>
-        pattern.test(normalizedText),
-      );
-      if (matchesNoisePattern) {
-        droppedNoise += 1;
-        continue;
-      }
-
-      kept.push(candidate);
-    }
-
-    return { candidates: kept, droppedNoise };
+  private resolveUserContentRoot(root: Element): Element | null {
+    return queryFirstWithin(root, SELECTORS.userContent);
   }
 
-  private isNoiseCandidate(candidate: SemanticCandidate): boolean {
-    const { kind, node } = candidate;
+  private resolveAiSpeechRoot(root: Element): Element | null {
+    return queryFirstWithin(root, SELECTORS.aiSpeechRoots);
+  }
 
-    const inNoiseContainer = SELECTORS.noiseContainers.some(
-      (selector) => node.closest(selector) !== null,
-    );
-    if (inNoiseContainer) return true;
-
-    if (kind === "user") {
-      if (!node.closest(".hyc-component-text")) return true;
-      if (node.closest(".hyc-component-deepsearch-cot__think")) return true;
-      return false;
-    }
-
-    if (kind === "cot") {
-      if (!node.closest(".hyc-component-deepsearch-cot__think")) return true;
-      return SELECTORS.cotNoiseContainers.some((selector) => node.closest(selector) !== null);
-    }
-
-    if (!node.matches(".hyc-common-markdown:not(.hyc-common-markdown-style-cot)")) return true;
-    return node.closest(".hyc-component-deepsearch-cot__think") !== null;
+  private resolveAiFinalRoot(root: Element): Element | null {
+    const finals = queryAllUnique(SELECTORS.aiFinalNodes).filter((node) => root.contains(node));
+    return finals[finals.length - 1] ?? null;
   }
 
   private sanitizeContentElement(source: Element): Element {
     const clone = source.cloneNode(true) as Element;
-
     for (const selector of SELECTORS.uiNoiseSelectors) {
       clone.querySelectorAll(selector).forEach((node) => node.remove());
     }
-
     this.pruneEmptyNodes(clone);
     return clone;
   }
@@ -550,6 +467,25 @@ export class YuanbaoParser implements IParser {
     }
   }
 
+  private inferRole(node: Element): MessageRole | null {
+    if (node.matches(SELECTORS.userRoots.join(", "))) {
+      return "user";
+    }
+    if (node.matches(SELECTORS.aiRoots.join(", "))) {
+      return "ai";
+    }
+
+    const className = node.className?.toString() ?? "";
+    if (className.includes("agent-chat__bubble--human")) {
+      return "user";
+    }
+    if (className.includes("agent-chat__bubble--ai")) {
+      return "ai";
+    }
+
+    return null;
+  }
+
   private extractVisibleText(element: Element): string {
     if (element instanceof HTMLElement) {
       const innerText = (element.innerText || "").trim();
@@ -561,15 +497,43 @@ export class YuanbaoParser implements IParser {
   }
 
   private cleanExtractedText(rawText: string): string {
-    const lines = rawText
+    return rawText
       .replace(/\r/g, "")
       .replace(/\u00a0/g, " ")
+      .replace(/[ \t\f\v]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
       .split("\n")
-      .map((line) => line.replace(/\s+/g, " ").trim())
+      .map((line) => line.trim())
       .filter((line) => line.length > 0)
-      .filter((line) => !NOISE_LINE_PATTERNS.some((pattern) => pattern.test(line)));
+      .filter(
+        (line) =>
+          !/^(copy|edit|retry|like|dislike|share)$/i.test(line) &&
+          !/^references?$/i.test(line) &&
+          !/^\u5df2\u5b8c\u6210\u6df1\u5ea6\u641c\u7d22.*$/i.test(line) &&
+          !/^\u627e\u5230\u4e86\s*\d+\s*\u7bc7\u76f8\u5173\u8d44\u6599$/i.test(line),
+      )
+      .join("\n")
+      .trim();
+  }
 
-    return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  private collectArtifacts(root: Element, isLatestAiRoot: boolean) {
+    const artifacts = [];
+
+    if (queryFirstWithin(root, SELECTORS.artifactPreview)) {
+      artifacts.push(createMessageArtifact({ kind: "preview", label: "Yuanbao preview" }));
+    }
+
+    if (isLatestAiRoot && queryFirst(SELECTORS.artifactCanvas)) {
+      artifacts.push(createMessageArtifact({ kind: "canvas", label: "Yuanbao canvas" }));
+    }
+
+    if (isLatestAiRoot && queryFirst(SELECTORS.artifactCodePane)) {
+      artifacts.push(
+        createMessageArtifact({ kind: "code_artifact", label: "Yuanbao split pane" }),
+      );
+    }
+
+    return artifacts;
   }
 
   private cleanTitle(rawTitle: string): string {

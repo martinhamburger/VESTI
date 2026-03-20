@@ -217,6 +217,31 @@ export interface ExploreMessage {
   timestamp: number;
 }
 
+export type MessageCitationSourceType =
+  | "inline_pill"
+  | "search_card"
+  | "reference_list"
+  | "unknown";
+
+export interface MessageCitation {
+  label: string;
+  href: string;
+  host: string;
+  sourceType: MessageCitationSourceType;
+}
+
+export type MessageArtifactKind =
+  | "canvas"
+  | "preview"
+  | "code_artifact"
+  | "download_card"
+  | "unknown";
+
+export interface MessageArtifact {
+  kind: MessageArtifactKind;
+  label?: string;
+}
+
 export interface Message {
   id: number;
   conversation_id: number;
@@ -225,6 +250,8 @@ export interface Message {
   content_ast?: AstRoot | null;
   content_ast_version?: AstVersion | null;
   degraded_nodes_count?: number;
+  citations?: MessageCitation[];
+  artifacts?: MessageArtifact[];
   created_at: number;
 }
 

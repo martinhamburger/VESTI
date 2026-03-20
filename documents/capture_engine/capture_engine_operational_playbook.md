@@ -147,6 +147,9 @@ Audience: Parser maintainers, QA, release owners, engineers doing DOM sampling o
 - DOM 采样的目标不是继续堆 selector，而是为 `platform normalization` 提供证据。
 - 一旦发现 attachment / artifact / citation 只能以文本形式存在，也要先把“存在性保留”记入缺口，不要假装问题已解决。
 - parser 修复和 reader 修复必须成对抽样，否则容易把 capture 问题误诊成 UI 问题，反之亦然。
+- ChatGPT 若存在 `data-message-id + data-message-author-role` 稳定根，应将其视为单条消息的硬边界；同根内的 `thinking / 已思考` UI 属于视觉噪音，当前不得打断消息边界，也不得入库。
+- 联网搜索引用若存在稳定 link-bearing 锚点，应优先走“正文剥离 + metadata 保留”；若暂无稳定锚点，至少要从正文中剔除 search-card / reference-count / citation widget 噪声，不能继续把来源文本挂在 reader 正文尾部。
+- 对 `artifact / preview / canvas`，本轮最低要求是“存在性保留而非正文污染”：命中稳定容器时允许写入消息侧车 metadata，但不得混入 `content_text`，也不得因为未做完整渲染而回退成脏正文。
 
 ## 9. Historical Lineage
 
