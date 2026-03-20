@@ -42,9 +42,12 @@ const SELECTORS = {
   uiNoiseSelectors: [
     ".agent-chat__conv--ai__toolbar",
     ".agent-chat__conv--human__toolbar",
+    ".agent-chat__question-toolbar__copy-wrapper",
     ".ToolbarCopy_copyIconWrap__PfQIm",
     ".Toolbar_icon__xGP8b",
     ".Repeat_icon__oL8u_",
+    ".hyc-common-markdown__replace-appCard",
+    ".hyc-common-markdown__replace-appCard-container",
     ".hyc-component-deepsearch-cot__think__header-container",
     ".hyc-component-deepsearch-cot__think__header__toggle",
     ".hyc-component-deepsearch-cot__think__content__item-search",

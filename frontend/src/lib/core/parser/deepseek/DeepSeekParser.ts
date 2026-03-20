@@ -16,6 +16,15 @@ import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
 import { logger } from "../../../utils/logger";
 
 const SELECTORS = {
+  userContent: [
+    ".fbb737a4",
+    "[class*='user'] > div",
+    ":scope > div",
+  ],
+  assistantContent: [
+    ".ds-markdown",
+    "[class*='ds-markdown']",
+  ],
   roleAnchors: [
     ".ds-message",
     "[class*='ds-message']",
@@ -67,9 +76,25 @@ const SELECTORS = {
     "form",
     "footer",
     "nav",
+    "aside",
     "[role='navigation']",
+    "[role='complementary']",
     "[data-testid*='composer']",
     "[contenteditable='true']",
+    "textarea",
+    "input",
+  ],
+  uiNoiseSelectors: [
+    "button",
+    "svg",
+    "textarea",
+    "input",
+    "iframe",
+    "canvas",
+    "[role='button']",
+    ".ds-icon-button",
+    ".ds-atom-button",
+    ".ds-focus-ring",
   ],
   noiseTextPatterns: [
     /^new chat$/i,
@@ -77,6 +102,8 @@ const SELECTORS = {
     /^edit$/i,
     /^copy$/i,
     /^deepseek can make mistakes\.?/i,
+    /^\u5df2\u601d\u8003.*$/i,
+    /^\u5185\u5bb9\u7531\s*AI\s*\u751f\u6210.*$/i,
   ],
   sourceTimes: ["time[datetime]", "article time[datetime]"],
 };
@@ -363,17 +390,26 @@ export class DeepSeekParser implements IParser {
     const role = this.inferRole(node);
     if (!role) return null;
 
-    const contentEl = queryFirstWithin(node, SELECTORS.messageContent);
-    const ast = extractAstFromElement(contentEl ?? node, {
+    const contentEl = this.resolveContentElement(node, role);
+    if (!contentEl) {
+      return null;
+    }
+
+    const sanitizedContent = this.sanitizeContentElement(contentEl);
+    const ast = extractAstFromElement(sanitizedContent, {
       platform: "DeepSeek",
       perfMode,
     });
-    const fallbackText = this.cleanExtractedText(safeTextContent(contentEl ?? node));
+    const fallbackText = this.cleanExtractedText(this.extractVisibleText(sanitizedContent));
     const textContent = resolveCanonicalMessageText({
       fallbackText,
       ast: ast.root,
       normalizeAstText: (value: string) => this.cleanExtractedText(value),
     });
+
+    if (!textContent) {
+      return null;
+    }
 
     return {
       message: {
@@ -382,11 +418,88 @@ export class DeepSeekParser implements IParser {
         contentAst: ast.root,
         contentAstVersion: ast.root ? "ast_v2" : null,
         degradedNodesCount: ast.degradedNodesCount,
-        htmlContent: contentEl ? contentEl.innerHTML : undefined,
+        htmlContent: sanitizedContent.innerHTML,
       },
       degradedNodesCount: ast.degradedNodesCount,
       astNodeCount: ast.astNodeCount,
     };
+  }
+
+  private resolveContentElement(node: Element, role: MessageRole): Element | null {
+    if (role === "ai") {
+      const assistantContent = queryFirstWithin(node, SELECTORS.assistantContent);
+      if (assistantContent) {
+        return assistantContent;
+      }
+    }
+
+    if (role === "user") {
+      const directChildren = Array.from(node.children).filter(
+        (child) => child instanceof Element && !this.isUiNoiseNode(child),
+      );
+      const firstTextBearingChild = directChildren.find(
+        (child) => this.cleanExtractedText(this.extractVisibleText(child)).length > 0,
+      );
+      if (firstTextBearingChild) {
+        return firstTextBearingChild;
+      }
+
+      const userContent = queryFirstWithin(node, SELECTORS.userContent);
+      if (userContent) {
+        return userContent;
+      }
+    }
+
+    return queryFirstWithin(node, SELECTORS.messageContent);
+  }
+
+  private sanitizeContentElement(source: Element): Element {
+    const clone = source.cloneNode(true) as Element;
+
+    for (const selector of SELECTORS.uiNoiseSelectors) {
+      clone.querySelectorAll(selector).forEach((node) => node.remove());
+    }
+
+    this.pruneEmptyNodes(clone);
+    return clone;
+  }
+
+  private pruneEmptyNodes(root: Element): void {
+    const emptyTextNodes: Node[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const current = walker.currentNode;
+      if (!(current.textContent ?? "").trim()) {
+        emptyTextNodes.push(current);
+      }
+    }
+
+    for (const node of emptyTextNodes) {
+      node.parentNode?.removeChild(node);
+    }
+
+    const descendants = Array.from(root.querySelectorAll("*")).reverse();
+    for (const descendant of descendants) {
+      if (descendant.tagName.toLowerCase() === "br") continue;
+      const text = safeTextContent(descendant).replace(/\s+/g, " ").trim();
+      if (descendant.childElementCount === 0 && text.length === 0) {
+        descendant.remove();
+      }
+    }
+  }
+
+  private extractVisibleText(element: Element): string {
+    if (element instanceof HTMLElement) {
+      const innerText = (element.innerText || "").trim();
+      if (innerText) {
+        return innerText;
+      }
+    }
+    return safeTextContent(element);
+  }
+
+  private isUiNoiseNode(node: Element): boolean {
+    return SELECTORS.uiNoiseSelectors.some((selector) => node.matches(selector));
   }
 
   private inferRole(node: Element): MessageRole | null {
