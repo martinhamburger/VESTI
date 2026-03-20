@@ -25,6 +25,11 @@ import {
 } from "~lib/services/llmService";
 import { getLlmSettings } from "~lib/services/llmSettingsService";
 import { getConversationOriginAt } from "~lib/conversations/timestamps";
+import {
+  createPromptReadyConversationContext,
+  type PromptReadyConversationContext,
+  type PromptReadyMessage,
+} from "~lib/prompts/promptIngestionAdapter";
 import type { Conversation, LlmConfig, Message } from "~lib/types";
 import { logger } from "~lib/utils/logger";
 import type {
@@ -50,6 +55,10 @@ export type ExportCompressionInvalidReasonCode =
 export interface ConversationExportDatasetItem {
   conversation: Conversation;
   messages: Message[];
+}
+
+interface PromptRuntimeDatasetItem extends ConversationExportDatasetItem {
+  promptContext: PromptReadyConversationContext;
 }
 
 export interface CompressedConversationExport {
@@ -347,8 +356,8 @@ function shorten(value: string, maxChars = 180): string {
   return `${normalized.slice(0, maxChars - 3).trimEnd()}...`;
 }
 
-function getTranscriptChars(messages: Message[]): number {
-  return messages.map((message) => message.content_text).join("\n").length;
+function getTranscriptChars(messages: PromptReadyMessage[]): number {
+  return messages.map((message) => message.bodyText).join("\n").length;
 }
 
 function getAbsoluteMinChars(mode: ExportCompressionMode): number {
@@ -460,6 +469,42 @@ function toOrderedMessages(messages: Message[]): Message[] {
   return [...messages].sort((a, b) => a.created_at - b.created_at);
 }
 
+function buildPromptRuntimeItem(
+  item: ConversationExportDatasetItem
+): PromptRuntimeDatasetItem {
+  return {
+    ...item,
+    promptContext: createPromptReadyConversationContext({
+      conversation: item.conversation,
+      messages: item.messages,
+    }),
+  };
+}
+
+function getPromptMessages(item: PromptRuntimeDatasetItem): PromptReadyMessage[] {
+  return item.promptContext.messages;
+}
+
+function replacePromptMessages(
+  item: PromptRuntimeDatasetItem,
+  messages: PromptReadyMessage[]
+): PromptRuntimeDatasetItem {
+  return {
+    ...item,
+    promptContext: {
+      ...item.promptContext,
+      messages,
+      transcript:
+        messages.length > 0
+          ? messages
+              .map((message, index) => formatPackedTranscriptLine(message, index, 900))
+              .join("\n")
+          : "[No messages available]",
+      bodyChars: messages.reduce((sum, message) => sum + message.bodyText.length, 0),
+    },
+  };
+}
+
 function detectLocale(): "zh" | "en" {
   if (typeof navigator === "undefined") {
     return "zh";
@@ -489,7 +534,7 @@ function withExperimentalMaxTokens(
 }
 
 function formatPackedTranscriptLine(
-  message: Message,
+  message: PromptReadyMessage,
   index: number,
   maxChars: number
 ): string {
@@ -498,7 +543,19 @@ function formatPackedTranscriptLine(
     hour: "2-digit",
     minute: "2-digit",
   });
-  return `${index + 1}. [${time}] [${role}] ${shorten(message.content_text, maxChars)}`;
+  const transcriptLines = message.transcriptText
+    .split("\n")
+    .map((line) => shorten(line, maxChars))
+    .filter(Boolean);
+  if (transcriptLines.length === 0) {
+    return `${index + 1}. [${time}] [${role}]`;
+  }
+
+  const [firstLine, ...restLines] = transcriptLines;
+  return [
+    `${index + 1}. [${time}] [${role}] ${firstLine}`,
+    ...restLines.map((line) => `    ${line}`),
+  ].join("\n");
 }
 
 function isMetaContentLine(line: string): boolean {
@@ -521,11 +578,22 @@ function sanitizeExperimentalMessageContent(value: string): string {
   return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function sanitizeMessagesForExperimentalProcessing(messages: Message[]): Message[] {
-  return toOrderedMessages(messages)
+function sanitizeMessagesForExperimentalProcessing(
+  messages: PromptReadyMessage[]
+): PromptReadyMessage[] {
+  return [...messages]
+    .sort((a, b) => a.created_at - b.created_at)
     .map((message) => ({
       ...message,
       content_text: sanitizeExperimentalMessageContent(message.content_text),
+      bodyText: sanitizeExperimentalMessageContent(message.bodyText),
+      transcriptText: [
+        sanitizeExperimentalMessageContent(message.bodyText),
+        ...message.sidecarSummaryLines,
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .trim(),
     }))
     .filter((message) => normalizeWhitespace(message.content_text).length > 0);
 }
@@ -534,11 +602,11 @@ type ExperimentalEvidenceWindow = {
   label: (typeof EXPERIMENTAL_EVIDENCE_WINDOW_LABELS)[number];
   startIndex: number;
   endIndex: number;
-  turns: Message[];
+  turns: PromptReadyMessage[];
 };
 
 function scoreWindowCandidate(
-  message: Message,
+  message: PromptReadyMessage,
   label: (typeof EXPERIMENTAL_EVIDENCE_WINDOW_LABELS)[number]
 ): number {
   const text = message.content_text;
@@ -586,7 +654,7 @@ function scoreWindowCandidate(
 }
 
 function selectEvidenceWindow(
-  messages: Message[],
+  messages: PromptReadyMessage[],
   startOffset: number,
   usedIndices: Set<number>,
   label: (typeof EXPERIMENTAL_EVIDENCE_WINDOW_LABELS)[number]
@@ -631,7 +699,7 @@ function selectEvidenceWindow(
 }
 
 function buildMiddleEvidenceWindowBlock(
-  messages: Message[],
+  messages: PromptReadyMessage[],
   startOffset: number
 ): string | undefined {
   if (messages.length === 0) {
@@ -664,7 +732,7 @@ function buildMiddleEvidenceWindowBlock(
     .join("\n\n");
 }
 
-function buildExperimentalPackedTranscript(messages: Message[]): string {
+function buildExperimentalPackedTranscript(messages: PromptReadyMessage[]): string {
   const sanitized = sanitizeMessagesForExperimentalProcessing(messages);
   if (sanitized.length === 0) {
     return "[No grounded transcript available after handoff filtering]";
@@ -717,7 +785,7 @@ function buildExperimentalPackedTranscript(messages: Message[]): string {
 }
 
 function buildPromptPayload(
-  item: ConversationExportDatasetItem,
+  item: PromptRuntimeDatasetItem,
   profile: ExportPromptProfile,
   mode: ExportCompressionMode,
   options?: ExportCompressionOptions
@@ -726,10 +794,10 @@ function buildPromptPayload(
     conversationTitle: item.conversation.title,
     conversationPlatform: item.conversation.platform,
     conversationOriginAt: getConversationOriginAt(item.conversation),
-    messages: item.messages,
+    messages: getPromptMessages(item),
     transcriptOverride: isExperimentalCompact(mode, options)
-      ? buildExperimentalPackedTranscript(item.messages)
-      : undefined,
+      ? buildExperimentalPackedTranscript(getPromptMessages(item))
+      : item.promptContext.transcript,
     locale: detectLocale(),
     profile,
   };
@@ -941,7 +1009,7 @@ function dedupeAndRank(values: string[], maxItems: number): string[] {
 }
 
 function collectRoleAwareTurns(
-  messages: Message[],
+  messages: PromptReadyMessage[],
   maxItems = 4
 ): string[] {
   const ordered = toOrderedMessages(messages);
@@ -954,12 +1022,12 @@ function collectRoleAwareTurns(
 
   return unique(
     [firstUser, firstAi, latestAi, latestUser]
-      .filter((value): value is Message => Boolean(value))
+      .filter((value): value is PromptReadyMessage => Boolean(value))
       .map((message) => shorten(message.content_text, 220))
   ).slice(0, maxItems);
 }
 
-function collectQuestionCandidates(messages: Message[], maxItems = 3): string[] {
+function collectQuestionCandidates(messages: PromptReadyMessage[], maxItems = 3): string[] {
   const candidates = toOrderedMessages(messages)
     .filter((message) => message.role === "user")
     .flatMap((message) => splitIntoSentences(message.content_text))
@@ -978,7 +1046,7 @@ function collectQuestionCandidates(messages: Message[], maxItems = 3): string[] 
   return dedupeAndRank(candidates, maxItems);
 }
 
-function collectConstraintLines(messages: Message[], maxItems = 3): string[] {
+function collectConstraintLines(messages: PromptReadyMessage[], maxItems = 3): string[] {
   const candidates = toOrderedMessages(messages)
     .filter((message) => message.role === "user")
     .flatMap((message) => splitIntoSentences(message.content_text))
@@ -988,7 +1056,7 @@ function collectConstraintLines(messages: Message[], maxItems = 3): string[] {
   return dedupeAndRank(candidates, maxItems);
 }
 
-function collectDecisionLines(messages: Message[], maxItems = 4): string[] {
+function collectDecisionLines(messages: PromptReadyMessage[], maxItems = 4): string[] {
   const ordered = toOrderedMessages(messages);
   const aiCandidates = ordered
     .filter((message) => message.role === "ai")
@@ -1015,7 +1083,7 @@ function collectDecisionLines(messages: Message[], maxItems = 4): string[] {
   return dedupeAndRank(combined, maxItems);
 }
 
-function collectUnresolvedLines(messages: Message[], maxItems = 3): string[] {
+function collectUnresolvedLines(messages: PromptReadyMessage[], maxItems = 3): string[] {
   const ordered = toOrderedMessages(messages);
   const candidates = [...ordered]
     .reverse()
@@ -1033,7 +1101,7 @@ function collectUnresolvedLines(messages: Message[], maxItems = 3): string[] {
   return dedupeAndRank(candidates, maxItems);
 }
 
-function collectCodeBlocks(messages: Message[], maxItems = 2): string[] {
+function collectCodeBlocks(messages: PromptReadyMessage[], maxItems = 2): string[] {
   const snippets: string[] = [];
   for (const message of messages) {
     const matches = message.content_text.match(CODE_BLOCK_PATTERN) || [];
@@ -1058,7 +1126,7 @@ function collectCodeBlocks(messages: Message[], maxItems = 2): string[] {
   return dedupeAndRank(snippets, maxItems);
 }
 
-function detectFallbackCompressionContext(messages: Message[]): {
+function detectFallbackCompressionContext(messages: PromptReadyMessage[]): {
   mathHeavy: boolean;
   explanationTeaching: boolean;
 } {
@@ -1157,7 +1225,7 @@ function isLikelyDocumentationPath(value: string): boolean {
 }
 
 function collectFilePathLines(
-  messages: Message[],
+  messages: PromptReadyMessage[],
   maxItems = 4,
   options?: {
     includeDocs?: boolean;
@@ -1166,7 +1234,11 @@ function collectFilePathLines(
 ): string[] {
   const matches: string[] = [];
   for (const message of messages) {
-    for (const found of message.content_text.match(PATH_PATTERN) || []) {
+    const candidates = unique([
+      ...(message.artifactRefs ?? []),
+      ...(message.content_text.match(PATH_PATTERN) || []),
+    ]);
+    for (const found of candidates) {
       if (!isExplicitPathCandidate(found)) continue;
       const normalized = shorten(found, 140);
       const isDocPath = isLikelyDocumentationPath(normalized);
@@ -1183,10 +1255,14 @@ function collectFilePathLines(
   return dedupeAndRank(matches, maxItems);
 }
 
-function collectCommandLines(messages: Message[], maxItems = 4): string[] {
+function collectCommandLines(messages: PromptReadyMessage[], maxItems = 4): string[] {
   const matches: string[] = [];
   for (const message of messages) {
-    for (const found of message.content_text.match(COMMAND_PATTERN) || []) {
+    const candidates = unique([
+      ...(message.artifactRefs ?? []),
+      ...(message.content_text.match(COMMAND_PATTERN) || []),
+    ]);
+    for (const found of candidates) {
       const normalized = shorten(found.trim(), 160);
       if (normalized) {
         matches.push(`Command: ${normalized}`);
@@ -1198,17 +1274,25 @@ function collectCommandLines(messages: Message[], maxItems = 4): string[] {
 }
 
 function collectApiHints(
-  messages: Message[],
+  messages: PromptReadyMessage[],
   maxItems = 4,
   options?: { strict?: boolean }
 ): string[] {
   const matches: string[] = [];
   for (const message of messages) {
-    for (const found of message.content_text.match(API_PATTERN) || []) {
+    const apiCandidates = unique([
+      ...(message.artifactRefs ?? []),
+      ...(message.content_text.match(API_PATTERN) || []),
+    ]);
+    for (const found of apiCandidates) {
       matches.push(`API/Function: ${shorten(found, 120)}`);
     }
     if (!options?.strict) {
-      for (const found of message.content_text.match(BACKTICK_PATTERN) || []) {
+      const refCandidates = unique([
+        ...(message.artifactRefs ?? []),
+        ...(message.content_text.match(BACKTICK_PATTERN) || []),
+      ]);
+      for (const found of refCandidates) {
         matches.push(`Reference: ${shorten(found, 120)}`);
       }
     }
@@ -1217,11 +1301,17 @@ function collectApiHints(
   return dedupeAndRank(matches, maxItems);
 }
 
-function collectArtifactLines(messages: Message[], maxItems = 5): string[] {
+function collectArtifactLines(messages: PromptReadyMessage[], maxItems = 5): string[] {
   const context = detectFallbackCompressionContext(messages);
   const strictArtifacts = context.mathHeavy || context.explanationTeaching;
+  const sidecarArtifactLines = unique(
+    messages.flatMap((message) =>
+      message.sidecarSummaryLines.filter((line) => line.startsWith("Artifact:"))
+    )
+  );
 
   return unique([
+    ...sidecarArtifactLines,
     ...collectFilePathLines(messages, maxItems),
     ...collectCommandLines(messages, maxItems),
     ...collectApiHints(messages, maxItems, { strict: strictArtifacts }),
@@ -1231,7 +1321,7 @@ function collectArtifactLines(messages: Message[], maxItems = 5): string[] {
 
 function collectPotentialTags(
   conversation: Conversation,
-  messages: Message[],
+  messages: PromptReadyMessage[],
   maxItems = 5
 ): string[] {
   const titleWords = conversation.title
@@ -1252,7 +1342,7 @@ function collectPotentialTags(
 
 function pickContextLine(
   conversation: Conversation,
-  messages: Message[]
+  messages: PromptReadyMessage[]
 ): string {
   const firstUser = messages.find((message) => message.role === "user");
   return shorten(
@@ -1264,7 +1354,7 @@ function pickContextLine(
   );
 }
 
-function collectRejectedPathLines(messages: Message[], maxItems = 3): string[] {
+function collectRejectedPathLines(messages: PromptReadyMessage[], maxItems = 3): string[] {
   const candidates = toOrderedMessages(messages)
     .flatMap((message) => splitIntoSentences(message.content_text))
     .filter(
@@ -1278,7 +1368,7 @@ function collectRejectedPathLines(messages: Message[], maxItems = 3): string[] {
   return dedupeAndRank(candidates, maxItems);
 }
 
-function collectKeyUnderstandingLines(messages: Message[], maxItems = 3): string[] {
+function collectKeyUnderstandingLines(messages: PromptReadyMessage[], maxItems = 3): string[] {
   const ordered = toOrderedMessages(messages);
   const candidates = [
     ...ordered
@@ -1311,7 +1401,7 @@ function collectKeyUnderstandingLines(messages: Message[], maxItems = 3): string
 }
 
 function collectGenerationDirectionLines(
-  messages: Message[],
+  messages: PromptReadyMessage[],
   maxItems = 4
 ): string[] {
   const candidates = toOrderedMessages(messages)
@@ -1329,7 +1419,7 @@ function collectGenerationDirectionLines(
 }
 
 function collectSelectionCriteriaLines(
-  messages: Message[],
+  messages: PromptReadyMessage[],
   maxItems = 3
 ): string[] {
   const candidates = toOrderedMessages(messages)
@@ -1346,7 +1436,7 @@ function collectSelectionCriteriaLines(
   return dedupeAndRank(candidates, maxItems);
 }
 
-function collectUserContextLines(messages: Message[], maxItems = 4): string[] {
+function collectUserContextLines(messages: PromptReadyMessage[], maxItems = 4): string[] {
   const candidates = toOrderedMessages(messages)
     .filter((message) => message.role === "user")
     .flatMap((message) => splitIntoSentences(message.content_text))
@@ -1364,10 +1454,10 @@ function collectUserContextLines(messages: Message[], maxItems = 4): string[] {
 }
 
 function classifyConditionalConversation(
-  item: ConversationExportDatasetItem
+  item: PromptRuntimeDatasetItem
 ): string[] {
-  const messages = item.messages;
-  const transcript = messages.map((message) => message.content_text).join("\n");
+  const messages = getPromptMessages(item);
+  const transcript = item.promptContext.transcript;
   const context = detectFallbackCompressionContext(messages);
   const decisions = collectDecisionLines(messages, 4);
   const unresolved = collectUnresolvedLines(messages, 3);
@@ -1435,9 +1525,9 @@ function classifyConditionalConversation(
 }
 
 function buildConditionalSections(
-  item: ConversationExportDatasetItem
+  item: PromptRuntimeDatasetItem
 ): Array<{ heading: string; lines: string[] }> {
-  const messages = item.messages;
+  const messages = getPromptMessages(item);
   const conversationTypes = classifyConditionalConversation(item);
   const context = detectFallbackCompressionContext(messages);
   const decisions = collectDecisionLines(messages, 4);
@@ -1529,10 +1619,10 @@ function buildConditionalSections(
 }
 
 function buildExperimentalStateOverview(
-  item: ConversationExportDatasetItem,
+  item: PromptRuntimeDatasetItem,
   conversationTypes: string[]
 ): string {
-  const messages = item.messages;
+  const messages = getPromptMessages(item);
   const threadLabel = shorten(
     item.conversation.title ||
       collectQuestionCandidates(messages, 1)[0] ||
@@ -1601,13 +1691,13 @@ function buildExperimentalStateOverview(
 }
 
 function buildExperimentalCompactFallback(
-  item: ConversationExportDatasetItem,
+  item: PromptRuntimeDatasetItem,
   reason: string
 ): string {
-  const filteredItem: ConversationExportDatasetItem = {
-    ...item,
-    messages: sanitizeMessagesForExperimentalProcessing(item.messages),
-  };
+  const filteredItem = replacePromptMessages(
+    item,
+    sanitizeMessagesForExperimentalProcessing(getPromptMessages(item))
+  );
   const startedAt = item.conversation
     ? new Date(getConversationOriginAt(item.conversation)).toISOString()
     : "unknown";
@@ -1684,10 +1774,10 @@ function buildSummaryTldr(
 }
 
 function buildCompactFallback(
-  item: ConversationExportDatasetItem,
+  item: PromptRuntimeDatasetItem,
   reason: string
 ): string {
-  const messages = item.messages;
+  const messages = getPromptMessages(item);
   const questions = collectQuestionCandidates(messages, 3);
   const constraints = collectConstraintLines(messages, 2);
   const decisions = collectDecisionLines(messages, 4);
@@ -1721,10 +1811,10 @@ function buildCompactFallback(
 }
 
 function buildSummaryFallback(
-  item: ConversationExportDatasetItem,
+  item: PromptRuntimeDatasetItem,
   reason: string
 ): string {
-  const messages = item.messages;
+  const messages = getPromptMessages(item);
   const questions = collectQuestionCandidates(messages, 2);
   const constraints = collectConstraintLines(messages, 2);
   const decisions = collectDecisionLines(messages, 3);
@@ -1763,7 +1853,7 @@ function buildSummaryFallback(
 }
 
 function buildLocalFallback(
-  item: ConversationExportDatasetItem,
+  item: PromptRuntimeDatasetItem,
   mode: ExportCompressionMode,
   options: ExportCompressionOptions | undefined,
   reason: string,
@@ -2217,17 +2307,18 @@ function extractConditionalHandoff(
 }
 
 function buildRuntimeMetrics(
-  item: ConversationExportDatasetItem,
+  item: PromptRuntimeDatasetItem,
   normalizedOutputChars: number,
   mode: ExportCompressionMode
 ): Omit<
   ExportCompressionRuntimeMetrics,
   "rawOutputChars" | "serializedOutputChars"
 > {
-  const transcriptChars = getTranscriptChars(item.messages);
+  const promptMessages = getPromptMessages(item);
+  const transcriptChars = getTranscriptChars(promptMessages);
   const absoluteMinChars = getAbsoluteMinChars(mode);
   const softMinChars = getSoftMinChars(
-    item.messages,
+    promptMessages,
     mode,
     absoluteMinChars
   );
@@ -2355,21 +2446,31 @@ function countGroundedSections(sections: Record<string, string>): number {
   }).length;
 }
 
-function detectArtifactSignals(messages: Message[]): {
+function detectArtifactSignals(messages: PromptReadyMessage[]): {
   hasCode: boolean;
   hasCommand: boolean;
   hasPath: boolean;
   hasApi: boolean;
 } {
-  const transcript = messages.map((message) => message.content_text).join("\n");
-  const pathSignals = Array.from(transcript.matchAll(new RegExp(PATH_PATTERN.source, "g")))
-    .map((match) => match[0])
-    .filter((value) => isExplicitPathCandidate(value));
+  const transcript = messages.map((message) => message.transcriptText).join("\n");
+  const artifactRefs = unique(messages.flatMap((message) => message.artifactRefs ?? []));
+  const pathSignals = artifactRefs.filter((value) => isExplicitPathCandidate(value));
+
   return {
-    hasCode: hasRegexMatch(transcript, CODE_BLOCK_PATTERN),
-    hasCommand: hasRegexMatch(transcript, COMMAND_PATTERN),
+    hasCode:
+      messages.some(
+        (message) =>
+          message.structureSignals.hasCode || message.structureSignals.hasArtifacts
+      ) || hasRegexMatch(transcript, CODE_BLOCK_PATTERN),
+    hasCommand:
+      artifactRefs.some((value) => hasRegexMatch(value, COMMAND_PATTERN)) ||
+      hasRegexMatch(transcript, COMMAND_PATTERN),
     hasPath: pathSignals.length > 0,
     hasApi:
+      artifactRefs.some(
+        (value) =>
+          hasRegexMatch(value, API_PATTERN) || hasRegexMatch(value, BACKTICK_PATTERN)
+      ) ||
       hasRegexMatch(transcript, API_PATTERN) ||
       hasRegexMatch(transcript, BACKTICK_PATTERN),
   };
@@ -2377,7 +2478,7 @@ function detectArtifactSignals(messages: Message[]): {
 
 function preservesArtifactSignal(
   body: string,
-  messages: Message[]
+  messages: PromptReadyMessage[]
 ): boolean {
   const signals = detectArtifactSignals(messages);
   if (!signals.hasCode && !signals.hasCommand && !signals.hasPath && !signals.hasApi) {
@@ -2398,7 +2499,7 @@ function preservesArtifactSignal(
 
 function validateCompressionOutput(
   value: string,
-  item: ConversationExportDatasetItem,
+  item: PromptRuntimeDatasetItem,
   mode: ExportCompressionMode,
   options?: ExportCompressionOptions
 ): ExportCompressionValidationResult {
@@ -2514,7 +2615,7 @@ function validateCompressionOutput(
     };
   }
 
-  if (!preservesArtifactSignal(value, item.messages)) {
+  if (!preservesArtifactSignal(value, getPromptMessages(item))) {
     return {
       valid: false,
       issueCode: "export_artifact_signal_missing",
@@ -2596,6 +2697,7 @@ async function compressWithCurrentLlmSettings(
   mode: ExportCompressionMode,
   options?: ExportCompressionOptions
 ): Promise<CompressedConversationExport> {
+  const promptItem = buildPromptRuntimeItem(item);
   const settings = await getLlmSettings();
   if (!settings) {
     throw new Error("LLM_SETTINGS_UNAVAILABLE");
@@ -2609,7 +2711,7 @@ async function compressWithCurrentLlmSettings(
   const prompt = getPrompt(mode === "compact" ? "exportCompact" : "exportSummary", {
     variant: isExperimentalCompact(mode, options) ? "experimental" : "current",
   });
-  const payload = buildPromptPayload(item, exportProfile, mode, options);
+  const payload = buildPromptPayload(promptItem, exportProfile, mode, options);
   const primaryPromptRaw = prompt.userTemplate(payload);
   const primaryPrompt = truncateForContext(primaryPromptRaw, promptBudget.primary);
 
@@ -2637,7 +2739,7 @@ async function compressWithCurrentLlmSettings(
     primaryContinuation = continued.continuation;
     primaryIncompleteRisk = continued.incompleteOutputRisk;
   }
-  const primaryValidation = validateCompressionOutput(primaryBody, item, mode, options);
+  const primaryValidation = validateCompressionOutput(primaryBody, promptItem, mode, options);
   const primaryAttemptMetrics = buildAttemptMetrics({
     promptChars: primaryPromptRaw.length,
     truncatedPromptChars: primaryPrompt.length,
@@ -2714,7 +2816,7 @@ async function compressWithCurrentLlmSettings(
     fallbackContinuation = continued.continuation;
     fallbackIncompleteRisk = continued.incompleteOutputRisk;
   }
-  const fallbackValidation = validateCompressionOutput(fallbackBody, item, mode, options);
+  const fallbackValidation = validateCompressionOutput(fallbackBody, promptItem, mode, options);
   const fallbackAttemptMetrics = buildAttemptMetrics({
     promptChars: fallbackPromptRaw.length,
     truncatedPromptChars: fallbackPrompt.length,
@@ -2793,7 +2895,7 @@ const ADAPTERS: Record<ExportCompressionRoute, ExportCompressionAdapter> = {
     route: "moonshot_direct",
     async compress(item, mode, options) {
       return buildLocalFallback(
-        item,
+        buildPromptRuntimeItem(item),
         mode,
         options,
         "moonshot_direct_not_enabled"
@@ -2934,9 +3036,10 @@ export async function compressExportDataset(
       conversation: rawItem.conversation,
       messages: toOrderedMessages(rawItem.messages),
     };
+    const promptItem = buildPromptRuntimeItem(item);
 
     if (!isExportCompressionRouteEnabled(route)) {
-      items.push(buildLocalFallback(item, mode, options, `${route}_disabled`));
+      items.push(buildLocalFallback(promptItem, mode, options, `${route}_disabled`));
       continue;
     }
 
@@ -2963,7 +3066,7 @@ export async function compressExportDataset(
         llmAttemptMetrics: failureContext?.llmAttemptMetrics,
       });
       items.push(
-        buildLocalFallback(item, mode, options, reason, diagnostic, failureContext)
+        buildLocalFallback(promptItem, mode, options, reason, diagnostic, failureContext)
       );
     }
   }

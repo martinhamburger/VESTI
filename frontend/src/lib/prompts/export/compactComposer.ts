@@ -122,7 +122,7 @@ const CONDITIONAL_SECTION_EXEMPLAR = `## Failed Or Rejected Paths
 
 function buildCompactPrompt(payload: ExportCompressionPromptPayload): string {
   const isStepProfile = payload.profile === "step_flash_concise";
-  const transcript = payload.transcriptOverride ?? toExportTranscript(payload.messages);
+  const transcript = toExportTranscript(payload.messages, payload.transcriptOverride);
   const brevityRule = isStepProfile
     ? "Keep bullets concise and prioritize grounded artifacts over narrative polish."
     : "Preserve the full implementation trail when it is grounded, even if the output becomes longer.";
@@ -167,7 +167,7 @@ ${COMPACT_ARTIFACT_EXEMPLAR}`;
 function buildCompactFallbackPrompt(
   payload: ExportCompressionPromptPayload
 ): string {
-  const transcript = payload.transcriptOverride ?? toExportTranscript(payload.messages);
+  const transcript = toExportTranscript(payload.messages, payload.transcriptOverride);
   const fallbackNote =
     payload.profile === "step_flash_concise"
       ? "Prefer fewer bullets, but keep the contract safer: preserve grounded files, commands, APIs, and unresolved work."
@@ -211,7 +211,7 @@ ${transcript}`;
 function buildConditionalHandoffPrompt(
   payload: ExportCompressionPromptPayload
 ): string {
-  const transcript = payload.transcriptOverride ?? toExportTranscript(payload.messages);
+  const transcript = toExportTranscript(payload.messages, payload.transcriptOverride);
   const profileNote =
     payload.profile === "step_flash_concise"
       ? "Keep the handoff lean, but do not drop the information the next agent would most regret missing."
@@ -277,7 +277,7 @@ ${CONDITIONAL_SECTION_EXEMPLAR}`;
 function buildConditionalHandoffFallbackPrompt(
   payload: ExportCompressionPromptPayload
 ): string {
-  const transcript = payload.transcriptOverride ?? toExportTranscript(payload.messages);
+  const transcript = toExportTranscript(payload.messages, payload.transcriptOverride);
   return `Write a conservative experimental distilled handoff using this contract.
 
 Required first two lines:

@@ -58,7 +58,7 @@ Metadata:
 - MessageCount: ${payload.messages.length}
 
 Transcript:
-${toExportTranscript(payload.messages)}
+${toExportTranscript(payload.messages, payload.transcriptOverride)}
 
 Output requirements:
 1) Use the exact headings listed in the system prompt.
@@ -130,7 +130,7 @@ Safe anchors:
   Reuse: <brief reuse note or conservative placeholder>
 
 Transcript:
-${toExportTranscript(payload.messages)}`;
+${toExportTranscript(payload.messages, payload.transcriptOverride)}`;
 }
 
 export const CURRENT_EXPORT_SUMMARY_PROMPT: PromptVersion<ExportCompressionPromptPayload> = {

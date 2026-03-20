@@ -17,7 +17,14 @@ export function formatExportTime(value: number): string {
   });
 }
 
-export function toExportTranscript(messages: Message[]): string {
+export function toExportTranscript(
+  messages: Message[],
+  transcriptOverride?: string
+): string {
+  if (transcriptOverride?.trim()) {
+    return transcriptOverride.trim();
+  }
+
   if (!messages.length) {
     return "[No messages available]";
   }

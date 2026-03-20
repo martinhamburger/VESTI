@@ -14,6 +14,7 @@ export interface CompactionPromptPayload {
   conversationPlatform?: string;
   conversationOriginAt?: number;
   messages: Message[];
+  transcriptOverride?: string;
   locale?: "zh" | "en";
 }
 
@@ -22,6 +23,7 @@ export interface ConversationSummaryPromptPayload {
   conversationPlatform?: string;
   conversationOriginAt?: number;
   messages: Message[];
+  transcriptOverride?: string;
   locale?: "zh" | "en";
 }
 
