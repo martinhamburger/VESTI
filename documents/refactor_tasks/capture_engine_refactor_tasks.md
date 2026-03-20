@@ -8,6 +8,12 @@ Audience: Parser maintainers, runtime engineers, QA
 把 capture engine 从“外层治理边界基本成型，但 parser 内核仍偏 ad hoc”的状态，
 推进到以 `platform normalization` 和 `content package` 为中心的架构。
 
+## Track 0. App Shell Interceptor
+
+- 把 `conversation title / session identity / page-level status` 从 message parsing 前置拦截
+- 为各平台维护 app shell selector 词典，而不是继续依赖正文 `<h1>` / largest-text fallback
+- 明确标题误捕获属于 app-shell metadata 问题，不再在正文 parser 内做补丁式修复
+
 ## Track 1. Parser Layering
 
 - 把 `discovery`、`boundary / role inference`、`platform normalization`、`shared extraction` 拆成正式 stage
@@ -16,8 +22,10 @@ Audience: Parser maintainers, runtime engineers, QA
 
 ## Track 2. Content Package Expansion
 
-- 为 `normalized_html_snapshot` 预留持久化位置
+- 为 rich-only `normalized_html_snapshot` 预留持久化位置
 - 为 `attachments[] / artifacts[] / citations[] / message_meta` 明确 schema 和 payload 扩展位
+- `citations[]` 升级为下一实现阶段硬要求，而不再只是长期愿景
+- `artifacts[]` 明确 sidecar object 语义与 `captureMode`
 - 先保证“存在性保留”，再讨论二进制和高保真渲染
 
 ## Track 3. Multimodal Sampling
@@ -25,6 +33,22 @@ Audience: Parser maintainers, runtime engineers, QA
 - GPT：补 uploaded image、generated image、citation-heavy、artifact/canvas case
 - 豆包：补图片、搜索卡片、引用、下载产物、CoT/final 双区 case
 - 每个 case 产出 DOM snippet、截图、reader 结果和 export 结果
+
+## Track 3.2 Table / Formula / Code Structure Unification
+
+- 定义 `semantic_ast_v2`
+- `AstTableNodeV2`
+  - `columns[]` 含列级对齐
+  - `rows[]`
+  - `cells[]` 为 inline-rich children
+- 统一公式 truth source 优先级：
+  - `KaTeX annotation / MathML / vendor semantic source`
+  - 禁止直接把渲染层 `innerText` 当公式 truth
+- 统一代码块净化：
+  - 先剥离 copy / badge / toolbar / line-number UI
+  - 再提取 code + language
+- `ChatGPT / Claude / Qwen / Doubao`
+  - 形成四类表格渲染家族的归一策略，不再各写一套“降维脚本”
 
 ## Track 3.1 Math Formula Fidelity Baseline
 
@@ -52,6 +76,16 @@ Audience: Parser maintainers, runtime engineers, QA
 - export / compression / search 继承 content package，而不是继续硬挖 `content_text`
 - warm-start / manual transient availability 形成跨平台一致要求
 
+## Track 4.1 Artifact Sidecar
+
+- 将 Claude 独立 Artifact 明确为 `standalone_artifact`
+- 允许 sidecar 字段：
+  - `renderDimensions`
+  - `plainText`
+  - `markdownSnapshot`
+  - `normalizedHtmlSnapshot`
+- 不再把独立 Artifact 当成“正文里更难抓的一段 HTML”
+
 ## Deferred Items
 
 - host-page copy interception
@@ -64,8 +98,8 @@ Audience: Parser maintainers, runtime engineers, QA
 
 下一轮优先级：
 
-1. 把 math fidelity 主链送进主线，形成协作者可继续开发的 reader/capture 基线
-2. ChatGPT / Qwen `platform normalization` stage
-3. content package schema slots
-4. multimodal sampling and regression fixtures
-5. reader / export / compression 对接第一批新结构
+1. `App Shell Interceptor`
+2. `semantic_ast_v2`（table / math / code）
+3. `citations[] / artifacts[] / rich-only normalized_html_snapshot`
+4. `reader / web / export` 对接第一批 package 结构
+5. 最后再推进 `insights / compression / search`
