@@ -30,7 +30,14 @@ function formatTime(value: number): string {
   });
 }
 
-function toCompactTranscript(messages: Message[]): string {
+function toCompactTranscript(
+  messages: Message[],
+  transcriptOverride?: string
+): string {
+  if (transcriptOverride?.trim()) {
+    return transcriptOverride.trim();
+  }
+
   if (!messages.length) {
     return "[No messages available]";
   }
@@ -60,7 +67,7 @@ Metadata:
 - MessageCount: ${payload.messages.length}
 
 Conversation:
-${toCompactTranscript(payload.messages)}
+${toCompactTranscript(payload.messages, payload.transcriptOverride)}
 
 Execution constraints:
 1) Input boundary is strict: use this slice only.
@@ -80,7 +87,7 @@ function buildCompactionFallbackPrompt(payload: CompactionPromptPayload): string
 Focus on: core tension, key reasoning transitions, concrete anchor, and unresolved points.
 
 Conversation:
-${toCompactTranscript(payload.messages)}`;
+${toCompactTranscript(payload.messages, payload.transcriptOverride)}`;
 }
 
 export const CURRENT_COMPACTION_PROMPT: PromptVersion<CompactionPromptPayload> = {

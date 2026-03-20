@@ -53,6 +53,10 @@ import {
   getConversationCaptureFreshnessAt,
   getConversationOriginAt,
 } from "../conversations/timestamps";
+import {
+  createPromptReadyConversationContext,
+  type PromptReadyMessage,
+} from "../prompts/promptIngestionAdapter";
 
 const SUMMARY_MAX_CHARS = 12000;
 const WEEKLY_MAX_CHARS = 12000;
@@ -852,13 +856,13 @@ interface CompactionExecution {
   llmCallCount: number;
 }
 
-function countInputChars(messages: Message[]): number {
-  return messages.reduce((sum, message) => sum + message.content_text.length, 0);
+function countInputChars(messages: PromptReadyMessage[]): number {
+  return messages.reduce((sum, message) => sum + message.bodyText.length, 0);
 }
 
 function shouldSkipSummaryCompaction(
   conversation: Conversation,
-  messages: Message[]
+  messages: PromptReadyMessage[]
 ): boolean {
   if (conversation.message_count <= SUMMARY_COMPACTION_SKIP_MAX_MESSAGES) {
     return true;
@@ -895,7 +899,8 @@ Constraints:
 async function runCompaction(
   settings: LlmConfig,
   conversation: Conversation,
-  messages: Message[]
+  messages: PromptReadyMessage[],
+  transcriptOverride: string
 ): Promise<CompactionExecution> {
   const prompt = getPrompt("compaction", { variant: "current" });
   const charsIn = countInputChars(messages);
@@ -904,6 +909,7 @@ async function runCompaction(
     conversationPlatform: conversation.platform,
     conversationOriginAt: getConversationOriginAt(conversation),
     messages,
+    transcriptOverride,
     locale: "zh" as const,
   };
 
@@ -1285,7 +1291,7 @@ function splitSynthesisLines(raw: string): string[] {
       .filter((line) => line.length >= 12 && !/^[\[\]{}":,]+$/.test(line))
   );
 }
-function buildJourneySeedsFromMessages(messages: Message[]): Array<{
+function buildJourneySeedsFromMessages(messages: PromptReadyMessage[]): Array<{
   speaker: "User" | "AI";
   assertion: string;
 }> {
@@ -1302,7 +1308,7 @@ function buildJourneySeedsFromMessages(messages: Message[]): Array<{
 
 function synthesizeDegradedSummaryV2FromRaw(params: {
   conversation: Conversation;
-  messages: Message[];
+  messages: PromptReadyMessage[];
   rawCandidates: string[];
 }): ConversationSummaryV2 | null {
   const rawLines = dedupeNarrativeItems(
@@ -1447,20 +1453,30 @@ async function generateStructuredSummary(
   const prompt = getPrompt("conversationSummary", { variant: "current" });
   const dedupeErrors = (errors: string[]): string[] => [...new Set(errors)];
   const parseErrorCodes = new Set<string>();
+  const promptContext = createPromptReadyConversationContext({
+    conversation,
+    messages,
+  });
+  const promptMessages = promptContext.messages;
 
   hooks?.onStage?.("distilling_core_logic");
-  const compactionSkipped = shouldSkipSummaryCompaction(conversation, messages);
+  const compactionSkipped = shouldSkipSummaryCompaction(conversation, promptMessages);
   const compaction = compactionSkipped
     ? {
         used: false,
         failed: false,
         skipped: true,
         content: "",
-        charsIn: countInputChars(messages),
+        charsIn: countInputChars(promptMessages),
         charsOut: 0,
         llmCallCount: 0,
       }
-    : await runCompaction(settings, conversation, messages);
+    : await runCompaction(
+        settings,
+        conversation,
+        promptMessages,
+        promptContext.transcript
+      );
   const summaryPath: SummaryPath = compaction.used ? "compacted" : "direct";
   let summaryLlmCallCount = compaction.llmCallCount;
   let summaryJsonRecoveredFromReasoning = false;
@@ -1469,7 +1485,8 @@ async function generateStructuredSummary(
     conversationTitle: conversation.title,
     conversationPlatform: conversation.platform,
     conversationOriginAt: getConversationOriginAt(conversation),
-    messages,
+    messages: promptMessages,
+    transcriptOverride: promptContext.transcript,
     locale: "zh" as const,
   };
 
@@ -1498,7 +1515,7 @@ async function generateStructuredSummary(
   const firstDensity = validateSummaryDensity(
     firstParsed.data,
     firstParsed.schemaVersion,
-    messages.length
+    promptMessages.length
   );
   const firstValidationErrors = dedupeErrors([
     ...firstParsed.errors,
@@ -1512,7 +1529,7 @@ async function generateStructuredSummary(
     attempt: 1,
     validationErrors: firstValidationErrors,
     schemaVersion: firstParsed.schemaVersion,
-    inputCount: messages.length,
+    inputCount: promptMessages.length,
     route: first.route,
     fallbackStage:
       firstParsed.data && firstDensity.passed ? "none" : "repair_json",
@@ -1600,7 +1617,7 @@ async function generateStructuredSummary(
     secondDensity = validateSummaryDensity(
       secondParsed.data,
       secondParsed.schemaVersion,
-      messages.length
+      promptMessages.length
     );
     secondValidationErrors = dedupeErrors([
       ...secondParsed.errors,
@@ -1614,7 +1631,7 @@ async function generateStructuredSummary(
       attempt: 2,
       validationErrors: secondValidationErrors,
       schemaVersion: secondParsed.schemaVersion,
-      inputCount: messages.length,
+      inputCount: promptMessages.length,
       route: second.route,
       fallbackStage:
         secondParsed.data && secondDensity.passed ? "none" : "repair_json",
@@ -1653,7 +1670,7 @@ async function generateStructuredSummary(
       attempt: 2,
       validationErrors: secondValidationErrors,
       schemaVersion: firstParsed.schemaVersion,
-      inputCount: messages.length,
+      inputCount: promptMessages.length,
       route: first.route,
       fallbackStage: "repair_json",
       compactionUsed: compaction.used,
@@ -1788,7 +1805,7 @@ async function generateStructuredSummary(
 
   const synthesized = synthesizeDegradedSummaryV2FromRaw({
     conversation,
-    messages,
+    messages: promptMessages,
     rawCandidates: [
       first.content,
       second?.content || "",
@@ -1799,7 +1816,7 @@ async function generateStructuredSummary(
     const synthDensity = validateSummaryDensity(
       synthesized,
       "conversation_summary.v2",
-      messages.length
+      promptMessages.length
     );
     const synthValidationErrors = dedupeErrors([
       ...firstValidationErrors,
@@ -1814,7 +1831,7 @@ async function generateStructuredSummary(
       attempt: second ? 2 : 1,
       validationErrors: synthValidationErrors,
       schemaVersion: "conversation_summary.v2",
-      inputCount: messages.length,
+      inputCount: promptMessages.length,
       route: second?.route ?? first.route,
       fallbackStage: "repair_json",
       compactionUsed: compaction.used,
@@ -1884,7 +1901,7 @@ async function generateStructuredSummary(
     mode: "fallback_text",
     attempt: second ? 3 : 2,
     validationErrors: terminalValidationErrors,
-    inputCount: messages.length,
+    inputCount: promptMessages.length,
     route: second?.route ?? first.route,
     fallbackStage: "fallback_text",
     compactionUsed: compaction.used,

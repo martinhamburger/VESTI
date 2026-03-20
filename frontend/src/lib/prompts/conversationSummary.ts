@@ -71,7 +71,14 @@ function formatTime(value: number): string {
   });
 }
 
-function toNarrativeTranscript(messages: Message[]): string {
+function toNarrativeTranscript(
+  messages: Message[],
+  transcriptOverride?: string
+): string {
+  if (transcriptOverride?.trim()) {
+    return transcriptOverride.trim();
+  }
+
   if (!messages.length) {
     return "[无可用消息]";
   }
@@ -89,7 +96,7 @@ function buildConversationSummaryPrompt(
 ): string {
   const originAt = payload.conversationOriginAt ?? Date.now();
   const platform = payload.conversationPlatform ?? "unknown";
-  const transcript = toNarrativeTranscript(payload.messages);
+  const transcript = toNarrativeTranscript(payload.messages, payload.transcriptOverride);
   const conversationTitle = payload.conversationTitle ?? "(未命名对话)";
   const locale = payload.locale ?? "zh";
 
@@ -119,7 +126,7 @@ ${transcript}
 function buildConversationFallbackPrompt(
   payload: ConversationSummaryPromptPayload
 ): string {
-  const transcript = toNarrativeTranscript(payload.messages);
+  const transcript = toNarrativeTranscript(payload.messages, payload.transcriptOverride);
   return `请基于这段对话写一段纯文本回顾（不要输出JSON，不要markdown符号）：
 
 ${transcript}
@@ -130,7 +137,14 @@ ${transcript}
 3) 避免空泛套话。`;
 }
 
-function toLegacyTranscript(messages: Message[]): string {
+function toLegacyTranscript(
+  messages: Message[],
+  transcriptOverride?: string
+): string {
+  if (transcriptOverride?.trim()) {
+    return transcriptOverride.trim();
+  }
+
   if (!messages.length) {
     return "[No messages available]";
   }
@@ -146,7 +160,7 @@ function toLegacyTranscript(messages: Message[]): string {
 function buildLegacySummaryPrompt(
   payload: ConversationSummaryPromptPayload
 ): string {
-  const transcript = toLegacyTranscript(payload.messages);
+  const transcript = toLegacyTranscript(payload.messages, payload.transcriptOverride);
   const titleLine = payload.conversationTitle
     ? `Conversation title: ${payload.conversationTitle}`
     : "Conversation title: (unknown)";
@@ -159,7 +173,7 @@ function buildLegacySummaryPrompt(
 function buildLegacyFallbackPrompt(
   payload: ConversationSummaryPromptPayload
 ): string {
-  const transcript = toLegacyTranscript(payload.messages);
+  const transcript = toLegacyTranscript(payload.messages, payload.transcriptOverride);
   return `Summarize the conversation in plain text.\nConstraints:\n1) No markdown syntax (no #, *, -, code fences).\n2) 4-6 concise lines.\n3) Focus on decisions and next actions.\n\nTranscript:\n${transcript}`;
 }
 
