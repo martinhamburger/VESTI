@@ -1,12 +1,132 @@
-import { Fragment, type ReactNode } from "react";
+import { Check, Copy } from "lucide-react";
+import katex from "katex";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AstNode, AstRoot, AstTableNode, Message } from "../types";
+
+const COPY_FEEDBACK_MS = 1400;
 
 interface RichMessageContentProps {
   message: Message;
 }
 
+interface MathNodeViewProps {
+  tex: string;
+  display: boolean;
+}
+
+interface CodeBlockViewProps {
+  code: string;
+  language?: string | null;
+}
+
 function hasRenderableAst(root: AstRoot | null | undefined): root is AstRoot {
   return !!root && root.type === "root" && Array.isArray(root.children) && root.children.length > 0;
+}
+
+function CopyButton(props: { label: string; value: string; compact?: boolean }) {
+  const { label, value, compact = false } = props;
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value).catch(() => {});
+    setCopied(true);
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+    }
+    timerRef.current = window.setTimeout(() => {
+      setCopied(false);
+      timerRef.current = null;
+    }, COPY_FEEDBACK_MS);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label={label}
+      className={`inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-primary/80 px-2 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:bg-bg-surface-card hover:text-text-primary ${
+        compact ? "ml-2 align-middle" : ""
+      }`}
+    >
+      {copied ? <Check className="h-3 w-3" strokeWidth={1.8} /> : <Copy className="h-3 w-3" strokeWidth={1.8} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function MathNodeView({ tex, display }: MathNodeViewProps) {
+  const html = useMemo(() => {
+    try {
+      return katex.renderToString(tex, {
+        throwOnError: false,
+        displayMode: display,
+      });
+    } catch {
+      return "";
+    }
+  }, [display, tex]);
+
+  if (!html) {
+    if (display) {
+      return (
+        <div className="mb-3 overflow-x-auto rounded-xl border border-border-subtle bg-bg-surface-card/70 px-3 py-3 font-mono text-[12px] text-text-primary">
+          {tex}
+        </div>
+      );
+    }
+
+    return (
+      <code className="rounded bg-bg-surface-card px-1.5 py-0.5 font-mono text-[12px] text-text-primary">
+        {tex}
+      </code>
+    );
+  }
+
+  if (display) {
+    return (
+      <div className="mb-3 rounded-xl border border-border-subtle bg-bg-surface-card/70 px-3 py-3 text-text-primary">
+        <div className="mb-2 flex justify-end">
+          <CopyButton label="Copy TeX" value={tex} />
+        </div>
+        <div
+          className="overflow-x-auto text-center text-[15px]"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center rounded-md bg-bg-surface-card/70 px-1.5 py-0.5 text-text-primary">
+      <span dangerouslySetInnerHTML={{ __html: html }} />
+      <CopyButton label="Copy TeX" value={tex} compact />
+    </span>
+  );
+}
+
+function CodeBlockView({ code, language }: CodeBlockViewProps) {
+  return (
+    <div className="mb-3 overflow-hidden rounded-xl border border-border-subtle bg-[#10131a]">
+      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-slate-300">
+          {language || "plain"}
+        </span>
+        <CopyButton label="Copy code" value={code} />
+      </div>
+      <pre className="overflow-x-auto p-3 font-mono text-[12px] leading-6 text-slate-100">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
 }
 
 function renderNodes(nodes: AstNode[], keyPrefix: string): ReactNode {
@@ -144,14 +264,7 @@ function renderNode(node: AstNode, key: string): ReactNode {
         </code>
       );
     case "code_block":
-      return (
-        <pre
-          key={key}
-          className="mb-3 overflow-x-auto rounded-xl border border-border-subtle bg-[#10131a] p-3 font-mono text-[12px] leading-6 text-slate-100"
-        >
-          <code>{node.code}</code>
-        </pre>
-      );
+      return <CodeBlockView key={key} code={node.code} language={node.language ?? null} />;
     case "ul":
       return (
         <ul key={key} className="mb-3 list-disc space-y-1 pl-5">
@@ -178,24 +291,7 @@ function renderNode(node: AstNode, key: string): ReactNode {
     case "table":
       return renderTable(node, key);
     case "math":
-      if (node.display) {
-        return (
-          <div
-            key={key}
-            className="mb-3 overflow-x-auto rounded-xl border border-border-subtle bg-bg-surface-card/70 px-3 py-2 font-mono text-[12px] text-text-primary"
-          >
-            {`$$ ${node.tex} $$`}
-          </div>
-        );
-      }
-      return (
-        <code
-          key={key}
-          className="rounded bg-bg-surface-card px-1.5 py-0.5 font-mono text-[12px] text-text-primary"
-        >
-          {node.tex}
-        </code>
-      );
+      return <MathNodeView key={key} tex={node.tex} display={Boolean(node.display)} />;
     case "attachment":
       return (
         <span

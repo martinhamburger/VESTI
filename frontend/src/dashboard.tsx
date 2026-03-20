@@ -1,4 +1,5 @@
 import "~style.css";
+import "katex/dist/katex.min.css";
 
 import { useCallback, useEffect, useState } from "react";
 import type { UiThemeMode } from "~lib/types";
