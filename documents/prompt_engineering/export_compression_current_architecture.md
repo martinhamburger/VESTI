@@ -86,3 +86,31 @@ So this path should be understood as:
 - compatible with current export UX
 - materially safer than the earlier raw-text-only path
 - not yet the final package-aware consumer model defined by newer capture / reader docs
+
+## 2026-03 artifact-first note
+
+Week 4 tightened the shipped runtime around artifact sidecars without changing the storage shape.
+
+Practical effects:
+- artifact summaries now prefer sidecar content in this order:
+  - `markdownSnapshot`
+  - `plainText`
+  - `normalizedHtmlSnapshot`
+- prompt/runtime consumers now treat artifact summary lines as sidecar-only context
+- export and reader/web consumers now show bounded artifact excerpts instead of body-tail reconstruction
+
+This is still intentionally bounded:
+- no artifact replay
+- no interactive preview
+- no weekly digest rewrite in the same slice
+
+## Weekly defer boundary
+
+`weekly digest` is not the active implementation target in this stage.
+
+The expected next bridge is:
+
+- package-aware summary outputs
+- then summary-to-weekly adaptation
+
+It should not regress back to direct raw-transcript dependence while artifact work is being expanded.

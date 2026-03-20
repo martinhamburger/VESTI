@@ -110,11 +110,30 @@ Audience: Parser maintainers, runtime engineers, QA
   - multimodal image / upload capture
   - historical repair migration
 
+## Week 4 Shipped State
+
+- completed:
+  - Claude standalone artifact second pass now preserves:
+    - `plainText`
+    - `normalizedHtmlSnapshot`
+    - safe `markdownSnapshot` derivation when possible
+  - prompt/export/reader/web artifact summaries now consume the same sidecar fields
+  - Qwen artifact-adjacent code/table chrome cleanup expanded to code-header and Monaco helper nodes
+  - Kimi artifact-adjacent action cleanup now excludes `segment-user-actions` and code/table header shells
+  - Yuanbao artifact presence became more stable by suppressing hidden preview false positives
+  - Doubao action overflow shell cleanup expanded without changing its main parser strategy
+  - artifact-first sample manifest and shipped regression checklist are frozen in-repo
+- still deferred:
+  - artifact replay / interactive preview
+  - `Kimi / Yuanbao` shadow-path / network-interception fallback track
+  - richer artifact extraction beyond current sidecar fields
+  - weekly digest runtime migration
+
 ## Current Slice Recommendation
 
 下一轮优先级：
 
-1. Claude artifact fidelity second pass
+1. artifact replay planning without changing current sidecar storage shape
 2. `semantic_ast_v2` 扩展到更完整的 math / code / pseudo-table case
 3. `Kimi / Yuanbao` fallback / shadow-path exploration
-4. 最后再推进 `insights / compression / search`
+4. weekly bridge 和更深的 prompt/runtime package-native rollout

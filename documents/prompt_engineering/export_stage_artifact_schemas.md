@@ -386,3 +386,23 @@ Rules:
   - export compression
   - conversation summary
   - insight generation
+
+## 2026-03 artifact-first shipped note
+
+Week 4 does not introduce a new artifact schema version. It tightens the shipped interpretation of
+the existing artifact sidecar.
+
+Shipped consumer rules:
+
+- artifact excerpt priority is:
+  - `markdownSnapshot`
+  - `plainText`
+  - `normalizedHtmlSnapshot`
+- sidepanel, web, export, and prompt-ready runtime all consume the same sidecar fields
+- body text must not be used to reconstruct artifact content when sidecar fields already exist
+
+Still deferred:
+
+- artifact replay
+- iframe / executable artifact rendering
+- full package-native weekly digest consumption

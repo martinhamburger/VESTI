@@ -84,10 +84,25 @@ Audience: Reader maintainers, export/compression owners, web contributors
   - weekly digest full package-aware rollout
   - artifact replay / prompt-time artifact deep inspection
 
+## Week 4 Shipped State
+
+- completed:
+  - `Artifacts` disclosure in sidepanel and web now shows metadata plus excerpt
+  - shipped export `Artifacts` sections now prefer excerpt sources in this order:
+    - `markdownSnapshot`
+    - `plainText`
+    - `normalizedHtmlSnapshot`
+  - prompt-ready artifact summary lines now stay sidecar-first and no longer reconstruct from body tail
+  - artifact-first prompt sample manifest and regression checklist are frozen in-repo
+- still deferred:
+  - weekly digest mainline rewrite
+  - artifact replay / deep preview UI
+  - fully package-native prompt/runtime chain beyond current compatibility layer
+
 ## Current Slice Recommendation
 
 当前建议顺序：
 
-1. weekly digest compatibility-to-package transition
-2. artifact fidelity second pass
+1. package-aware summary-to-weekly bridge
+2. artifact replay planning with the current sidecar contract
 3. full package-native runtime planning for `E0/E1/E2/E3`
