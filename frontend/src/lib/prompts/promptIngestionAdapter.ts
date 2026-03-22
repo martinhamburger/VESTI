@@ -1,9 +1,6 @@
 import type { Conversation, Message } from "../types";
+import { formatArtifactDescriptor, getArtifactExcerptText } from "@vesti/ui";
 import { extractAstPlainText, inspectAstStructure, isAstRoot, shouldPreferAstCanonicalText } from "../utils/astText";
-import {
-  formatArtifactDescriptor,
-  getArtifactExcerptText,
-} from "../utils/artifactSummary";
 
 const PATH_PATTERN =
   /(?:[A-Za-z]:\\[^\s`"')]+|(?:\.?\.?(?:\/|\\))?(?:[\w.-]+(?:\/|\\))+[\w./\\-]*[\w-]+(?:\.[A-Za-z0-9]+)?)/g;

@@ -1,3 +1,4 @@
+import { formatArtifactDescriptor, getArtifactExcerptText } from "@vesti/ui";
 import type {
   Annotation,
   Conversation,
@@ -14,10 +15,6 @@ import {
   getConversationOriginAt,
   getConversationSourceCreatedAt,
 } from "../conversations/timestamps";
-import {
-  formatArtifactDescriptor,
-  getArtifactExcerptText,
-} from "../utils/artifactSummary";
 
 export interface ExportDataset {
   conversations: Conversation[];

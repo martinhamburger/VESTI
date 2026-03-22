@@ -1,7 +1,8 @@
 import { Check, Copy } from "lucide-react";
 import katex from "katex";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { AstNode, AstRoot, AstTableNode, Message, MessageArtifact } from "../types";
+import type { AstNode, AstRoot, AstTableNode, Message } from "../types";
+import { formatArtifactDescriptor, getArtifactExcerptText } from "../lib/artifactSummary";
 
 const COPY_FEEDBACK_MS = 1400;
 
@@ -17,35 +18,6 @@ interface MathNodeViewProps {
 interface CodeBlockViewProps {
   code: string;
   language?: string | null;
-}
-
-function collectArtifactExcerpt(artifact: MessageArtifact): string | null {
-  const rawSource =
-    artifact.markdownSnapshot?.trim() ||
-    artifact.plainText?.trim() ||
-    artifact.normalizedHtmlSnapshot
-      ?.replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/(p|div|li|h1|h2|h3|blockquote|tr)>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&lt;/gi, "<")
-      .replace(/&gt;/gi, ">")
-      .replace(/&amp;/gi, "&")
-      .trim();
-
-  if (!rawSource) {
-    return null;
-  }
-
-  const lines = rawSource
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((line) => (line.length > 110 ? `${line.slice(0, 107).trimEnd()}...` : line));
-
-  return lines.length > 0 ? lines.join(" | ") : null;
 }
 
 function hasRenderableAst(root: AstRoot | null | undefined): root is AstRoot {
@@ -188,15 +160,18 @@ function renderTable(node: AstTableNode, key: string): ReactNode {
           <tbody>
             {node.rows.map((row, rowIndex) => (
               <tr key={`${key}-row-${rowIndex}`} className="border-b border-border-subtle/60 last:border-b-0">
-                {row.cells.map((cell, cellIndex) => (
-                  <td
-                    key={`${key}-cell-${rowIndex}-${cellIndex}`}
-                    className="align-top px-3 py-2 text-[13px] text-text-secondary"
-                    style={cell.align ? { textAlign: cell.align } : undefined}
-                  >
-                    {renderNodes(cell.children, `${key}-cell-${rowIndex}-${cellIndex}`)}
-                  </td>
-                ))}
+                {row.cells.map((cell, cellIndex) => {
+                  const align = cell.align ?? headers[cellIndex]?.align ?? null;
+                  return (
+                    <td
+                      key={`${key}-cell-${rowIndex}-${cellIndex}`}
+                      className="align-top px-3 py-2 text-[13px] text-text-secondary"
+                      style={align ? { textAlign: align } : undefined}
+                    >
+                      {renderNodes(cell.children, `${key}-cell-${rowIndex}-${cellIndex}`)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -348,7 +323,10 @@ function renderArtifactMeta(message: Message): ReactNode {
       <div className="space-y-2 border-t border-border-subtle px-3 py-3">
         {(message.artifacts ?? []).map((artifact, index) => (
           (() => {
-            const excerpt = collectArtifactExcerpt(artifact);
+            const excerpt = getArtifactExcerptText(artifact, {
+              maxLines: 2,
+              maxCharsPerLine: 110,
+            });
             return (
               <div
                 key={`${artifact.kind}-${artifact.label ?? index}`}
@@ -358,11 +336,7 @@ function renderArtifactMeta(message: Message): ReactNode {
                   {artifact.label || artifact.kind}
                 </div>
                 <div className="mt-1 text-[11px] text-text-tertiary">
-                  kind: {artifact.kind}
-                  {artifact.captureMode ? ` | mode: ${artifact.captureMode}` : ""}
-                  {artifact.renderDimensions
-                    ? ` | ${artifact.renderDimensions.width}x${artifact.renderDimensions.height}`
-                    : ""}
+                  {formatArtifactDescriptor(artifact)}
                 </div>
                 {excerpt ? (
                   <div className="mt-2 whitespace-pre-wrap text-[11px] leading-5 text-text-secondary">

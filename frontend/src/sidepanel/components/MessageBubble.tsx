@@ -1,8 +1,8 @@
+import { formatArtifactDescriptor, getArtifactExcerptText } from "@vesti/ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Copy, Check, ChevronDown, Link2 } from "lucide-react";
 import type { Message, Platform } from "~lib/types";
 import type { AstRoot } from "~lib/types/ast";
-import { getArtifactExcerptText } from "~lib/utils/artifactSummary";
 import { AstMessageRenderer } from "./AstMessageRenderer";
 import { DisclosureSection } from "./DisclosureSection";
 import { PLATFORM_TONE } from "./platformTone";
@@ -250,11 +250,7 @@ export function MessageBubble({
                       {artifact.label || artifact.kind}
                     </div>
                     <div className="mt-0.5 text-[11px] text-text-tertiary">
-                      kind: {artifact.kind}
-                      {artifact.captureMode ? ` | mode: ${artifact.captureMode}` : ""}
-                      {artifact.renderDimensions
-                        ? ` | ${artifact.renderDimensions.width}x${artifact.renderDimensions.height}`
-                        : ""}
+                      {formatArtifactDescriptor(artifact)}
                     </div>
                     {excerpt ? (
                       <div className="mt-2 whitespace-pre-wrap text-[11px] leading-5 text-text-secondary">
