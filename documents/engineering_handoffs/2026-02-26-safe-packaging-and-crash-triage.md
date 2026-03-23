@@ -1,9 +1,9 @@
 # Safe Packaging and Crash Triage (2026-02-26)
 
-Status: Public thin handoff  
+Status: Public thin handoff
 Local original: `documents/_local/engineering_handoffs/2026-02-26-safe-packaging-and-crash-triage.md`
 
-## Reason for local-only demotion
+## Reason for condensation
 
 This handoff included machine-specific crash evidence, local packaging traces, and release upload operations that are useful to the maintainer but not appropriate for public sync to `main`.
 

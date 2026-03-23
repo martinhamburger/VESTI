@@ -1,40 +1,39 @@
-﻿# Engineering Handoffs Index
+# Engineering Handoffs
 
-Status: Active historical handoff directory  
-Audience: Maintainers, release owners, engineers reconstructing prior decisions
+Status: Historical timeline index
+Audience: Maintainers, reviewers, engineers reconstructing dated decisions
 
 ## Purpose
 
-`documents/engineering_handoffs/` stores dated handoff notes, branch snapshots, rollout memos, and release-transition context.
+`documents/engineering_handoffs/` is a historical timeline, not the canonical source of truth for current subsystem behavior.
 
-This directory is important historical evidence, but it is not the canonical entrypoint for current subsystem specs.
+Use this directory to answer date-bound questions such as:
+- what changed in a specific release window
+- which decision boundary existed at that time
+- where the durable outcome was later promoted
 
-## What belongs here
+## Public document types
 
-- dated branch handoffs
-- release-transition notes
-- implementation snapshots taken at a specific moment in time
-- historical architecture memos that have not yet been promoted into canonical subsystem docs
+The public handoff surface now keeps only three document shapes:
 
-## What does not belong here
+1. `Public thin handoff`
+2. `Shipped State`
+3. `Next Slice / Closure Audit`
 
-- the current source of truth for capture/parser specs
-- the current source of truth for web dashboard engineering
-- long-lived UI/component contracts
+## Placement rules
 
-## How to read handoff docs
+- If a note is a historical handoff, write it directly as a thin handoff.
+- If a note becomes durable engineering guidance, rewrite it into the relevant canonical directory.
+- If a note is maintainer-only, machine-specific, or operationally sensitive, keep the full original in `documents/_local/engineering_handoffs/` instead of the public tree.
 
-Use a handoff to understand:
-- what changed at a specific time
-- why a branch or release was structured a certain way
-- what evidence existed during that release window
+## Reading order
 
-Then consult canonical directories such as:
-- `documents/capture_engine/`
-- `documents/web_dashboard/`
-- `documents/ui_refactor/`
+1. Start with the canonical subsystem docs in `capture_engine/`, `reader_pipeline/`, `web_dashboard/`, `ui_refactor/`, or `prompt_engineering/`.
+2. Use a handoff only when you need dated context or a release-window decision boundary.
+3. If a handoff lists `Local original`, that full version is maintainer-local and not part of the public repo surface.
 
-## Notes
+## Current compression policy
 
-Historical handoff files are preserved in place.
-When a handoff becomes durable guidance, that guidance should be rewritten into a canonical directory rather than treating the handoff itself as the active spec.
+- Pre-`2026-03-09` handoffs are intentionally condensed to thin public shells.
+- A small number of later heavy memos are also condensed when their durable guidance already lives elsewhere.
+- File paths stay stable so existing references from `CHANGELOG`, archive docs, and subsystem READMEs continue to resolve.

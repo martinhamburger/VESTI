@@ -1,146 +1,20 @@
-# 2026-02-27 `vesti-web` 收敛路线图（可执行层）
+# 2026-02-27 vesti-web Convergence Roadmap
 
-## 0. 执行摘要
+Status: Public thin handoff
+Local original: `documents/_local/engineering_handoffs/2026-02-27-vesti-web-convergence-roadmap.md`
 
-本路线图目标是把 `vesti-web` 从“可运行但边界混杂”收敛到“职责单一、契约稳固、类型可验证”的工程状态。  
-约束前提：
-1. 不改变扩展主交付链路（Chrome Extension CI 包仍是官方产物）。
-2. 优先治理边界与契约，再处理历史代码与视觉分叉。
-3. 所有改造以“可回滚、可验收、可 issue 化”为原则。
+## Reason for condensation
 
----
+The original roadmap mixed branch-local cleanup steps, migration staging, and implementation sequencing for `vesti-web`. The public repo keeps only the durable convergence direction.
 
-## 1. 收敛原则
+## Durable outcomes
 
-1. 单一实现源（Single Source of Implementation）
-- `@vesti/ui` 作为 Dashboard 主实现源；`vesti-web/components/tabs/*` 不再承载主功能演进。
+1. `@vesti/ui` was established as the primary dashboard implementation source instead of the legacy `vesti-web/components/*` surface.
+2. Shared contracts and type-checked boundaries were identified as the main convergence requirement for `vesti-web`.
+3. Narrative cleanup was treated as part of the engineering work so public web documentation matches the real runtime boundary.
 
-2. 单一契约源（Single Source of Contract）
-- 协议类型不得从 `frontend/src/...` 跨层硬引用，需迁移到共享契约包。
+## Canonical follow-ups
 
-3. 类型可验证（Type-verifiable）
-- 逐步移除 `ignoreBuildErrors`，恢复类型门禁。
-
-4. 叙事与实现一致（Narrative = Reality）
-- 文档与对外说明必须明确：`vesti-web` 是 Web 容器层，核心智能在扩展侧运行。
-
----
-
-## 2. 里程碑拆分（R1 / R2 / R3）
-
-## R1：边界与文档收口（低风险、立即可做）
-目标：
-1. 锁定“谁是真源代码”。
-2. 统一术语口径，消除叙事误导。
-
-出口条件：
-1. 工程文档明确 legacy 边界。
-2. capability matrix 固定在 handoff 文档中。
-3. 团队评审完成并形成后续 issue 清单。
-
-## R2：契约与类型收口（中风险、核心改造）
-目标：
-1. 消除跨目录协议硬耦合。
-2. 建立 `vesti-web` 类型门禁基线。
-
-出口条件：
-1. `use-extension-sync` 不再直接引用 `frontend/src/lib/messaging/protocol.ts`。
-2. `vesti-web` 可在 CI 下通过独立类型检查（允许分阶段）。
-3. `ignoreBuildErrors` 进入“可关闭”状态（先灰度、后全关）。
-
-## R3：实现收口与历史清理（中高风险、需回滚策略）
-目标：
-1. 处理 legacy 目录（删除或冻结）。
-2. 确保后续功能演进只走 `@vesti/ui` 主路径。
-
-出口条件：
-1. legacy tabs 不再影响认知与改动面。
-2. 代码审查规则明确禁止新功能落到 legacy 目录。
-3. 视觉与样式策略与主线一致，不形成双栈分叉。
-
----
-
-## 3. 任务清单（可直接拆 issue）
-
-| Task ID | Milestone | 输入 | 动作 | 输出 | 验收标准 |
-| --- | --- | --- | --- | --- | --- |
-| R1-T1 | R1 | 当前代码事实与三份备忘录 | 在 `vesti-web` 顶层补一段架构定位说明（文档） | 边界声明可见 | 新成员 5 分钟可理解职责边界 |
-| R1-T2 | R1 | 现有目录结构 | 标记 `vesti-web/components/tabs/*` 为 legacy（文档/注释，不删） | legacy 清单 | 评审中无“误改 legacy”争议 |
-| R1-T3 | R1 | 蓝图与实现映射 | 固化 capability matrix（当前可用/依赖扩展/未实现） | 对照表文档 | 版本叙事与工程实现不冲突 |
-| R2-T1 | R2 | 当前跨层类型引用 | 新建共享协议类型包（建议 `packages/shared-protocol`） | 可复用协议类型入口 | `vesti-web` 与 `@vesti/ui` 不再 import `frontend/src/...` |
-| R2-T2 | R2 | `use-extension-sync` 两处实现 | 迁移并统一该钩子的类型来源 | 单一类型依赖 | 两处 hook 编译一致且行为不变 |
-| R2-T3 | R2 | `next.config.mjs` 当前配置 | 先新增类型检查脚本/CI 检查，再逐步收紧 `ignoreBuildErrors` | 类型门禁路线 | 类型错误能在 CI 被发现并阻断 |
-| R3-T1 | R3 | legacy tabs 当前代码 | 评估删除 vs 冻结，产出决策记录 | 决策文档 + 执行 PR | 主入口无 legacy 引用，且回滚路径清晰 |
-| R3-T2 | R3 | 视觉 token 与字体分叉现状 | 对齐 `vesti-web` 与主线设计 token 策略（按需） | 样式策略说明 | 同一组件在双入口观感一致 |
-| R3-T3 | R3 | 主线开发规范 | 增加代码评审规则：Dashboard 功能只改 `@vesti/ui` 主路径 | 评审规则文档 | 新 PR 无功能改动落入 legacy 区 |
-
----
-
-## 4. 风险与回滚策略
-
-### 4.1 R1 风险（低）
-风险：
-1. 仅文档收口，短期不改代码，历史债仍在。
-回滚：
-1. 文档变更可直接 revert，无运行时影响。
-
-### 4.2 R2 风险（中）
-风险：
-1. 迁移协议类型可能影响 `frontend`、`vesti-web`、`@vesti/ui` 三方编译。
-2. 收紧类型门禁可能暴露大量历史问题，导致短期阻断。
-回滚：
-1. 协议迁移采用“保留旧入口 + 新入口灰度”双轨策略。
-2. `ignoreBuildErrors` 关闭采用阶段开关，不一次性硬切。
-
-### 4.3 R3 风险（中高）
-风险：
-1. 删除 legacy 目录若误判引用，可能影响隐式使用路径。
-回滚：
-1. 先冻结再删除；删除前保留快照分支与文件级回滚方案。
-
----
-
-## 5. 与发布链路关系
-
-1. 本路线图不改变扩展官方发布口径：
-- 官方附件仍以 CI `extension-package` 产物为准。
-2. `vesti-web` 收敛改造不应阻断扩展发布链路。
-3. 如需新增 `vesti-web` 专项 CI，建议与扩展 CI 解耦，避免互相拖累。
-
----
-
-## 6. Owner / 工期 / 依赖前置条件（占位模板）
-
-| Milestone | Owner | 预计工期 | 前置依赖 |
-| --- | --- | --- | --- |
-| R1 | TBD | 1 sprint | 三份备忘录评审通过 |
-| R2 | TBD | 1-2 sprints | 协议包结构决策完成 |
-| R3 | TBD | 1 sprint | R2 类型收口完成 |
-
-建议默认节奏：
-1. 每个 milestone 单独 PR 轨道。
-2. 每个 milestone 结束必须有可审计的验收记录。
-
----
-
-## 7. 验收清单（路线图层）
-
-1. 可执行性
-- 每项任务都可拆成独立 issue，且包含输入/输出/验收。
-
-2. 可追溯性
-- 每个结论都能回链到代码事实或已批准文档。
-
-3. 稳定性
-- 路线图执行过程中不影响扩展官方发布链路。
-
-4. 一致性
-- 术语统一：`Web 容器层`、`扩展执行层`、`共享 UI 层` 三层语义固定。
-
----
-
-## 8. 结论
-
-`vesti-web` 下一轮优先级不是“继续堆功能”，而是“把边界、契约、类型、历史代码治理到可长期维护”。  
-按 R1 -> R2 -> R3 执行，可以在不干扰扩展发布的前提下，逐步完成工程收敛。
-
+- `documents/web_dashboard/web_dashboard_current_architecture.md`
+- `documents/web_dashboard/web_dashboard_engineering_spec.md`
+- `documents/web_dashboard/web_dashboard_technical_roadmap.md`

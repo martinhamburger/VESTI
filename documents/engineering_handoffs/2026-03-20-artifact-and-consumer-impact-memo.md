@@ -1,45 +1,20 @@
 # 2026-03-20 Artifact And Consumer Impact Memo
 
-## Scope
+Status: Public thin handoff
+Local original: `documents/_local/engineering_handoffs/2026-03-20-artifact-and-consumer-impact-memo.md`
 
-- `artifact.txt`
-- current reader / web / export / insights / compression consumers
+## Reason for condensation
 
-## Artifact Diagnosis
+The original memo combined sample-specific artifact diagnosis with downstream consumer rollout notes. The public repo keeps only the durable artifact contract boundary.
 
-- Claude Artifact 已经不是普通消息正文的一部分。
-- 它是独立的小型应用 DOM，具有：
-  - render dimensions
-  - own rich HTML tree
-  - own plain-text / markdown / normalized-html candidates
+## Durable outcomes
 
-## Required Capture Contract
+1. Claude artifact content is treated as a message sidecar, not as part of canonical body text or AST body nodes.
+2. Artifact capture preserves bounded rich fields such as `captureMode`, `renderDimensions`, `plainText`, `markdownSnapshot`, and `normalizedHtmlSnapshot` when available.
+3. Reader, web, and export consumers should become package-aware before insights and compression consumers widen their package dependency.
 
-- Artifact 必须作为 message sidecar object，而不是 AST 正文节点。
-- 推荐字段：
-  - `kind`
-  - `label?`
-  - `captureMode`
-  - `renderDimensions?`
-  - `plainText?`
-  - `markdownSnapshot?`
-  - `normalizedHtmlSnapshot?`
+## Canonical follow-ups
 
-## Snapshot Policy
-
-- `normalized_html_snapshot` 只对 rich-structure message / artifact-bearing message 持久化
-- 不做全量消息快照
-
-## Consumer Impact
-
-- `reader / web / export`
-  - 必须最先升级为 package-aware consumer
-  - 否则 artifact / citation 只能继续退化为正文尾巴或彻底消失
-- `insights / compression`
-  - 当前仍高度依赖 `content_text`
-  - 在下一实现阶段前，只能记录影响边界，不应假设已经具备 package-aware 输入
-
-## Rollout Decision
-
-- `reader + web + export` 先吃 package
-- `insights + compression` 后吃 package
+- `documents/reader_pipeline/reader_pipeline_current_architecture.md`
+- `documents/web_dashboard/web_dashboard_reader_render_contract.md`
+- `documents/prompt_engineering/export_stage_artifact_schemas.md`

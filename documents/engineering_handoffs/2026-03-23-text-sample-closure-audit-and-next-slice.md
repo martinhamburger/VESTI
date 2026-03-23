@@ -1,13 +1,11 @@
 # 2026-03-23 Text Sample Closure Audit And Next Slice
 
-Status: Handoff snapshot  
-Branch: `feature/capture-week2-rollout`  
-Audience: Capture/prompt/runtime maintainers
+Status: Next Slice / Closure Audit
+Audience: Capture, prompt, and runtime maintainers
 
 ## Scope
 
-This handoff records the closure audit for the four operator text samples and fixes the next active
-slice after that audit.
+This handoff records the closure audit for the four operator text samples and fixes the next active slice after that audit.
 
 ## Closure audit result
 
@@ -23,26 +21,25 @@ The following cases are considered shipped in code and frozen as acceptance inpu
 ## Shipped vs deferred
 
 Shipped in this audit baseline:
+
 - no schema migration is required
 - `MessageCitation`, `MessageArtifact`, `PromptReadyMessage`, `conversation_summary.v2`, and `weekly_lite.v1` remain unchanged
-- citation, artifact, title provenance, and AST-aware table/math/code behavior are all treated as frozen acceptance gates
+- citation, artifact, title provenance, and AST-aware table, math, and code behavior are all treated as frozen acceptance gates
 
 Deferred, not missing:
-- artifact replay / iframe execution / interactive preview
+
+- artifact replay, iframe execution, and interactive preview
 - richer artifact extraction beyond the current sidecar contract
-- AST/canonical-text hardening outside frozen-case-adjacent cleanup
+- AST and canonical-text hardening outside frozen-case-adjacent cleanup
 - weekly rewrite; only the summary-to-weekly bridge is in scope
 - overseas live sampling expansion
 
 ## Next active slice
 
-The next active engineering slice is:
-
-1. artifact-first contract unification across prompt/export/reader/web using the existing sidecar fields
-2. AST/canonical-text hardening only where a frozen case or its domestic DOM companions still leave ambiguity
+1. artifact-first contract unification across prompt, export, reader, and web using the existing sidecar fields
+2. AST and canonical-text hardening only where a frozen case or its domestic DOM companions still leave ambiguity
 3. package-aware summary-to-weekly bridge guardrails, without rewriting `weekly_lite.v1`
 
 ## Review rule
 
-Any future change touching citation, artifact, title provenance, or rich table/math/code behavior
-must map back to at least one frozen case ID and name the shipped consumers affected.
+Any future change touching citation, artifact, title provenance, or rich table, math, and code behavior must map back to at least one frozen case ID and name the shipped consumers affected.

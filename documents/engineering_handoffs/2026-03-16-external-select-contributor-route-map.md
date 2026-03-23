@@ -1,9 +1,9 @@
 # External Contributor Route Map: Threads Select One-Shot
 
-Status: Public thin handoff  
+Status: Public thin handoff
 Local original: `documents/_local/engineering_handoffs/2026-03-16-external-select-contributor-route-map.md`
 
-## Reason for local-only demotion
+## Reason for condensation
 
 The original note contained branch-routing and contributor-coordination instructions that were specific to a one-off external collaboration window.
 

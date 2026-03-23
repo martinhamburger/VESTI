@@ -1,9 +1,9 @@
 # 2026-03-13 pnpm Build Scripts Warning Memo
 
-Status: Public thin handoff  
+Status: Public thin handoff
 Local original: `documents/_local/engineering_handoffs/2026-03-13-pnpm-build-scripts-warning-memo.md`
 
-## Reason for local-only demotion
+## Reason for condensation
 
 The original memo described local dependency approval posture and operator build decisions that are not durable public project spec.
 

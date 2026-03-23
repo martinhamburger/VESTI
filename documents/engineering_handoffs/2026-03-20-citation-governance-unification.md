@@ -1,26 +1,20 @@
 # 2026-03-20 Citation Governance Unification
 
-## Summary
+Status: Public thin handoff
+Local original: `documents/_local/engineering_handoffs/2026-03-20-citation-governance-unification.md`
 
-- Network-search citation pills are no longer treated as reader-tail text.
-- This line adopts `clean body + structured sources` as the canonical policy.
+## Reason for condensation
 
-## Policy
+The original memo mixed platform-specific citation cleanup tactics with staged consumer rollout notes. The public repo keeps the stable citation governance rule.
 
-- `ChatGPT`
-  - extract `webpage-citation-pill` into structured message citations
-  - remove citation pill text from message body before `content_text` / AST extraction
-- `Qwen / Doubao`
-  - remove search-card / reference-count style UI noise from body
-  - do not persist citation metadata in this round
-- `Reader`
-  - render sources in a dedicated folded `Sources` section, not inline with正文
-- `Export`
-  - JSON carries citations as message metadata
-  - MD / TXT append a dedicated `Sources` section per message when present
+## Durable outcomes
 
-## Deferred
+1. Citation pills and search-source chrome no longer belong in canonical body text.
+2. The governing policy is `clean body + structured sources`, with citations rendered in dedicated source surfaces instead of inline tail text.
+3. Citation rollout may remain platform-staged, but the message-level storage contract must stay separate from body text.
 
-- Citation metadata extraction for Claude / Gemini / DeepSeek / Kimi / Yuanbao
-- Search / compression consumption of `citations[]`
-- Repair migration for historically polluted message bodies
+## Canonical follow-ups
+
+- `documents/capture_engine/capture_engine_current_architecture.md`
+- `documents/reader_pipeline/reader_pipeline_current_architecture.md`
+- `documents/prompt_engineering/post_audit_frozen_case_matrix.md`

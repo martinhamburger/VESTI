@@ -1,5 +1,7 @@
 # 2026-03-21 Week 2 Shipped State
 
+Status: Shipped State
+
 ## Summary
 
 Week 2 core rollout on `feature/capture-week2-rollout` is now split into three implementation commits:

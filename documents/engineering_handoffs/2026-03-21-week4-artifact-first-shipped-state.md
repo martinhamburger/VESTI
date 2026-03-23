@@ -1,5 +1,7 @@
 # 2026-03-21 Week 4 Artifact-First Shipped State
 
+Status: Shipped State
+
 ## Summary
 
 Week 4 on `feature/capture-week2-rollout` was shipped as four review-sized commits:

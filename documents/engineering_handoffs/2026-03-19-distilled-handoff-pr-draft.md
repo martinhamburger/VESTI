@@ -1,68 +1,20 @@
 # Distilled Handoff Review PR Draft
 
-Status: Draft PR body  
-Audience: Internal reviewers
+Status: Public thin handoff
+Local original: `documents/_local/engineering_handoffs/2026-03-19-distilled-handoff-pr-draft.md`
 
-## Title
+## Reason for condensation
 
-Seal distilled handoff for review, simplify export feedback UX, and surface proxy token-cap observability
+This document was a draft PR body for a specific review window around distilled handoff rollout. The public repo keeps only the stable scope and review-boundary decisions.
 
-## Summary
+## Durable outcomes
 
-This PR seals the current distilled handoff line for review instead of expanding scope further.
+1. Distilled handoff was treated as a review-only export line instead of a cue to reopen adjacent parser or summary scope.
+2. User-facing export feedback was intentionally simplified while richer diagnostics stayed in JSON outputs and internal logs.
+3. Proxy token-cap observability was treated as an implementation detail that supports review and debugging rather than a user-facing feature.
 
-It does three things:
-- keeps the distilled-handoff experiment in a review/observation state
-- simplifies user-facing export feedback so the export panel shows product-level guidance instead of developer diagnostics
-- keeps richer diagnostics in JSON exports and internal logging, including proxy token-cap observability for the distilled handoff line
+## Canonical follow-ups
 
-This PR is intentionally export-only:
-- it is cut from the latest `main`
-- it inherits the React absolute-path / single-runtime fix from `#56` instead of reimplementing it
-- it leaves parser / time / math / capture work that only existed on the older branch out of scope
-
-## What changed
-
-### Distilled handoff status
-- makes `Compact` default to the distilled execution-state handoff path
-- treats soft density warnings as human-review signals, not as automatic blockers
-- keeps `summary` frozen on the shipping note-schema path
-
-### User-facing export UX
-- stops rendering `technicalSummary` in the default export-panel callout
-- removes the user-facing `Current / Experimental` compact selector
-- keeps callouts focused on:
-  - title
-  - detail
-  - hint
-- simplifies soft-density warning copy so ordinary users are asked to review the downloaded handoff before sharing externally, without exposing token/route metrics in the main UI
-
-### Diagnostics and proxy observability
-- keeps rich diagnostics in JSON exports and internal logging
-- continues surfacing proxy token-cap observability for the distilled handoff line
-- preserves existing diagnostics needed for internal debugging and expert review
-
-## Validation
-
-- `pnpm -C frontend build`
-- `pnpm -C frontend eval:prompts --mode=mock --strict`
-- `pnpm -C frontend eval:prompts --mode=mock --strict --variant=experimental`
-
-## Reviewer notes
-
-The proxy-side dependency is already merged separately:
-- `vesti-proxy` commit: `9ffea11`
-
-Before validating plugin samples:
-1. set `VESTI_CHAT_MAX_TOKENS_LIMIT=5000` in Vercel
-2. redeploy `vesti-proxy`
-3. export the same long thread through `Compact`
-4. confirm JSON diagnostics include `proxy_max_tokens`
-
-## Out of scope
-
-- reopening `summary`
-- wiring `E1/E2` into runtime
-- multi-hop continuation
-- further taxonomy expansion
-- new debug UI or settings toggles
+- `documents/prompt_engineering/export_ai_handoff_architecture.md`
+- `documents/prompt_engineering/export_prompt_contract.md`
+- `documents/prompt_engineering/export_eval_and_drift_gate.md`

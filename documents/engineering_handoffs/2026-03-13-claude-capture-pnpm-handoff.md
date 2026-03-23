@@ -1,9 +1,9 @@
 # 2026-03-13 Claude Capture Robustness and pnpm Workspace Handoff
 
-Status: Public thin handoff  
+Status: Public thin handoff
 Local original: `documents/_local/engineering_handoffs/2026-03-13-claude-capture-pnpm-handoff.md`
 
-## Reason for local-only demotion
+## Reason for condensation
 
 The original note mixed durable engineering outcomes with local build environment detail, dependency approval state, and machine-specific operational traces.
 

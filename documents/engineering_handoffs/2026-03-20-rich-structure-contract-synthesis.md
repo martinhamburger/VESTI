@@ -1,41 +1,20 @@
 # 2026-03-20 Rich Structure Contract Synthesis
 
-## Scope
+Status: Public thin handoff
+Local original: `documents/_local/engineering_handoffs/2026-03-20-rich-structure-contract-synthesis.md`
 
-- `table.txt`
-- `search.txt`
+## Reason for condensation
 
-## Table Findings
+The original memo synthesized findings from table, math, and citation samples and projected future schema work. The public repo keeps the durable structure-contract conclusions only.
 
-- Claude：标准原生 `<table>`
-- Qwen：标准 `<table>`，但有更深包裹、列对齐与单元格内 KaTeX
-- Doubao：伪表格，需要 platform-local normalization
-- ChatGPT：表格中 KaTeX 渲染层会制造文本重影
+## Durable outcomes
 
-## Contract Consequence
+1. Cross-platform table fidelity requires richer AST structure than flat headers-and-rows extraction.
+2. Math fidelity must recover semantic math sources such as TeX annotations instead of trusting rendered text alone.
+3. Citation metadata belongs in sidecars and dedicated source rendering, not inside canonical body AST.
 
-- 现有 `headers: string[] + rows: string[][]` 不足以表达跨平台真实结构。
-- 下一阶段必须升级为 `semantic_ast_v2`：
-  - `AstTableNodeV2`
-  - `columns[]` with alignment
-  - `rows[]`
-  - `cells[]` with inline-rich children
+## Canonical follow-ups
 
-## Math Findings
-
-- KaTeX / MathML 渲染层会污染 `innerText / textContent`
-- 语义 truth source 必须来自：
-  - `annotation[encoding="application/x-tex"]`
-  - MathML / vendor semantic attributes
-
-## Citation Findings
-
-- citation pill 是 inline component，不是块级 thinking
-- 必须对正文根做 clone，再物理剔除 citation node
-- `label / href` 都必须微观清洗
-
-## Contract Consequence
-
-- `citations[]` 必须成为 message sidecar
-- citation 不进入正文 AST 主干
-- reader / web / export 必须用独立 `Sources` 区表达 citation
+- `documents/capture_engine/capture_engine_current_architecture.md`
+- `documents/prompt_engineering/post_audit_frozen_case_matrix.md`
+- `documents/reader_pipeline/reader_pipeline_current_architecture.md`

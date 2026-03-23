@@ -1,9 +1,9 @@
 # 2026-03-20 Five-Platform DOM Sampling Handoff
 
-Status: Public thin handoff  
+Status: Public thin handoff
 Local original: `documents/_local/engineering_handoffs/2026-03-20-five-platform-dom-sampling-handoff.md`
 
-## Reason for local-only demotion
+## Reason for condensation
 
 The original note contained operator auth sample paths and timestamped DOM snapshot directories that are intentionally kept out of the public repo surface.
 

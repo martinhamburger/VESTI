@@ -1,27 +1,20 @@
 # 2026-03-20 ChatGPT Thinking Boundary Repair
 
-## Summary
+Status: Public thin handoff
+Local original: `documents/_local/engineering_handoffs/2026-03-20-chatgpt-thinking-boundary-repair.md`
 
-- ChatGPT `thinking / 已思考` UI is treated as message-internal visual noise for this round.
-- It must not split one `data-message-id` assistant root into multiple logical messages.
-- No reasoning metadata is persisted in schema, reader, export, or storage during this fix.
+## Reason for condensation
 
-## Implementation Policy
+This note documented a narrow parser repair for ChatGPT thinking UI along with verification detail and deferred ideas. The public repo keeps the lasting boundary policy only.
 
-- `data-message-id + data-message-author-role` is the highest-priority ChatGPT message boundary.
-- Selector candidates and copy-action-derived candidates are collapsed to the nearest hard boundary root before parsing.
-- If hard roots exist, each hard root can yield at most one logical message.
-- Visible thinking controls such as `已思考 22s`, `Thought for 39s`, `Show more`, and `Done` are stripped as UI noise.
+## Durable outcomes
 
-## Verification Focus
+1. ChatGPT thinking UI is treated as message-internal visual noise rather than as a second logical message.
+2. `data-message-id` plus author role remains the hard boundary for ChatGPT assistant message parsing.
+3. Reasoning metadata capture remained deferred in this repair window.
 
-- One assistant hard root yields at most one parsed assistant message.
-- Final answer text remains continuous and complete.
-- Thinking controls do not appear in `content_text`.
-- Expanded thinking UI does not create a second assistant reply.
+## Canonical follow-ups
 
-## Deferred
-
-- Persisting thinking duration.
-- Persisting expanded reasoning content.
-- Extending the same hard-boundary policy to Qwen / Gemini / DeepSeek.
+- `documents/capture_engine/capture_engine_current_architecture.md`
+- `documents/capture_engine/capture_engine_engineering_spec.md`
+- `documents/capture_engine/capture_engine_operational_playbook.md`

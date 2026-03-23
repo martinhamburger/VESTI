@@ -1,9 +1,9 @@
 # Build Cross-Platform Checklist (Browser Extension)
 
-Status: Public thin handoff  
+Status: Public thin handoff
 Local original: `documents/_local/engineering_handoffs/build_cross_platform_checklist.md`
 
-## Reason for local-only demotion
+## Reason for condensation
 
 The original checklist mixed durable release principles with local emergency packaging and release-operator details that are better kept in the maintainer-local layer.
 
