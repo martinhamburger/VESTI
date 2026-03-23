@@ -1,74 +1,43 @@
 # Playwright DOM Sampling Bootstrap
 
-## Current MCP Status
+Status: Public bootstrap summary  
+Audience: Maintainers and operators collecting DOM evidence
 
-- Codex local config already has Playwright MCP enabled:
-  - `C:\\Users\\苏祎成\\.codex\\config.toml`
-  - `[mcp_servers.playwright]`
-  - `command = "npx"`
-  - `args = ["@playwright/mcp@latest"]`
+## Purpose
 
-This means repo work only needs to set up reusable Playwright auth and sampling scripts.
+This public document keeps only the reusable workflow needed to understand how DOM sampling fits into the repo.
+Machine-specific auth layout, local config, and operator source paths are intentionally kept in the local-only copy:
 
-## The 8 Login Sites
+- `documents/_local/capture_engine/playwright_dom_sampling_bootstrap.local.md`
 
-1. ChatGPT: `https://chatgpt.com/`
-2. Claude: `https://claude.ai/`
-3. Gemini: `https://gemini.google.com/`
-4. DeepSeek: `https://chat.deepseek.com/`
-5. Qwen: `https://chat.qwen.ai/`
-6. Doubao: `https://www.doubao.com/`
-7. Kimi: `https://www.kimi.com/`
-8. Yuanbao: `https://yuanbao.tencent.com/`
+## Supported Login Targets
 
-## Local Auth Flow
+1. ChatGPT
+2. Claude
+3. Gemini
+4. DeepSeek
+5. Qwen
+6. Doubao
+7. Kimi
+8. Yuanbao
 
-1. Install dependencies:
-   - `pnpm install`
-2. Launch auth bootstrap:
-   - `pnpm pw:auth`
-3. Manually complete login on all 8 tabs.
-4. Close the browser window.
-5. Export reusable storage state:
-   - `pnpm pw:state`
+## Public Workflow
 
-Persistent browser data is stored under:
+1. Install dependencies.
+2. Run the auth bootstrap command.
+3. Complete login manually on the required sites.
+4. Export reusable state if the local workflow needs it.
+5. Run the sampling command against the target conversation URL.
+6. Register the resulting evidence through a stable case ID or local evidence handle.
 
-- `.playwright-auth/chromium-profile/`
+## Public Contract
 
-Combined storage state is exported to:
-
-- `.playwright-auth/storage/all-sites.json`
-
-### Browser runtime
-
-- Scripts now prefer a locally installed browser first.
-- Current machine candidates:
-  - Chrome: `C:\Program Files\Google\Chrome\Application\chrome.exe`
-  - Edge: `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`
-- If you want to override this, set:
-  - `PW_BROWSER_PATH=<absolute-browser-path>`
-
-Optional only:
-
-- `pnpm exec playwright install chromium`
-
-This is no longer required for the local bootstrap flow if system Chrome or Edge is available.
-
-## DOM Sampling
-
-Run a sample against any logged-in page:
-
-- `pnpm pw:sample -- --url "https://chatgpt.com/c/..." --name chatgpt-citations`
-
-Artifacts are written to:
-
-- `.playwright-auth/samples/<timestamp>-<name>/summary.json`
-- `.playwright-auth/samples/<timestamp>-<name>/page.html`
-- `.playwright-auth/samples/<timestamp>-<name>/page.png`
+- auth reuse is part of the local operator workflow
+- sampled HTML and screenshots are the evidence surface for parser work
+- tracked docs should reference case IDs and logical handles, not raw local sample paths
 
 ## Notes
 
-- The persistent profile is the primary auth source.
-- `all-sites.json` is a portable backup, not the main live session.
-- For high-friction sites with 2FA or risk control, prefer reusing the persistent profile instead of trying to replay login flows from scratch.
+- A persistent local auth workspace may exist, but its layout is intentionally not mirrored into tracked docs.
+- High-friction sites may still require manual operator confirmation even when local auth reuse exists.
+- Public regression docs should point to case IDs and let the local source map resolve the concrete files.

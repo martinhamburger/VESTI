@@ -5,12 +5,11 @@ Audience: Prompt engineers, runtime engineers, reviewers
 
 ## Purpose
 
-This document maps the approved sample set to the prompt-ingestion signals that the shipped runtime
-must now honor.
+This document maps the approved sample set to the prompt-ingestion signals that the shipped runtime must now honor.
 
 It is the bridge between:
 
-- raw text / DOM sampling evidence
+- text / DOM sampling evidence resolved locally
 - `PromptReadyMessage`
 - `PromptStructureSignals`
 - shipped consumers:
@@ -18,7 +17,8 @@ It is the bridge between:
   - `conversationSummary.ts`
   - `insightGenerationService.ts`
 
-The four operator text samples below are frozen acceptance references. They are not soft guidance.
+Concrete local sample paths are intentionally kept out of tracked docs.
+See `documents/_local/sample_source_map.md` for the local mapping.
 
 ## Runtime Signal Contract
 
@@ -43,7 +43,7 @@ The important `structureSignals` are:
 ### `CLAUDE_TITLE_001`
 
 Source:
-- `C:\Users\苏祎成\Downloads\claude.txt`
+- `text:CLAUDE_TITLE_001`
 
 Expected runtime interpretation:
 - title remains app-shell metadata
@@ -57,7 +57,7 @@ Consumers that must honor this:
 ### `CLAUDE_ARTIFACT_001`
 
 Source:
-- `C:\Users\苏祎成\Downloads\artifact.txt`
+- `text:CLAUDE_ARTIFACT_001`
 
 Expected prompt signals:
 - `hasArtifacts = true`
@@ -73,7 +73,7 @@ Consumers that must honor this:
 ### `TABLE_FIDELITY_001`
 
 Source:
-- `C:\Users\苏祎成\Downloads\table.txt`
+- `text:TABLE_FIDELITY_001`
 
 Expected prompt signals:
 - `hasTable = true` for true table-bearing messages
@@ -89,7 +89,7 @@ Consumers that must honor this:
 ### `SEARCH_CITATION_001`
 
 Source:
-- `C:\Users\苏祎成\Downloads\search.txt`
+- `text:SEARCH_CITATION_001`
 
 Expected prompt signals:
 - `hasCitations = true`
@@ -105,7 +105,7 @@ Consumers that must honor this:
 ### `DOM_DOUBAO_W2_001`
 
 Source:
-- `.playwright-auth/samples/20260320-222437-doubao-week2-regression`
+- `dom:DOM_DOUBAO_W2_001`
 
 Expected prompt signals:
 - wrapper-shell table noise does not leak into `bodyText`
@@ -119,7 +119,7 @@ Consumers that must honor this:
 ### `DOM_QWEN_W2_001`
 
 Source:
-- `.playwright-auth/samples/20260321-004643-qwen-parser-regression`
+- `dom:DOM_QWEN_W2_001`
 
 Expected prompt signals:
 - thinking status card does not leak into `bodyText`
@@ -135,7 +135,7 @@ Consumers that must honor this:
 ### `DOM_YUANBAO_W2_001`
 
 Source:
-- `.playwright-auth/samples/20260321-004613-yuanbao-parser-regression`
+- `dom:DOM_YUANBAO_W2_001`
 
 Expected prompt signals:
 - toolbar/download CTA/pane chrome do not leak into `bodyText`
@@ -149,7 +149,7 @@ Consumers that must honor this:
 ### `DOM_KIMI_W2_001`
 
 Source:
-- `.playwright-auth/samples/20260321-004707-kimi-parser-regression`
+- `dom:DOM_KIMI_W2_001`
 
 Expected prompt signals:
 - segment code header / preview / copy controls do not leak into `bodyText`
@@ -163,7 +163,7 @@ Consumers that must honor this:
 ### `DOM_DEEPSEEK_W2_001`
 
 Source:
-- `.playwright-auth/samples/20260321-004734-deepseek-parser-regression`
+- `dom:DOM_DEEPSEEK_W2_001`
 
 Expected prompt signals:
 - thinking shell does not replace final answer body text

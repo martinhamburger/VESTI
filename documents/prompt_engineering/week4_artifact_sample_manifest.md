@@ -20,41 +20,41 @@ The four operator text samples in this manifest are frozen acceptance references
 - `TABLE_FIDELITY_001`
 - `CLAUDE_TITLE_001`
 
-They are implemented in shipped code and should now be reviewed as acceptance gates, not open problem memos.
+Concrete local sample paths are intentionally kept out of tracked docs.
+See `documents/_local/sample_source_map.md` for the local mapping.
 
 This manifest is meant to be used together with:
 
-- [`week3_prompt_signal_mapping.md`](D:/DEV/VESTI-main-git/documents/prompt_engineering/week3_prompt_signal_mapping.md)
-- [`week3_runtime_regression_checklist.md`](D:/DEV/VESTI-main-git/documents/prompt_engineering/week3_runtime_regression_checklist.md)
-- [`week2_regression_sample_manifest.md`](D:/DEV/VESTI-main-git/documents/capture_engine/week2_regression_sample_manifest.md)
+- [`week3_prompt_signal_mapping.md`](./week3_prompt_signal_mapping.md)
+- [`week3_runtime_regression_checklist.md`](./week3_runtime_regression_checklist.md)
+- [`week2_regression_sample_manifest.md`](../capture_engine/week2_regression_sample_manifest.md)
 
 ## Artifact Primary Cases
 
-| Case ID | Source | Focus | Required Shipped Consumers |
+| Case ID | Source Handle | Focus | Required Shipped Consumers |
 | --- | --- | --- | --- |
-| `CLAUDE_ARTIFACT_001` | `C:\Users\苏祎成\Downloads\artifact.txt` | standalone artifact capture, artifact fidelity, sidecar-only storage | `promptIngestionAdapter.ts`, `exportSerializers.ts`, `MessageBubble.tsx`, `RichMessageContent.tsx` |
-| `DOM_YUANBAO_W2_001` | `.playwright-auth/samples/20260321-004613-yuanbao-parser-regression` | preview/canvas/split-pane presence, toolbar isolation, false-positive preview suppression | `YuanbaoParser.ts`, `promptIngestionAdapter.ts`, `MessageBubble.tsx`, `RichMessageContent.tsx` |
-| `DOM_KIMI_W2_001` | `.playwright-auth/samples/20260321-004707-kimi-parser-regression` | preview/code-header/action chrome exclusion around code-like content | `KimiParser.ts`, `promptIngestionAdapter.ts` |
-| `DOM_QWEN_W2_001` | `.playwright-auth/samples/20260321-004643-qwen-parser-regression` | Monaco/code-preview chrome exclusion while preserving code/table/math signals | `QwenParser.ts`, `promptIngestionAdapter.ts` |
+| `CLAUDE_ARTIFACT_001` | `text:CLAUDE_ARTIFACT_001` | standalone artifact capture, artifact fidelity, sidecar-only storage | `promptIngestionAdapter.ts`, `exportSerializers.ts`, `MessageBubble.tsx`, `RichMessageContent.tsx` |
+| `DOM_YUANBAO_W2_001` | `dom:DOM_YUANBAO_W2_001` | preview/canvas/split-pane presence, toolbar isolation, false-positive preview suppression | `YuanbaoParser.ts`, `promptIngestionAdapter.ts`, `MessageBubble.tsx`, `RichMessageContent.tsx` |
+| `DOM_KIMI_W2_001` | `dom:DOM_KIMI_W2_001` | preview/code-header/action chrome exclusion around code-like content | `KimiParser.ts`, `promptIngestionAdapter.ts` |
+| `DOM_QWEN_W2_001` | `dom:DOM_QWEN_W2_001` | Monaco/code-preview chrome exclusion while preserving code/table/math signals | `QwenParser.ts`, `promptIngestionAdapter.ts` |
 
 ## Artifact-Adjacent Regression Cases
 
-| Case ID | Source | Focus | Required Shipped Consumers |
+| Case ID | Source Handle | Focus | Required Shipped Consumers |
 | --- | --- | --- | --- |
-| `SEARCH_CITATION_001` | `C:\Users\苏祎成\Downloads\search.txt` | citation sidecars remain outside body text | `promptIngestionAdapter.ts`, `exportCompression.ts`, `conversationSummary.ts`, `exportSerializers.ts` |
-| `TABLE_FIDELITY_001` | `C:\Users\苏祎成\Downloads\table.txt` | table/math/code fidelity remains grounded after artifact cleanup | `promptIngestionAdapter.ts`, `exportCompression.ts`, `MessageBubble.tsx`, `RichMessageContent.tsx` |
-| `DOM_DOUBAO_W2_001` | `.playwright-auth/samples/20260320-222437-doubao-week2-regression` | action overflow and wrapper shell stay out of body text | `DoubaoParser.ts`, `promptIngestionAdapter.ts` |
-| `CLAUDE_TITLE_001` | `C:\Users\苏祎成\Downloads\claude.txt` | title still comes from app-shell metadata, not body | `conversationSummary.ts`, `exportCompression.ts` |
+| `SEARCH_CITATION_001` | `text:SEARCH_CITATION_001` | citation sidecars remain outside body text | `promptIngestionAdapter.ts`, `exportCompression.ts`, `conversationSummary.ts`, `exportSerializers.ts` |
+| `TABLE_FIDELITY_001` | `text:TABLE_FIDELITY_001` | table/math/code fidelity remains grounded after artifact cleanup | `promptIngestionAdapter.ts`, `exportCompression.ts`, `MessageBubble.tsx`, `RichMessageContent.tsx` |
+| `DOM_DOUBAO_W2_001` | `dom:DOM_DOUBAO_W2_001` | action overflow and wrapper shell stay out of body text | `DoubaoParser.ts`, `promptIngestionAdapter.ts` |
+| `CLAUDE_TITLE_001` | `text:CLAUDE_TITLE_001` | title still comes from app-shell metadata, not body | `conversationSummary.ts`, `exportCompression.ts` |
 
 ## Week 4 Refresh Evidence
 
-These refreshed live samples are not new case IDs. They are the latest operator-collected DOM confirmations
-for the existing case families above:
+These refreshed live confirmations remain local-only operator evidence and are referenced publicly through handles:
 
-- `.playwright-auth/samples/20260321-032658-qwen-week4-artifact-cleanup`
-- `.playwright-auth/samples/20260321-032718-yuanbao-week4-artifact-cleanup`
-- `.playwright-auth/samples/20260321-032739-kimi-week4-artifact-cleanup`
-- `.playwright-auth/samples/20260321-032759-doubao-week4-artifact-cleanup`
+- `dom:QWEN_WEEK4_REFRESH_001`
+- `dom:YUANBAO_WEEK4_REFRESH_001`
+- `dom:KIMI_WEEK4_REFRESH_001`
+- `dom:DOUBAO_WEEK4_REFRESH_001`
 
 ## Expected Artifact Signals
 

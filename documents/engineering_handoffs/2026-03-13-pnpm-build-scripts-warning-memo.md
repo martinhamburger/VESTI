@@ -1,19 +1,20 @@
-﻿# 2026-03-13 pnpm build scripts 警告备忘录
+# 2026-03-13 pnpm Build Scripts Warning Memo
 
-## 现象
-`pnpm install` 输出提示：
-- Ignored build scripts: `@parcel/watcher`, `@swc/core`, `esbuild`, `lmdb`, `msgpackr-extract`, `sharp` 等
-- 建议运行 `pnpm approve-builds`
+Status: Public thin handoff  
+Local original: `documents/_local/engineering_handoffs/2026-03-13-pnpm-build-scripts-warning-memo.md`
 
-## 原因
-pnpm 启用了依赖构建脚本的安全防护策略：对包含 `install/postinstall` 等脚本的依赖默认不执行，除非被显式批准。
+## Reason for local-only demotion
 
-## 影响
-这些包中多数是原生依赖或需要下载二进制的构建工具；若脚本被跳过，某些功能可能在本机运行时缺失或降级。当前本次构建已成功，说明现阶段未直接阻塞。
+The original memo described local dependency approval posture and operator build decisions that are not durable public project spec.
 
-## 结论
-该提示为安全告警而非构建错误；如需消除告警并确保本机环境完整，可执行 `pnpm approve-builds` 并根据提示放行必要依赖。
+## Durable outcomes
 
-## 后续（可选）
-1. 运行 `pnpm approve-builds`，选择需要允许的依赖。
-2. 视需要执行 `pnpm rebuild` 或重新 `pnpm install` 以触发构建脚本。
+1. Ignored dependency build-script warnings are advisory signals, not automatic build failures.
+2. `pnpm approve-builds` and `pnpm rebuild` remain explicit maintainer tools when local environments need full dependency activation.
+3. Public build documentation should describe the supported workflow without leaking machine-specific install traces.
+
+## Canonical follow-ups
+
+- `documents/version_control_plan.md`
+- `pnpm-workspace.yaml`
+- `pnpm-lock.yaml`

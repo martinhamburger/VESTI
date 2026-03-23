@@ -8,14 +8,15 @@ export const PLAYWRIGHT_ROOT = resolve(REPO_ROOT, ".playwright-auth");
 export const USER_DATA_DIR = resolve(PLAYWRIGHT_ROOT, "chromium-profile");
 export const STORAGE_STATE_DIR = resolve(PLAYWRIGHT_ROOT, "storage");
 export const SAMPLE_DIR = resolve(PLAYWRIGHT_ROOT, "samples");
+const LOCAL_APP_DATA = process.env.LOCALAPPDATA ?? null;
 const DEFAULT_BROWSER_CANDIDATES = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Users\\苏祎成\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Users\\苏祎成\\AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe",
-];
+  LOCAL_APP_DATA ? resolve(LOCAL_APP_DATA, "Google", "Chrome", "Application", "chrome.exe") : null,
+  LOCAL_APP_DATA ? resolve(LOCAL_APP_DATA, "Microsoft", "Edge", "Application", "msedge.exe") : null,
+].filter((candidate) => typeof candidate === "string");
 
 export const LOGIN_TARGETS = [
   { platform: "ChatGPT", url: "https://chatgpt.com/" },
