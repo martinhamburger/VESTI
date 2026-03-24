@@ -1,39 +1,29 @@
 # Engineering Handoffs
 
-Status: Historical timeline index
-Audience: Maintainers, reviewers, engineers reconstructing dated decisions
+Status: Maintainer-local only notice
+Audience: Maintainers, private collaborators, engineers checking public repo boundaries
 
 ## Purpose
 
-`documents/engineering_handoffs/` is a historical timeline, not the canonical source of truth for current subsystem behavior.
+`documents/engineering_handoffs/` no longer syncs dated handoff bodies to GitHub.
 
-Use this directory to answer date-bound questions such as:
-- what changed in a specific release window
-- which decision boundary existed at that time
-- where the durable outcome was later promoted
+The public repository keeps this README only as a boundary notice. Dated handoff notes, release-window memos, shipped-state snapshots, and closure audits are now maintained through private collaboration channels and local archive storage.
 
-## Public document types
+Maintainer-local handoff roots:
 
-The public handoff surface now keeps only three document shapes:
+- `documents/_local/engineering_handoffs/`
+- `documents/_local/engineering_handoffs/public_surface_archive/`
 
-1. `Public thin handoff`
-2. `Shipped State`
-3. `Next Slice / Closure Audit`
+## Public rule
 
-## Placement rules
+- do not add dated handoff bodies back into the tracked public tree
+- do not treat handoff history as a public source of truth
+- use canonical subsystem docs and `CHANGELOG.md` for public-facing project state
 
-- If a note is a historical handoff, write it directly as a thin handoff.
-- If a note becomes durable engineering guidance, rewrite it into the relevant canonical directory.
-- If a note is maintainer-only, machine-specific, or operationally sensitive, keep the full original in `documents/_local/engineering_handoffs/` instead of the public tree.
+## Public source of truth
 
-## Reading order
+For current engineering decisions, start with:
 
-1. Start with the canonical subsystem docs in `capture_engine/`, `reader_pipeline/`, `web_dashboard/`, `ui_refactor/`, or `prompt_engineering/`.
-2. Use a handoff only when you need dated context or a release-window decision boundary.
-3. If a handoff lists `Local original`, that full version is maintainer-local and not part of the public repo surface.
-
-## Current compression policy
-
-- Pre-`2026-03-09` handoffs are intentionally condensed to thin public shells.
-- A small number of later heavy memos are also condensed when their durable guidance already lives elsewhere.
-- File paths stay stable so existing references from `CHANGELOG`, archive docs, and subsystem READMEs continue to resolve.
+- `documents/README.md`
+- canonical subsystem docs under `documents/`
+- `CHANGELOG.md`

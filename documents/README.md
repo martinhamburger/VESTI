@@ -10,7 +10,7 @@ Audience: Engineers, QA, release owners, maintainers
 当前文档结构遵循三层模型：
 - `documents/` 根目录：仓库级政策与通用操作文档
 - subsystem canonical directories：长期维护的工程规格、现状与运行契约
-- `documents/archive/`：历史快照、退役阶段材料、已不再作为当前决策入口的旧资料
+- local-only historical stores：不再公开同步到 GitHub 的私有 handoff / archive 材料
 
 ## Directory Map
 
@@ -57,7 +57,7 @@ Canonical examples:
 
 ### `web_dashboard/`
 
-负责 web dashboard / library / explore / network 等 web surface-specific 文档。
+负责 web dashboard / library / explore / network 的 web surface-specific 文档。
 当问题上升到跨端动态渲染治理时，应以 `ui_runtime/` 为入口；`web_dashboard/` 只保留 web surface-specific contract。
 
 ### `ui_refactor/`
@@ -77,22 +77,13 @@ Canonical examples:
 
 负责 prompt、proxy、model routing 与 prompt UI contract 文档。
 
-### `engineering_handoffs/`
+### local-only historical stores
 
-负责 dated delivery snapshot 与 handoff context。
+以下材料已经转为 maintainer-local，不再是 GitHub 公共文档树的一部分：
 
-重要规则：
-- handoff 很有价值
-- 但它不是当前 canonical 规格的首选入口
-- 长期有效的知识应提升到上面的 canonical 目录
-
-### `archive/`
-
-负责保留历史文档、候选草稿、退役阶段材料。
-
-重要规则：
-- archive 用来保留历史，而不是作为当前实现决策入口
-- 收口时优先迁档，不做硬删除
+- `documents/engineering_handoffs/`：dated handoff history now private-only
+- `documents/archive/`：archived documentation payload now private-only
+- `documents/_local/`：maintainer-local originals and mirrors
 
 ## Root-Level Keepers
 
@@ -115,9 +106,9 @@ Canonical examples:
 5. web dashboard / library / explore / network surface-specific contract -> `web_dashboard/`
 6. global UI / IA / component system -> `ui_refactor/`
 7. prompt / proxy / model routing -> `prompt_engineering/`
-8. dated handoff -> `engineering_handoffs/`
-9. superseded draft / retired phase material -> `archive/`
-10. repo-wide policy / deployment utility -> `documents/` root
+8. repo-wide policy / deployment utility -> `documents/` root
+
+不要再将 dated handoff、archive payload、prototype notes 写入公开 tracked docs tree。
 
 ## Recommended Reading Order
 
@@ -127,7 +118,7 @@ Canonical examples:
 2. 子系统 engineering spec / contract
 3. 子系统 current architecture
 4. 子系统 operational playbook / roadmap
-5. 只有在需要追溯时再看 handoff 与 archive
+5. 只有在维护者私有协作或历史追溯需要时，再看 local-only archive / handoff 材料
 
 针对 capture engine：
 1. `documents/capture_engine/README.md`
@@ -155,7 +146,6 @@ Canonical examples:
 - runtime contract: `<topic>_contract.md`
 - playbook: `<topic>_operational_playbook.md`
 - roadmap: `<topic>_technical_roadmap.md`
-- dated handoff: `YYYY-MM-DD-<topic>-handoff.md`
 - task ledger: `<topic>_refactor_tasks.md`
 
-目标不是形式统一，而是让文档入口清晰、层次稳定、历史可追溯。
+目标不是形式统一，而是让文档入口清晰、层次稳定、公开边界明确。

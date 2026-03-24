@@ -27,9 +27,7 @@ This directory is the stable entrypoint for:
 
 ### This directory does not replace
 
-- `documents/engineering_handoffs/`
-  - dated delivery snapshots and handoff context
-  - useful as historical evidence, not the canonical spec source
+- maintainer-local handoff history
 - `documents/ui_refactor/`
   - global UI, IA, component-system, and interaction-level contracts
 - `documents/capture_engine/`
@@ -46,7 +44,7 @@ This directory is the stable entrypoint for:
 - `web_dashboard_reader_render_contract.md`
   - minimal web-facing schema draft and reader/web render contract draft
 - `web_dashboard_architecture_cleanup_checklist.md`
-  - prioritized cleanup checklist for reducing dashboard drift and legacy ambiguity
+  - prioritized cleanup checklist for reducing dashboard drift and preventing legacy reintroduction
 - `web_dashboard_rc8_repairs.md`
   - repair ledger for web-view regressions, starting with the rc8 Network edge fix
 - `web_dashboard_technical_roadmap.md`
@@ -60,7 +58,7 @@ This directory is the stable entrypoint for:
 - web-only contract、模块边界、技术路线图 -> `web_dashboard/`
 - 跨 sidepanel / web 的动态渲染纪律 -> `ui_runtime/`
 
-## Recommended reading order
+## Recommended Reading Order
 
 1. `web_dashboard_engineering_spec.md`
 2. `web_dashboard_current_architecture.md`
@@ -70,12 +68,12 @@ This directory is the stable entrypoint for:
 6. `web_dashboard_rc8_repairs.md`
 7. `web_dashboard_technical_roadmap.md`
 
-## Primary source inputs
+## Historical source note
 
-This directory consolidates and supersedes web-specific guidance previously scattered across:
-- `documents/engineering_handoffs/2026-02-27-vesti-web-current-architecture-memo.md`
-- `documents/engineering_handoffs/2026-02-27-vesti-web-convergence-roadmap.md`
-- `documents/engineering_handoffs/2026-03-07-v1_2_0-rc7-yuanbao-web-dashboard-handoff.md`
-- `documents/ui_refactor/v1_4_ui_refactor_engineering_spec.md`
-- `documents/capture_engine/capture_engine_current_architecture.md`
-- `documents/capture_engine/capture_engine_engineering_spec.md`
+Public handoff files are no longer synced into the repository.
+
+Historical inputs that previously informed this directory now live in maintainer-local handoff history. Their durable outcomes have already been promoted into:
+
+- `web_dashboard_current_architecture.md`
+- `web_dashboard_architecture_cleanup_checklist.md`
+- canonical docs under `documents/capture_engine/` and `documents/ui_refactor/`

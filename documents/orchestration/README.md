@@ -24,10 +24,10 @@ It does not own:
 - `v1_7_runtime_event_contract.md`
 - `tool_trace_contract.md`
 
-## Legacy references
+## Historical note
 
-Older product-specific orchestration specs now live under:
-- `documents/archive/orchestration/legacy_insights/`
-- `documents/archive/orchestration/legacy_explore/`
+Older product-specific orchestration specs are now maintainer-local historical materials.
 
-Those files remain useful as historical implementation references, but they are not active canonical docs.
+They are no longer published as part of the public GitHub docs tree, and they are not active canonical docs.
+
+If a durable runtime rule still matters, it should be promoted into the current canonical orchestration docs instead of re-linking historical payloads.

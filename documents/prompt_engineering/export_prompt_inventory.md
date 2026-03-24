@@ -82,12 +82,12 @@ This prototype is intentionally separate from shipping runtime and exists to run
 
 | Stage | Prototype implementation | Status |
 | --- | --- | --- |
-| `P1 heuristic_annotator` | `frontend/src/lib/prompts/export/distillPrototype.ts` | active in offline prototype only |
+| `P1 heuristic_annotator` | maintainer-local prototype helper | active in offline prototype only |
 | `E1 handoff planner` | `frontend/src/lib/prompts/export/e1HandoffStructurePlanner.ts` | active in offline prototype only |
 | `E2 handoff evidence compactor` | `frontend/src/lib/prompts/export/e2HandoffEvidenceCompactor.ts` | active in offline prototype only |
 | `E3 handoff composer from evidence` | `frontend/src/lib/prompts/export/e3HandoffComposerFromEvidence.ts` | active in offline prototype only |
-| `repair compact` | inline one-shot repair in `scripts/export-distill-prototype.ts` | active in offline prototype only |
-| runner | `scripts/export-distill-prototype.ts` + `frontend/package.json#distill:handoff` | active in offline prototype only |
+| `repair compact` | maintainer-local one-shot repair step | active in offline prototype only |
+| runner | maintainer-local offline runner | active in offline prototype only |
 
 Prototype guardrails:
 - handoff only; `Knowledge Export` is not yet part of the runtime prototype
@@ -104,7 +104,7 @@ Prototype guardrails:
 ### Legacy Insights
 - runtime owner: `frontend/src/lib/services/insightGenerationService.ts`
 - status: compatibility line, not prompt-engineering mainline
-- legacy docs archived under `documents/archive/prompt_engineering/legacy_insights/`
+- legacy docs and prototype payloads are now maintainer-local only
 
 ## Migration debt inventory
 

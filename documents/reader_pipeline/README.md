@@ -36,14 +36,8 @@ Audience: Reader maintainers, data pipeline engineers, web/dashboard contributor
 
 ## Historical Migration Note
 
-旧版 `v1_6_*` spec、manual sampling 和 AST cheat sheet 已迁入
-`documents/archive/reader_pipeline/`。它们继续保留以便追溯，但不再作为当前实现决策的
-source of truth。
+旧版 `v1_6_*` spec、manual sampling 与 AST cheat sheet 现已转为 maintainer-local archive。
 
-## Archive Mapping
+这些材料不再作为 GitHub 公开仓库的一部分同步，也不再作为当前实现决策的 source of truth。
 
-| 历史材料组 | 归档位置 |
-| --- | --- |
-| 旧 spec / migration / fallback docs | `../archive/reader_pipeline/superseded_specs/` |
-| 旧 manual sampling / acceptance | `../archive/reader_pipeline/legacy_playbooks/` |
-| 旧 AST probe / cheat sheet | `../archive/reader_pipeline/reference_cheat_sheets/` |
+若需要历史追溯，请从 maintainer-local archive 查阅原始材料，并将仍然 durable 的规则吸收到当前 canonical docs，而不是继续引用历史 payload。

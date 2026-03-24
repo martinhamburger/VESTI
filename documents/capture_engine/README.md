@@ -35,15 +35,8 @@ Audience: Parser maintainers, runtime engineers, QA, release owners, reader/expo
 
 ## Historical Migration Note
 
-旧版 `v1_2_*`、`v1_3_*`、`v1_4_*`、`v1_5_*`、legacy playbook、manual sampling checklist、execution log 已迁入 `documents/archive/capture_engine/`。
+旧版 `v1_2_*`、`v1_3_*`、`v1_4_*`、`v1_5_*` spec、legacy playbook、manual sampling checklist 与 execution log 现已转为 maintainer-local archive。
 
-这些历史文件继续保留以便追溯，但不再作为当前实现决策的 source of truth。
+这些材料不再作为 GitHub 公开仓库的一部分同步，也不再作为当前实现决策的 source of truth。
 
-## Archive Mapping
-
-| 历史材料组 | 归档位置 |
-| --- | --- |
-| 旧 spec / retrospective / roadmap | `../archive/capture_engine/superseded_specs/` |
-| 旧 playbook | `../archive/capture_engine/legacy_playbooks/` |
-| execution logs | `../archive/capture_engine/execution_logs/` |
-| manual sampling checklists | `../archive/capture_engine/sampling_checklists/` |
+如果确实需要追溯历史上下文，请从 maintainer-local archive 查阅原始材料，并把仍然 durable 的结论回写到当前 canonical docs，而不是重新依赖历史 payload。

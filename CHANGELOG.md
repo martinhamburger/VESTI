@@ -24,7 +24,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - Fixed Qwen and Yuanbao capture drift against current production DOM structures while keeping tables, math, and code paths intact.
 
 ### Docs
-- Added DOM sampling bootstrap and platform handoff notes for thinking-boundary repair, citation governance, and five-platform parser sampling.
+- Added DOM sampling bootstrap and maintainer-local platform handoff notes for thinking-boundary repair, citation governance, and five-platform parser sampling.
 
 ### Chore
 - Added Playwright local auth and DOM sampling tooling for repeatable capture verification.
@@ -142,7 +142,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - Disabled native image drag on capsule logo to avoid dragging into composer inputs as text/image payload.
 
 ### Docs
-- Added engineering handoff `documents/engineering_handoffs/2026-02-25-v1_5_lite_capsule_rollout_and_ui_closeout.md` covering implementation log, release plan, and architecture details.
+- Added a maintainer-local engineering handoff covering v1.5-lite capsule rollout, release plan, and architecture details.
 
 ### Chore
 - _None yet_
@@ -242,7 +242,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 ### Docs
 - Added `documents/engineering_data_management_v1_2.md`.
 - Updated `documents/prompt_engineering/insights_prompt_ui_engineering.md` to `v1.2-ui-pre.6`.
-- Added UI guardrail section in `archive/frontend_prototypes/frontend-prompting-system.md`.
+- Added a UI guardrail section to the historical frontend prototype notes (now maintainer-local).
 
 ### Release Artifact
 - `release/Vesti_MVP_v1.1.0-rc.4.zip`

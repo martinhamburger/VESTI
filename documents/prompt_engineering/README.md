@@ -95,9 +95,8 @@ on:
 
 ## Legacy and archived docs
 
-Legacy Insights-oriented prompt and orchestration docs now live under:
-- `documents/archive/prompt_engineering/legacy_insights/`
-- `documents/archive/orchestration/legacy_insights/`
-- `documents/archive/orchestration/legacy_explore/`
+Legacy Insights-oriented prompt docs, orchestration docs, and older archive payloads are now maintainer-local historical materials.
 
-Those files remain valuable as historical references, but they are not canonical for export multi-agent design.
+They are no longer synced into the public GitHub documentation tree, and they are not canonical for export multi-agent design.
+
+If an older conclusion is still durable, promote that conclusion into the current canonical export docs instead of linking historical payloads directly.
