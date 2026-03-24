@@ -1,6 +1,6 @@
 # Web Dashboard Architecture Cleanup Checklist
 
-Status: Active cleanup checklist  
+Status: Active cleanup checklist
 Audience: Maintainers, web contributors, sidepanel contributors
 
 ## Summary

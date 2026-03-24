@@ -1,6 +1,6 @@
 # Documents Archive
 
-Status: Active archive index  
+Status: Active archive index
 Audience: Maintainers, release owners, engineers performing historical lookup
 
 ## Purpose
