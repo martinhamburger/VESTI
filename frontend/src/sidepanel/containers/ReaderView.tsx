@@ -47,6 +47,7 @@ export function ReaderView({
   dispatch,
 }: ReaderViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [loadedConversationId, setLoadedConversationId] = useState<number | null>(null);
   const [renderPlanByMessageId, setRenderPlanByMessageId] = useState<
     Record<number, MessageRenderPlan>
   >({});
@@ -57,6 +58,8 @@ export function ReaderView({
   const isLoading = mode === "reader_loading_messages";
   const isBuilding = mode === "reader_building_index";
   const isReady = mode === "reader_ready";
+  const isPrimaryContentSettled =
+    !isLoading && !isBuilding && loadedConversationId === conversation.id;
   const timestampFooter = useMemo(
     () => buildReaderTimestampFooterModel(conversation),
     [conversation]
@@ -72,17 +75,20 @@ export function ReaderView({
   useEffect(() => {
     let cancelled = false;
     setMessages([]);
+    setLoadedConversationId(null);
     setRenderPlanByMessageId({});
     getMessages(conversation.id)
       .then((data) => {
         if (cancelled) return;
         const ordered = resolveMessageOrder(data);
         setMessages(ordered);
+        setLoadedConversationId(conversation.id);
         dispatch({ type: "MESSAGES_LOADED", messages: ordered });
       })
       .catch(() => {
         if (cancelled) return;
         setMessages([]);
+        setLoadedConversationId(conversation.id);
         dispatch({ type: "MESSAGES_LOADED", messages: [] });
       });
     return () => {
@@ -236,7 +242,12 @@ export function ReaderView({
             ))}
           </div>
         )}
-        <ReaderTimestampFooter model={timestampFooter} />
+        {isPrimaryContentSettled ? (
+          <ReaderTimestampFooter
+            key={conversation.id}
+            model={timestampFooter}
+          />
+        ) : null}
       </div>
     </div>
   );

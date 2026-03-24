@@ -91,6 +91,9 @@ export function LibraryTab({
   const [relatedError, setRelatedError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [loadedMessagesConversationId, setLoadedMessagesConversationId] = useState<number | null>(
+    null
+  );
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [annotationDrafts, setAnnotationDrafts] = useState<Record<number, string>>({});
@@ -381,21 +384,25 @@ export function LibraryTab({
     const loadMessages = async () => {
       if (!selectedConversationId || !getMessages) {
         setMessages([]);
+        setLoadedMessagesConversationId(null);
         setMessagesError(null);
         return;
       }
 
       setMessagesLoading(true);
+      setLoadedMessagesConversationId(null);
       setMessagesError(null);
       setMessages([]);
       try {
         const data = await getMessages(selectedConversationId);
         if (!cancelled) {
           setMessages(data);
+          setLoadedMessagesConversationId(selectedConversationId);
         }
       } catch (error) {
         if (!cancelled) {
           setMessages([]);
+          setLoadedMessagesConversationId(selectedConversationId);
           setMessagesError(
             (error as Error)?.message ?? "Failed to load messages"
           );
@@ -609,6 +616,11 @@ export function LibraryTab({
       selectedConversation ? buildReaderTimestampFooterModel(selectedConversation) : null,
     [selectedConversation]
   );
+  const isConversationContentSettled =
+    selectedConversation !== undefined &&
+    selectedConversation !== null &&
+    !messagesLoading &&
+    loadedMessagesConversationId === selectedConversation.id;
   const renderedNoteContent = useMemo(() => {
     if (!noteContent.trim()) return "";
     const html = marked.parse(noteContent, { gfm: true, breaks: true }) as string;
@@ -2350,8 +2362,9 @@ export function LibraryTab({
                       </button>
                     )}
                   </div>
-                  {timestampFooter && (
+                  {isConversationContentSettled && timestampFooter && (
                     <ReaderTimestampFooter
+                      key={selectedConversation.id}
                       model={timestampFooter}
                       className="border-t border-border-subtle pt-4"
                     />
@@ -2520,8 +2533,9 @@ export function LibraryTab({
                   </div>
                 </div>
 
-                {timestampFooter && (
+                {isConversationContentSettled && timestampFooter && (
                   <ReaderTimestampFooter
+                    key={selectedConversation.id}
                     model={timestampFooter}
                     className="mt-4 border-t border-border-subtle pt-4"
                   />
