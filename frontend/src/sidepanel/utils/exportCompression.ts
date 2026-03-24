@@ -204,7 +204,7 @@ const EXPERIMENTAL_COMPACT_MAX_TOKENS = {
   fallback: 4200,
 } as const;
 const MIN_VALID_OUTPUT_LENGTH = 48;
-const COMPACT_MIN_VALID_OUTPUT_LENGTH = 300;
+const COMPACT_MIN_VALID_OUTPUT_LENGTH = 200;
 const COMPACT_SOFT_MIN_RATIO = 0.08;
 const EXPERIMENTAL_PACKING = {
   keepFirstMessages: 4,
@@ -2156,16 +2156,22 @@ function extractSections(
 ): Record<string, string> | null {
   const headings = EXPECTED_HEADINGS[mode];
   const sections: Record<string, string> = {};
+  const presentHeadings = headings.filter((h) => value.indexOf(h) >= 0);
 
-  for (let index = 0; index < headings.length; index += 1) {
-    const heading = headings[index];
+  // Require at least half the headings to be present (rounded up).
+  // LLMs sometimes skip 1-2 headings for sparse conversations.
+  // Previously, a single missing heading rejected the entire output.
+  const minRequired = Math.ceil(headings.length / 2);
+  if (presentHeadings.length < minRequired) {
+    return null;
+  }
+
+  for (let index = 0; index < presentHeadings.length; index += 1) {
+    const heading = presentHeadings[index];
     const start = value.indexOf(heading);
-    if (start < 0) {
-      return null;
-    }
 
     const bodyStart = start + heading.length;
-    const nextHeading = headings
+    const nextHeading = presentHeadings
       .slice(index + 1)
       .map((candidate) => ({
         candidate,
@@ -2522,7 +2528,13 @@ function validateCompressionOutput(
   options?: ExportCompressionOptions
 ): ExportCompressionValidationResult {
   const normalized = sanitizeSummaryText(value);
-  const runtimeMetrics = buildRuntimeMetrics(item, normalized.length, mode);
+  // Use raw body length for the absolute minimum check. sanitizeSummaryText
+  // aggressively strips markdown headings, bullets, bold markers, etc.
+  // A well-structured 400-char markdown output with 5 headings can easily
+  // drop below 300 chars after stripping, causing false rejections.
+  // The markdown structure IS valid output — penalizing it is incorrect.
+  const rawBodyLength = value.replace(/\r\n/g, "\n").trim().length;
+  const runtimeMetrics = buildRuntimeMetrics(item, rawBodyLength, mode);
   const integrityWarnings = isExperimentalCompact(mode, options)
     ? buildIntegrityWarnings(normalized)
     : [];
@@ -2625,7 +2637,12 @@ function validateCompressionOutput(
   }
 
   const groundedSectionCount = countGroundedSections(sections);
-  const minimumGroundedSections = mode === "compact" ? 3 : 4;
+  // Adaptive minimum: require at least half the present sections to be
+  // grounded, with a floor of 1. Previously: hard 3 for compact, 4 for
+  // summary — which rejected outputs where the LLM correctly skipped
+  // headings that had no evidence.
+  const presentSectionCount = Object.keys(sections).length;
+  const minimumGroundedSections = Math.max(1, Math.ceil(presentSectionCount / 2));
   if (groundedSectionCount < minimumGroundedSections) {
     return {
       valid: false,
@@ -2636,21 +2653,23 @@ function validateCompressionOutput(
     };
   }
 
-  if (!preservesArtifactSignal(value, getPromptMessages(item))) {
-    return {
-      valid: false,
-      issueCode: "export_artifact_signal_missing",
-      runtimeMetrics,
-      integrityWarnings,
-      softCompressionWarning: buildSoftCompressionWarning(runtimeMetrics),
-    };
-  }
+  // Artifact signal preservation: demote to soft warning.
+  // Previously, if the transcript had code/commands but the LLM summary
+  // didn't explicitly mention them, the entire output was rejected.
+  // For conversational threads (non-technical), artifact signals are often
+  // false positives from backtick formatting or inline code mentions.
+  const artifactPreserved = preservesArtifactSignal(value, getPromptMessages(item));
+  const baseWarning = buildSoftCompressionWarning(runtimeMetrics);
+  const artifactNote = artifactPreserved
+    ? undefined
+    : "Artifact signals detected in transcript but not preserved in output.";
+  const combinedWarning = [baseWarning, artifactNote].filter(Boolean).join(" ") || undefined;
 
   return {
     valid: true,
     runtimeMetrics,
     integrityWarnings,
-    softCompressionWarning: buildSoftCompressionWarning(runtimeMetrics),
+    softCompressionWarning: combinedWarning,
   };
 }
 
