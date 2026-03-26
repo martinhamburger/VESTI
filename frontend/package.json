@@ -64,6 +64,7 @@
       "https://yuanbao.tencent.com/*"
     ],
     "permissions": [
+      "alarms",
       "identity",
       "storage",
       "offscreen",

@@ -85,7 +85,7 @@ export interface RelatedConversation {
   similarity: number;
 }
 
-export type ExploreMode = "agent" | "classic";
+export type ExploreMode = "search" | "ask";
 
 export type ExploreSearchScopeMode = "all" | "selected";
 
@@ -131,7 +131,7 @@ export interface ExploreResolvedTimeScope {
 export type ExplorePlannerPath = "rag" | "weekly_summary" | "clarify";
 
 export type ExploreToolName =
-  | "intent_planner"
+  | "intent_router"
   | "time_scope_resolver"
   | "weekly_summary_tool"
   | "query_planner"
@@ -160,19 +160,267 @@ export interface ExploreContextCandidate {
   title: string;
   platform: Platform;
   similarity: number;
-  matchType?: "semantic" | "time_scope";
+  matchType?: "semantic" | "time_scope" | "capsule" | "lexical" | "window";
   selectionReason?: string;
   summarySnippet?: string;
   excerpt?: string;
 }
 
-export interface ExploreAgentPlan {
+export type RetrievalAssetState =
+  | "missing"
+  | "building"
+  | "ready"
+  | "stale"
+  | "failed";
+
+export type RetrievalQueryClass =
+  | "engineering_exact"
+  | "time_or_summary"
+  | "general_semantic";
+
+export type RetrievalFollowupType =
+  | "refine"
+  | "compare"
+  | "continue"
+  | "drill_down";
+
+export interface EvidenceRefV1 {
+  conversationId: number;
+  windowId: string;
+  messageStartId?: number;
+  messageEndId?: number;
+}
+
+export interface CapsuleEvidenceItemV1 {
+  text: string;
+  evidenceRefs: EvidenceRefV1[];
+}
+
+export interface ConversationCapsuleRefsV1 {
+  filePaths: string[];
+  commands: string[];
+  apis: string[];
+  hosts: string[];
+  urls: string[];
+}
+
+export interface ConversationArtifactV1 {
+  kind: string;
+  label: string;
+  refs?: string[];
+}
+
+export interface ConversationCapsuleStatsV1 {
+  messageCount: number;
+  windowCount: number;
+  hasCode: boolean;
+  hasArtifacts: boolean;
+  lastMessageAt?: number;
+}
+
+export interface ConversationCapsuleV1 {
+  conversationId: number;
+  sourceUpdatedAt: number;
+  sourceHash: string;
+  title?: string;
+  shortSummary: string;
+  coreQuestion?: string;
+  keywords: string[];
+  entities?: string[];
+  tags?: string[];
+  decisions: CapsuleEvidenceItemV1[];
+  openQuestions: CapsuleEvidenceItemV1[];
+  actionItems: CapsuleEvidenceItemV1[];
+  refs: ConversationCapsuleRefsV1;
+  artifacts: ConversationArtifactV1[];
+  stats: ConversationCapsuleStatsV1;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type EvidenceWindowLabel =
+  | "code"
+  | "command-heavy"
+  | "error-heavy"
+  | "artifact-heavy"
+  | "decision-labeled"
+  | "question-answer-adjacent"
+  | "topic-shift"
+  | "citation-heavy";
+
+export interface EvidenceWindowV1 {
+  id: string;
+  conversationId: number;
+  sourceHash: string;
+  windowIndex: number;
+  messageStartId?: number;
+  messageEndId?: number;
+  text: string;
+  tokenEstimate: number;
+  labels: EvidenceWindowLabel[];
+  lexicalTerms: string[];
+  artifactRefs: string[];
+  hasCode: boolean;
+  hasCommand: boolean;
+  hasErrorLikeText: boolean;
+  createdAt: number;
+}
+
+export interface RetrievalAssetStatusV1 {
+  conversationId: number;
+  sourceHash: string;
+  sourceUpdatedAt: number;
+  state: RetrievalAssetState;
+  capsuleUpdatedAt?: number;
+  lastBuiltAt?: number;
+  windowCount: number;
+  windowVectorCount: number;
+  error?: string;
+}
+
+export interface RetrievalDiagnosticsSnapshot {
+  capsuleReadyCount: number;
+  windowReadyCount: number;
+  staleCount: number;
+  failedCount: number;
+  totalCapsules: number;
+  totalWindows: number;
+  capsuleReadyRatio: number;
+  windowReadyRatio: number;
+  lastBuildAt: number | null;
+  lastRetrievalRoute?: string;
+  averageBundleWindows: number;
+}
+
+export interface QueryRewriteHintsV1 {
+  standaloneQuery: string;
+  preservedTerms: string[];
+  expandedTerms?: string[];
+  inferredEntities?: string[];
+  inferredTimeScope?: string;
+  followupType?: RetrievalFollowupType;
+}
+
+export interface EvidenceBundleConversationV1 {
+  conversationId: number;
+  title: string;
+  platform: Platform;
+  score: number;
+  matchType: "capsule" | "lexical" | "dense" | "exact_ref";
+  shortSummary?: string;
+  keywords?: string[];
+  sourceHash?: string;
+}
+
+export interface EvidenceBundleWindowV1 extends EvidenceWindowV1 {
+  score: number;
+  lexicalScore: number;
+  denseScore: number;
+  structurePrior: number;
+  freshnessPrior: number;
+  conversationTitle: string;
+  platform: Platform;
+}
+
+export interface EvidenceBundleGroupV1 {
+  conversationId: number;
+  title: string;
+  platform: Platform;
+  score: number;
+  windowIds: string[];
+}
+
+export interface EvidenceBundleAssetStatusV1 {
+  scopedConversationCount: number;
+  readyConversationCount: number;
+  staleConversationIds: number[];
+  missingConversationIds: number[];
+}
+
+export interface EvidenceBundleSynthesisHintsV1 {
+  stablePrefix: string;
+  evidenceOrdering: "score_desc";
+  recommendedWindowCount: number;
+}
+
+export interface EvidenceBundleV1 {
+  query: string;
+  queryHash: string;
+  queryClass: RetrievalQueryClass;
+  searchScope: ExploreSearchScope;
+  rewriteHints: QueryRewriteHintsV1;
+  generatedAt: number;
+  assetVersion: "retrieval_assets_v1";
+  conversations: EvidenceBundleConversationV1[];
+  windows: EvidenceBundleWindowV1[];
+  groupedEvidence: EvidenceBundleGroupV1[];
+  synthesisHints: EvidenceBundleSynthesisHintsV1;
+  assetStatus: EvidenceBundleAssetStatusV1;
+}
+
+export interface RetrievalMetaV1 {
+  retrievalVersion: "retrieval_assets_v1";
+  queryClass: RetrievalQueryClass;
+  route: "deterministic_rag" | "weekly_summary" | "local_fallback";
+  bundleId: string;
+  queryHash: string;
+  candidateConversationIds: number[];
+  selectedWindowIds: string[];
+  assetStatus: EvidenceBundleAssetStatusV1;
+  llmCalls: number;
+}
+
+export interface ExploreRouteSummary {
+  mode: ExploreMode;
+  routeLabel: string;
+  evidenceCount: number;
+  scopeLabel: string;
+  llmCalls: number;
+  timeScopeLabel?: string;
+}
+
+export type VerificationClaimVerdict =
+  | "supported"
+  | "partially_supported"
+  | "unsupported"
+  | "contradicted"
+  | "not_enough_evidence";
+
+export interface VerificationClaimV1 {
+  claimId: string;
+  text: string;
+  verdict: VerificationClaimVerdict;
+  confidence: number;
+  evidenceRefs: EvidenceRefV1[];
+  missingEvidence?: string[];
+  contradictionNotes?: string[];
+  riskLevel: "low" | "medium" | "high";
+  failureType?:
+    | "retrieval_miss"
+    | "reasoning_jump"
+    | "summary_drift"
+    | "citation_mismatch";
+}
+
+export interface VerificationResultV1 {
+  overallVerdict: "supported" | "partially_supported" | "unsupported" | "contradicted";
+  overallConfidence: number;
+  claims: VerificationClaimV1[];
+  answerDiagnostics: {
+    supportedClaims: number;
+    unsupportedClaims: number;
+    contradictedClaims: number;
+    criticalUnsupportedClaims: number;
+    coverageRatio: number;
+  };
+  block: boolean;
+}
+
+export interface ExploreRouteDecision {
   intent: ExploreIntentType;
   reason: string;
   preferredPath: ExplorePlannerPath;
   sourceLimit: number;
-  summaryTargetCount: number;
-  answerGoal?: string;
   needsClarification?: boolean;
   clarifyingQuestion?: string;
   requestedTimeScope?: ExploreRequestedTimeScope;
@@ -180,22 +428,36 @@ export interface ExploreAgentPlan {
   toolPlan?: ExploreToolName[];
 }
 
-export interface ExploreAgentMeta {
+export type ExploreAgentPlan = ExploreRouteDecision;
+
+export interface ExploreInspectMeta {
   mode: ExploreMode;
   query?: string;
   searchScope?: ExploreSearchScope;
-  plan?: ExploreAgentPlan;
+  routeDecision?: ExploreRouteDecision;
   toolCalls: ExploreToolCall[];
-  contextDraft?: string;
+  retrievalMeta?: RetrievalMetaV1;
+  evidenceBrief?: string;
   contextCandidates?: ExploreContextCandidate[];
   selectedContextConversationIds?: number[];
   totalDurationMs?: number;
+  routeSummary?: ExploreRouteSummary;
+  // Legacy aliases kept for persisted Explore records.
+  plan?: ExploreRouteDecision;
+  contextDraft?: string;
 }
+
+export type ExploreAgentMeta = ExploreInspectMeta;
 
 export interface RagResponse {
   answer: string;
   sources: RelatedConversation[];
-  agent?: ExploreAgentMeta;
+  inspect?: ExploreInspectMeta;
+  agent?: ExploreInspectMeta;
+  retrievalMeta?: RetrievalMetaV1;
+  assetStatus?: EvidenceBundleAssetStatusV1;
+  bundleId?: string;
+  queryHash?: string;
 }
 
 export interface ExploreSession {
@@ -213,7 +475,8 @@ export interface ExploreMessage {
   role: "user" | "assistant";
   content: string;
   sources?: RelatedConversation[];
-  agentMeta?: ExploreAgentMeta;
+  inspectMeta?: ExploreInspectMeta;
+  agentMeta?: ExploreInspectMeta;
   timestamp: number;
 }
 
@@ -322,6 +585,7 @@ export interface DataOverviewSnapshot {
   weeklyReportCount: number;
   lastCompactionAt: number | null;
   indexedDbName: string;
+  retrievalDiagnostics?: RetrievalDiagnosticsSnapshot;
 }
 
 export type CapsuleState = "RECORDING" | "STANDBY" | "PAUSED" | "SAVED";
@@ -543,6 +807,7 @@ export interface SummaryRecord {
   modelId: string;
   createdAt: number;
   sourceUpdatedAt: number;
+  sourceHash?: string;
 }
 
 export interface WeeklyReportRecord {

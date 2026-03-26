@@ -5,6 +5,8 @@ import type {
   Conversation,
   ConversationMatchSummary,
   DataOverviewSnapshot,
+  EvidenceBundleV1,
+  QueryRewriteHintsV1,
   Message,
   DashboardStats,
   ExportFormat,
@@ -27,6 +29,8 @@ import type {
   SearchConversationMatchesQuery,
   MessageCitation,
   MessageArtifact,
+  RetrievalAssetStatusV1,
+  RetrievalDiagnosticsSnapshot,
 } from "../types";
 import type { AstRoot, AstVersion } from "../types/ast";
 
@@ -230,6 +234,43 @@ export type RequestMessage =
       };
     }
   | {
+      type: "BUILD_RETRIEVAL_ASSETS";
+      target?: "background" | "offscreen";
+      via?: "background";
+      requestId?: string;
+      payload?: { conversationIds?: number[]; force?: boolean };
+    }
+  | {
+      type: "GET_RETRIEVAL_ASSET_STATUS";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+      payload?: { conversationIds?: number[] };
+    }
+  | {
+      type: "GET_QUERY_REWRITE_HINTS";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+      payload: {
+        query: string;
+        sessionId?: string;
+        options?: ExploreAskOptions;
+      };
+    }
+  | {
+      type: "GET_EVIDENCE_BUNDLE";
+      target?: "offscreen";
+      via?: "background";
+      requestId?: string;
+      payload: {
+        query: string;
+        sessionId?: string;
+        limit?: number;
+        options?: ExploreAskOptions;
+      };
+    }
+  | {
       type: "CREATE_EXPLORE_SESSION";
       target?: "offscreen";
       requestId?: string;
@@ -266,13 +307,13 @@ export type RequestMessage =
       payload: { sessionId: string; title: string };
     }
   | {
-      type: "UPDATE_EXPLORE_MESSAGE_CONTEXT";
+      type: "UPDATE_EXPLORE_MESSAGE_EVIDENCE";
       target?: "offscreen";
       requestId?: string;
       payload: {
         messageId: string;
-        contextDraft: string;
         selectedContextConversationIds: number[];
+        evidenceBriefSnapshot?: string;
       };
     }
   | {
@@ -491,13 +532,20 @@ export type ResponseDataMap = {
   MOVE_FOLDER_TAG: { updated: number };
   REMOVE_FOLDER_TAG: { updated: number };
   ASK_KNOWLEDGE_BASE: RagResponse & { sessionId: string };
+  BUILD_RETRIEVAL_ASSETS: { queued: boolean; built: number; conversationIds: number[] };
+  GET_RETRIEVAL_ASSET_STATUS: {
+    statuses: RetrievalAssetStatusV1[];
+    diagnostics: RetrievalDiagnosticsSnapshot | null;
+  };
+  GET_QUERY_REWRITE_HINTS: QueryRewriteHintsV1;
+  GET_EVIDENCE_BUNDLE: EvidenceBundleV1;
   CREATE_EXPLORE_SESSION: { sessionId: string };
   LIST_EXPLORE_SESSIONS: ExploreSession[];
   GET_EXPLORE_SESSION: ExploreSession | null;
   GET_EXPLORE_MESSAGES: ExploreMessage[];
   DELETE_EXPLORE_SESSION: { deleted: boolean };
   RENAME_EXPLORE_SESSION: { updated: boolean };
-  UPDATE_EXPLORE_MESSAGE_CONTEXT: { updated: boolean };
+  UPDATE_EXPLORE_MESSAGE_EVIDENCE: { updated: boolean };
   GET_MESSAGES: Message[];
   GET_ANNOTATIONS_BY_CONVERSATION: Annotation[];
   SAVE_ANNOTATION: { annotation: Annotation };

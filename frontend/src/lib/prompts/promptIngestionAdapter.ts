@@ -94,8 +94,7 @@ function buildStructureSignals(message: Message, bodyText: string): PromptStruct
     hasTable: astStats?.hasTable ?? /\|.+\|/.test(bodyText),
     hasCode:
       astStats?.hasCodeBlock ??
-      /```/.test(bodyText) ||
-      hasCommandLikeText,
+      (/```/.test(bodyText) || hasCommandLikeText),
     hasMath: astStats?.hasMath ?? INLINE_MATH_PATTERN.test(bodyText),
     hasBlockquote: astStats?.hasBlockquote ?? false,
     hasHeading: astStats?.hasHeading ?? false,

@@ -2,19 +2,22 @@
   Annotation,
   Conversation,
   ExploreAskOptions,
-  ExploreAgentPlan,
-  ExploreAgentMeta,
+  ExploreInspectMeta,
   ExploreContextCandidate,
   ExploreIntentType,
   ExploreMode,
+  ExploreRouteDecision,
+  ExploreRouteSummary,
   ExploreResolvedTimeScope,
   ExploreRequestedTimeScope,
   ExploreSearchScope,
   ExploreToolCall,
   ExploreToolName,
   LlmConfig,
+  QueryRewriteHintsV1,
   RagResponse,
   RelatedConversation,
+  RetrievalMetaV1,
 } from "../types";
 import {
   getConversationCaptureFreshnessAt,
@@ -28,13 +31,22 @@ import {
   getSummary,
   getWeeklyReport,
   listConversationsByRange,
+  recordRetrievalObservation,
   updateExploreSession,
 } from "../db/repository";
 import { embedText } from "./embeddingService";
 import {
-  generateConversationSummary,
   generateWeeklyReport,
 } from "./insightGenerationService";
+import {
+  buildContextCandidatesFromBundle,
+  buildEvidencePrompt,
+  buildLocalAnswerFromBundle,
+  buildRetrievalAssets,
+  buildSourcesFromBundle,
+  getEvidenceBundle,
+  getQueryRewriteHints,
+} from "./retrievalAssetsService";
 import type {
   CallModelScopeOptions,
   InferenceCallResult,
@@ -48,7 +60,6 @@ const MAX_MESSAGE_COUNT = 12;
 const MAX_TEXT_LENGTH = 4000;
 const MAX_RAG_SOURCES = 5;
 const MAX_EMBEDDING_CHARS = 2048;
-const AGENT_SUMMARY_SOURCE_LIMIT = 3;
 const MAX_WEEKLY_CANDIDATES = 12;
 const MAX_WEEKLY_SOURCE_CHIPS = 8;
 const EXPLORE_CONTINUATION_MAX_ROUNDS = 2;
@@ -86,21 +97,29 @@ type ExploreCompletionResult = {
   continuationCount: number;
 };
 
+type SharedRetrievalCoreResult = {
+  rewriteHints: QueryRewriteHintsV1;
+  bundle: Awaited<ReturnType<typeof getEvidenceBundle>>;
+  sources: RelatedConversation[];
+  contextCandidates: ExploreContextCandidate[];
+  selectedContextConversationIds: number[];
+};
+
 const TOOL_DESCRIPTIONS: Record<ExploreToolName, string> = {
-  intent_planner:
+  intent_router:
     "Uses the language model to infer the user's intent, choose the answer route, and decide whether a time scope is needed.",
   time_scope_resolver:
     "Converts relative phrases like 'this week' into a concrete local date range before retrieval or summarization.",
   weekly_summary_tool:
     "Finds conversations inside the chosen time window, then reuses or generates a weekly digest so the answer can be grounded in that period.",
   query_planner:
-    "Legacy planner step kept for backward compatibility with older Explore messages.",
+    "Rewrites the query into a standalone retrieval form so follow-up questions stay grounded before evidence ranking.",
   search_rag:
     "Retrieves semantically similar conversations from the knowledge base using vector search.",
   summary_tool:
     "Reuses cached conversation summaries or generates missing ones to improve multi-source synthesis.",
   context_compiler:
-    "Builds the editable context draft and source list so the reasoning chain stays inspectable.",
+    "Builds a user-readable evidence brief and source list so the reasoning chain stays inspectable.",
   answer_synthesizer:
     "Writes the final answer from the collected evidence and points the user to concrete sources when evidence is partial.",
 };
@@ -233,14 +252,21 @@ function resolveRequestedTimeScope(
   }
 }
 
-function buildToolPlan(preferredPath: ExploreAgentPlan["preferredPath"]): ExploreToolName[] {
+function buildToolPlan(
+  preferredPath: ExploreRouteDecision["preferredPath"],
+  mode: ExploreMode = "ask"
+): ExploreToolName[] {
+  if (mode === "search") {
+    return ["query_planner", "search_rag", "context_compiler", "answer_synthesizer"];
+  }
+
   if (preferredPath === "clarify") {
-    return ["intent_planner"];
+    return ["intent_router"];
   }
 
   if (preferredPath === "weekly_summary") {
     return [
-      "intent_planner",
+      "intent_router",
       "time_scope_resolver",
       "weekly_summary_tool",
       "context_compiler",
@@ -248,13 +274,7 @@ function buildToolPlan(preferredPath: ExploreAgentPlan["preferredPath"]): Explor
     ];
   }
 
-  return [
-    "intent_planner",
-    "search_rag",
-    "summary_tool",
-    "context_compiler",
-    "answer_synthesizer",
-  ];
+  return ["intent_router", "search_rag", "context_compiler", "answer_synthesizer"];
 }
 
 function normalizeRequestedTimeScope(
@@ -312,32 +332,30 @@ function hasSummaryStyleSignal(query: string): boolean {
   );
 }
 
-function applyPlannerGuardrails(query: string, plan: ExploreAgentPlan): ExploreAgentPlan {
-  if (plan.preferredPath !== "weekly_summary") {
-    return plan;
+function applyPlannerGuardrails(
+  query: string,
+  routeDecision: ExploreRouteDecision
+): ExploreRouteDecision {
+  if (routeDecision.preferredPath !== "weekly_summary") {
+    return routeDecision;
   }
 
   if (hasExplicitWeeklySignal(query)) {
-    return plan;
+    return routeDecision;
   }
 
   const downgradedIntent: ExploreIntentType = hasSummaryStyleSignal(query)
     ? "cross_conversation_summary"
     : "fact_lookup";
-  const downgradedSummaryTarget =
-    downgradedIntent === "cross_conversation_summary"
-      ? clamp(plan.sourceLimit, 1, AGENT_SUMMARY_SOURCE_LIMIT)
-      : clamp(Math.min(plan.sourceLimit, 2), 1, AGENT_SUMMARY_SOURCE_LIMIT);
 
   return {
-    ...plan,
+    ...routeDecision,
     intent: downgradedIntent,
     preferredPath: "rag",
-    summaryTargetCount: downgradedSummaryTarget,
     requestedTimeScope: undefined,
     resolvedTimeScope: undefined,
     toolPlan: buildToolPlan("rag"),
-    reason: `${plan.reason} | guardrail: weekly_summary requires an explicit weekly time signal in the query`,
+    reason: `${routeDecision.reason} | guardrail: weekly_summary requires an explicit weekly time signal in the query`,
   };
 }
 
@@ -345,7 +363,7 @@ function buildFallbackPlan(
   query: string,
   requestedLimit: number,
   fallbackReason: string
-): ExploreAgentPlan {
+): ExploreRouteDecision {
   const lowered = query.toLowerCase();
   const currentWeekIntent =
     /this week|current week/.test(lowered) ||
@@ -381,12 +399,6 @@ function buildFallbackPlan(
 
   const preferredPath = weeklyIntent ? "weekly_summary" : "rag";
   const sourceLimit = clamp(requestedLimit || MAX_RAG_SOURCES, 1, 8);
-  const summaryTargetCount =
-    preferredPath === "weekly_summary"
-      ? 0
-      : summaryIntent
-        ? clamp(sourceLimit, 1, AGENT_SUMMARY_SOURCE_LIMIT)
-        : clamp(Math.min(sourceLimit, 2), 1, AGENT_SUMMARY_SOURCE_LIMIT);
   const intent: ExploreIntentType = weeklyIntent
     ? "weekly_review"
     : timelineIntent
@@ -400,10 +412,6 @@ function buildFallbackPlan(
     reason: fallbackReason,
     preferredPath,
     sourceLimit,
-    summaryTargetCount,
-    answerGoal: weeklyIntent
-      ? "Summarize what the user worked on during the requested week and point to the relevant conversations."
-      : "Answer the user's question with source-grounded evidence from conversation history.",
     requestedTimeScope,
     resolvedTimeScope: resolveRequestedTimeScope(requestedTimeScope),
     toolPlan: buildToolPlan(preferredPath),
@@ -414,7 +422,7 @@ function normalizeAgentPlan(
   raw: unknown,
   requestedLimit: number,
   query: string
-): ExploreAgentPlan {
+): ExploreRouteDecision {
   if (!raw || typeof raw !== "object") {
     return buildFallbackPlan(query, requestedLimit, "PLANNER_OUTPUT_INVALID");
   }
@@ -427,7 +435,7 @@ function normalizeAgentPlan(
     candidate.intent === "clarification_needed"
       ? candidate.intent
       : "fact_lookup";
-  const preferredPath: ExploreAgentPlan["preferredPath"] =
+  const preferredPath: ExploreRouteDecision["preferredPath"] =
     candidate.preferredPath === "weekly_summary" ||
     candidate.preferredPath === "clarify"
       ? candidate.preferredPath
@@ -440,24 +448,8 @@ function normalizeAgentPlan(
   const normalizedRequestedTimeScope = normalizeRequestedTimeScope(
     candidate.requestedTimeScope
   );
-  const defaultSummaryTarget =
-    preferredPath === "weekly_summary"
-      ? 0
-      : intent === "cross_conversation_summary" || intent === "timeline"
-        ? clamp(sourceLimit, 1, AGENT_SUMMARY_SOURCE_LIMIT)
-        : clamp(Math.min(sourceLimit, 2), 1, AGENT_SUMMARY_SOURCE_LIMIT);
-  const summaryTargetCount =
-    preferredPath === "weekly_summary"
-      ? 0
-      : clamp(
-          typeof candidate.summaryTargetCount === "number"
-            ? candidate.summaryTargetCount
-            : defaultSummaryTarget,
-          0,
-          AGENT_SUMMARY_SOURCE_LIMIT
-        );
 
-  const plan: ExploreAgentPlan = {
+  const plan: ExploreRouteDecision = {
     intent,
     reason:
       typeof candidate.reason === "string" && candidate.reason.trim()
@@ -465,9 +457,6 @@ function normalizeAgentPlan(
         : "PLANNER_REASON_UNSPECIFIED",
     preferredPath,
     sourceLimit,
-    summaryTargetCount,
-    answerGoal:
-      typeof candidate.answerGoal === "string" ? candidate.answerGoal.trim() : undefined,
     needsClarification:
       typeof candidate.needsClarification === "boolean"
         ? candidate.needsClarification
@@ -512,14 +501,13 @@ function buildPlannerPrompt(params: {
     `Requested source limit: ${params.requestedLimit}`,
     `Recent conversation context: ${history}`,
     "",
-    "Choose a high-level execution plan for Explore.",
+    "Choose a high-level route for Vesti Ask mode.",
     "Available tools and their jobs:",
-    "- intent_planner: interpret the user's intent and choose the route.",
+    "- intent_router: interpret the user's intent and choose the route.",
     "- time_scope_resolver: turn relative phrases like 'this week' into concrete dates.",
     "- weekly_summary_tool: gather conversations inside a time window and summarize what happened in that period.",
     "- search_rag: retrieve semantically similar conversations.",
-    "- summary_tool: enrich top conversations with summaries if multi-source synthesis needs it.",
-    "- context_compiler: build an editable context draft and source list.",
+    "- context_compiler: build a user-readable evidence brief and source list.",
     "- answer_synthesizer: write the final answer and tell the user where to look if evidence is partial.",
     "",
     "Rules:",
@@ -535,8 +523,6 @@ function buildPlannerPrompt(params: {
     '  "reason": "short explanation",',
     '  "preferredPath": "rag | weekly_summary | clarify",',
     '  "sourceLimit": 1-8,',
-    '  "summaryTargetCount": 0-3,',
-    '  "answerGoal": "what the final answer should accomplish",',
     '  "needsClarification": true | false,',
     '  "clarifyingQuestion": "optional question",',
     '  "requestedTimeScope": {',
@@ -548,35 +534,66 @@ function buildPlannerPrompt(params: {
     "}",
   ].join("\n");
 }
+
+function extractFirstJsonObject(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    return null;
+  }
+
+  return trimmed.slice(firstBrace, lastBrace + 1);
+}
+
 async function planAgentIntent(params: {
   query: string;
   historyContext: string;
   requestedLimit: number;
   searchScope?: ExploreSearchScope;
   settings: LlmConfig | null;
-}): Promise<ExploreAgentPlan> {
-  const { query, historyContext, requestedLimit, searchScope, settings } = params;
-
-  if (!hasUsableLlmSettings(settings)) {
-    return buildFallbackPlan(query, requestedLimit, "LLM_PLANNER_UNAVAILABLE");
+}): Promise<ExploreRouteDecision> {
+  if (!hasUsableLlmSettings(params.settings)) {
+    return buildFallbackPlan(params.query, params.requestedLimit, "DETERMINISTIC_ROUTER");
   }
 
   try {
-    const plannerPrompt = buildPlannerPrompt({
-      query,
-      historyContext,
-      requestedLimit,
-      searchScope,
-    });
-    const result = await callInference(settings, plannerPrompt, {
-      responseFormat: "json_object",
-      systemPrompt:
-        "You are the planning layer for Vesti Explore. Output only strict JSON that matches the requested schema.",
-    });
-    const parsed = JSON.parse(result.content) as unknown;
-    return normalizeAgentPlan(parsed, requestedLimit, query);
+    const result = await callInference(
+      params.settings,
+      buildPlannerPrompt({
+        query: params.query,
+        historyContext: params.historyContext,
+        requestedLimit: params.requestedLimit,
+        searchScope: params.searchScope,
+      }),
+      {
+        responseFormat: "json_object",
+        systemPrompt:
+          "You are Vesti's intent router. Return one compact JSON object only. Do not add markdown or commentary.",
+      }
+    );
+
+    const parsedText = extractFirstJsonObject(result.content || result.rawContent || "");
+    if (!parsedText) {
+      return buildFallbackPlan(params.query, params.requestedLimit, "LLM_ROUTER_EMPTY");
+    }
+
+    return normalizeAgentPlan(
+      JSON.parse(parsedText),
+      params.requestedLimit,
+      params.query
+    );
   } catch {
-    return buildFallbackPlan(query, requestedLimit, "LLM_PLANNER_FALLBACK");
+    return buildFallbackPlan(params.query, params.requestedLimit, "LLM_ROUTER_FALLBACK");
   }
 }
 
@@ -934,24 +951,25 @@ function buildSummaryHintsText(
   return lines.join("\n");
 }
 
-function buildContextDraft(params: {
+function buildEvidenceBrief(params: {
   query: string;
   sources: RelatedConversation[];
   candidates: ExploreContextCandidate[];
   searchScope?: ExploreSearchScope;
-  plan?: ExploreAgentPlan;
+  plan?: ExploreRouteDecision;
   weeklySummaryText?: string;
+  mode: ExploreMode;
+  retrievalMeta?: RetrievalMetaV1;
 }): string {
-  const { query, sources, candidates, searchScope, plan, weeklySummaryText } = params;
-  const selectedIds = candidates.map((candidate) => candidate.conversationId);
+  const { query, sources, candidates, searchScope, plan, weeklySummaryText, mode, retrievalMeta } =
+    params;
   const lines: string[] = [
-    "# Explore Context Draft",
+    "# Evidence Brief",
     "",
-    `Query: ${query}`,
-    `Search Scope: ${describeSearchScope(searchScope)}`,
-    `Intent: ${plan?.intent ?? "unknown"}`,
-    `Route: ${plan?.preferredPath ?? "rag"}`,
-    `Generated At: ${new Date().toISOString()}`,
+    `Question: ${query}`,
+    `Mode: ${mode === "ask" ? "Ask" : "Search"}`,
+    `Route: ${plan?.preferredPath ?? (mode === "search" ? "rag" : "unknown")}`,
+    `Scope: ${describeSearchScope(searchScope)}`,
     "",
   ];
 
@@ -963,19 +981,36 @@ function buildContextDraft(params: {
     );
   }
 
+  lines.push("## What This Answer Is Based On");
+  if (mode === "search") {
+    lines.push(
+      `- Retrieved ${sources.length} source conversation${sources.length === 1 ? "" : "s"}.`,
+      `- Used ${retrievalMeta?.selectedWindowIds.length ?? candidates.length} evidence window${
+        (retrievalMeta?.selectedWindowIds.length ?? candidates.length) === 1 ? "" : "s"
+      }.`,
+      `- LLM synthesis calls: ${retrievalMeta?.llmCalls ?? 0}.`,
+      ""
+    );
+  } else if (plan?.preferredPath === "weekly_summary") {
+    lines.push(
+      `- Reviewed ${sources.length} conversation${sources.length === 1 ? "" : "s"} inside the requested time range.`,
+      `- Weekly digest available: ${weeklySummaryText?.trim() ? "yes" : "no"}.`,
+      ""
+    );
+  } else {
+    lines.push(
+      `- Routed through Ask for intent classification and evidence gathering.`,
+      `- Retrieved ${sources.length} source conversation${sources.length === 1 ? "" : "s"}.`,
+      `- LLM synthesis calls: ${retrievalMeta?.llmCalls ?? 0}.`,
+      ""
+    );
+  }
+
   if (weeklySummaryText?.trim()) {
     lines.push("## Weekly Summary", weeklySummaryText.trim(), "");
   }
 
-  lines.push(
-    "## Planned Tools",
-    plan?.toolPlan?.length ? plan.toolPlan.join(" -> ") : "(not recorded)",
-    "",
-    "## Selected Source IDs",
-    selectedIds.length ? selectedIds.join(", ") : "(none)",
-    "",
-    "## Source Notes"
-  );
+  lines.push("## Evidence");
 
   if (!sources.length) {
     lines.push("- No relevant conversations were retrieved.");
@@ -986,8 +1021,7 @@ function buildContextDraft(params: {
         candidate?.matchType === "time_scope" ? "in range" : `${source.similarity}% match`;
       lines.push(
         `- ${source.title} [${source.platform}] (${matchLabel})`,
-        `  Match Type: ${candidate?.matchType ?? "semantic"}`,
-        `  Selection Reason: ${candidate?.selectionReason || "(not available)"}`,
+        `  Why it was included: ${candidate?.selectionReason || "Relevant to the query."}`,
         `  Summary: ${candidate?.summarySnippet || "(not available)"}`,
         `  Excerpt: ${candidate?.excerpt || "(not available)"}`
       );
@@ -996,11 +1030,189 @@ function buildContextDraft(params: {
 
   lines.push(
     "",
-    "## Instruction",
-    "Use this draft as a transparent context package for a new conversation. Edit freely before sending."
+    "## Gaps And Caveats"
   );
 
+  if (!sources.length) {
+    lines.push("- Evidence coverage is thin. Broaden the scope or rephrase the query.");
+  } else if (plan?.preferredPath === "weekly_summary" && !weeklySummaryText?.trim()) {
+    lines.push("- A reusable weekly digest was not available, so the answer may rely more on raw conversation selection.");
+  } else if ((retrievalMeta?.llmCalls ?? 0) === 0) {
+    lines.push("- No synthesis model was used for the final answer.");
+  } else {
+    lines.push("- Verify high-stakes claims against the source conversations listed above.");
+  }
+
   return lines.join("\n");
+}
+
+function buildRetrievalMetaFromBundle(
+  bundle: Awaited<ReturnType<typeof getEvidenceBundle>>,
+  route: RetrievalMetaV1["route"],
+  llmCalls: number
+): RetrievalMetaV1 {
+  return {
+    retrievalVersion: "retrieval_assets_v1",
+    queryClass: bundle.queryClass,
+    route,
+    bundleId: bundle.queryHash,
+    queryHash: bundle.queryHash,
+    candidateConversationIds: bundle.conversations.map((item) => item.conversationId),
+    selectedWindowIds: bundle.windows.map((item) => item.id),
+    assetStatus: bundle.assetStatus,
+    llmCalls,
+  };
+}
+
+function buildRouteSummary(params: {
+  mode: ExploreMode;
+  searchScope?: ExploreSearchScope;
+  routeDecision?: ExploreRouteDecision;
+  retrievalMeta?: RetrievalMetaV1;
+  evidenceCount: number;
+  llmCalls?: number;
+}): ExploreRouteSummary {
+  const { mode, searchScope, routeDecision, retrievalMeta, evidenceCount, llmCalls } = params;
+  const routeLabel =
+    mode === "search"
+      ? retrievalMeta?.route === "local_fallback"
+        ? "Search fallback"
+        : "Search RAG"
+      : routeDecision?.preferredPath === "weekly_summary"
+        ? "Ask weekly summary"
+        : routeDecision?.preferredPath === "clarify"
+          ? "Ask clarify"
+          : retrievalMeta?.route === "local_fallback"
+            ? "Ask RAG fallback"
+            : "Ask RAG";
+
+  return {
+    mode,
+    routeLabel,
+    evidenceCount,
+    scopeLabel: describeSearchScope(searchScope),
+    llmCalls: llmCalls ?? retrievalMeta?.llmCalls ?? 0,
+    timeScopeLabel: routeDecision?.resolvedTimeScope?.label,
+  };
+}
+
+function buildInspectMeta(params: {
+  mode: ExploreMode;
+  query: string;
+  searchScope?: ExploreSearchScope;
+  routeDecision?: ExploreRouteDecision;
+  toolCalls: ExploreToolCall[];
+  retrievalMeta?: RetrievalMetaV1;
+  evidenceBrief?: string;
+  contextCandidates?: ExploreContextCandidate[];
+  selectedContextConversationIds?: number[];
+  totalDurationMs?: number;
+  llmCalls?: number;
+}): ExploreInspectMeta {
+  const {
+    mode,
+    query,
+    searchScope,
+    routeDecision,
+    toolCalls,
+    retrievalMeta,
+    evidenceBrief,
+    contextCandidates,
+    selectedContextConversationIds,
+    totalDurationMs,
+    llmCalls,
+  } = params;
+
+  const routeSummary = buildRouteSummary({
+    mode,
+    searchScope,
+    routeDecision,
+    retrievalMeta,
+    evidenceCount:
+      retrievalMeta?.selectedWindowIds.length ??
+      contextCandidates?.length ??
+      selectedContextConversationIds?.length ??
+      0,
+    llmCalls,
+  });
+
+  return {
+    mode,
+    query,
+    searchScope,
+    routeDecision,
+    plan: routeDecision,
+    toolCalls,
+    retrievalMeta,
+    evidenceBrief,
+    contextDraft: evidenceBrief,
+    contextCandidates,
+    selectedContextConversationIds,
+    totalDurationMs,
+    routeSummary,
+  };
+}
+
+async function runRetrievalCore(params: {
+  query: string;
+  limit: number;
+  sessionId?: string;
+  searchScope?: ExploreSearchScope;
+  toolCalls: ExploreToolCall[];
+  traceRewriteStep?: boolean;
+}): Promise<SharedRetrievalCoreResult> {
+  const {
+    query,
+    limit,
+    sessionId,
+    searchScope,
+    toolCalls,
+    traceRewriteStep = false,
+  } = params;
+
+  const rewriteHints = traceRewriteStep
+    ? await runToolStep(
+        toolCalls,
+        "query_planner",
+        `query="${truncateInline(query, 100)}", scope=${describeSearchScope(searchScope)}`,
+        async () => getQueryRewriteHints({ query, sessionId }),
+        (value) =>
+          `standalone="${truncateInline(value.standaloneQuery, 120)}", preservedTerms=${value.preservedTerms.length}`
+      )
+    : await getQueryRewriteHints({ query, sessionId });
+
+  const bundle = await runToolStep(
+    toolCalls,
+    "search_rag",
+    `sourceLimit=${limit}, scope=${describeSearchScope(searchScope)}`,
+    async () =>
+      getEvidenceBundle({
+        query,
+        sessionId,
+        limit,
+        searchScope,
+        rewriteHints,
+      }),
+    (value) => `conversations=${value.conversations.length}, windows=${value.windows.length}`
+  );
+
+  const contextCandidates = await runToolStep(
+    toolCalls,
+    "context_compiler",
+    `conversations=${bundle.conversations.length}, windows=${bundle.windows.length}`,
+    async () => buildContextCandidatesFromBundle(bundle),
+    (value) => `candidates=${value.length}`
+  );
+
+  return {
+    rewriteHints,
+    bundle,
+    sources: buildSourcesFromBundle(bundle),
+    contextCandidates,
+    selectedContextConversationIds: contextCandidates.map(
+      (candidate) => candidate.conversationId
+    ),
+  };
 }
 
 function filterConversationsBySearchScope(
@@ -1324,7 +1536,7 @@ async function retrieveRagContext(
 }
 
 async function resolveSummarySnippets(
-  settings: Awaited<ReturnType<typeof getLlmSettings>>,
+  _settings: Awaited<ReturnType<typeof getLlmSettings>>,
   sources: RelatedConversation[],
   targetCount: number
 ): Promise<SummaryToolResult> {
@@ -1341,19 +1553,7 @@ async function resolveSummarySnippets(
         cacheHits += 1;
         continue;
       }
-
-      if (!hasUsableLlmSettings(settings)) {
-        failed += 1;
-        continue;
-      }
-
-      const synthesized = await generateConversationSummary(settings, source.id);
-      if (synthesized?.content?.trim()) {
-        snippets.set(source.id, truncateInline(synthesized.content, 320));
-        generated += 1;
-      } else {
-        failed += 1;
-      }
+      failed += 1;
     } catch {
       failed += 1;
     }
@@ -1383,46 +1583,174 @@ function buildContextCandidates(
   }));
 }
 
-async function runClassicKnowledgeBase(
+async function runSearchKnowledgeBase(
   query: string,
   historyContext: string,
   limit: number,
   searchScope?: ExploreSearchScope,
-  existingRetrieval?: RagRetrievalResult
+  existingRetrieval?: RagRetrievalResult,
+  sessionId?: string
 ): Promise<RagResponse> {
-  let retrieval = existingRetrieval;
-  if (!retrieval) {
-    try {
-      retrieval = await retrieveRagContext(query, limit, searchScope);
-    } catch {
-      retrieval = {
-        sources: [],
-        context: "",
-        items: [],
-      };
-    }
+  void existingRetrieval;
+  const toolCalls: ExploreToolCall[] = [];
+  const startedAt = Date.now();
+  let bundle: Awaited<ReturnType<typeof getEvidenceBundle>> | undefined;
+  let contextCandidates: ExploreContextCandidate[] = [];
+  let sources: RelatedConversation[] = [];
+  let selectedContextConversationIds: number[] = [];
+  try {
+    const retrievalCore = await runRetrievalCore({
+      query,
+      limit,
+      sessionId,
+      searchScope,
+      toolCalls,
+      traceRewriteStep: true,
+    });
+    bundle = retrievalCore.bundle;
+    contextCandidates = retrievalCore.contextCandidates;
+    sources = retrievalCore.sources;
+    selectedContextConversationIds = retrievalCore.selectedContextConversationIds;
+  } catch {
+    const evidenceBrief = buildEvidenceBrief({
+      query,
+      sources: [],
+      candidates: [],
+      searchScope,
+      mode: "search",
+    });
+    const inspect = buildInspectMeta({
+      mode: "search",
+      query,
+      searchScope,
+      toolCalls,
+      evidenceBrief,
+      totalDurationMs: Date.now() - startedAt,
+    });
+    return {
+      answer: buildLocalFallbackAnswer(query, []),
+      sources: [],
+      inspect,
+      agent: inspect,
+    };
   }
   const settings = await getLlmSettings();
 
   if (!hasUsableLlmSettings(settings)) {
+    const answer = await runToolStep(
+      toolCalls,
+      "answer_synthesizer",
+      `windows=${bundle.windows.length}, llmCalls=0`,
+      async () => Promise.resolve(buildLocalAnswerFromBundle(query, bundle!)),
+      (value) => `answerChars=${value.length}`
+    );
+    const retrievalMeta = buildRetrievalMetaFromBundle(bundle, "local_fallback", 0);
+    const evidenceBrief = buildEvidenceBrief({
+      query,
+      sources,
+      candidates: contextCandidates,
+      searchScope,
+      mode: "search",
+      retrievalMeta,
+    });
+    const inspect = buildInspectMeta({
+      mode: "search",
+      query,
+      searchScope,
+      toolCalls,
+      retrievalMeta,
+      evidenceBrief,
+      contextCandidates,
+      selectedContextConversationIds,
+      totalDurationMs: Date.now() - startedAt,
+    });
+    recordRetrievalObservation("search > local_fallback", bundle.windows.length);
     return {
-      answer: buildLocalFallbackAnswer(query, retrieval.sources),
-      sources: retrieval.sources,
+      answer,
+      sources,
+      inspect,
+      agent: inspect,
+      retrievalMeta,
+      assetStatus: bundle.assetStatus,
+      bundleId: bundle.queryHash,
+      queryHash: bundle.queryHash,
     };
   }
 
   try {
-    const systemPrompt = buildContextualRagPrompt(retrieval.context, historyContext);
-    const result = await callExploreInference(settings, query, { systemPrompt });
-    const answer = result.content.trim();
+    const answer = await runToolStep(
+      toolCalls,
+      "answer_synthesizer",
+      `windows=${bundle.windows.length}, llmCalls=1`,
+      async () => {
+        const systemPrompt = buildEvidencePrompt(bundle!, historyContext);
+        const result = await callExploreInference(settings, query, { systemPrompt });
+        return result.content.trim() || buildLocalAnswerFromBundle(query, bundle!);
+      },
+      (value) => `answerChars=${value.length}`
+    );
+    const retrievalMeta = buildRetrievalMetaFromBundle(bundle, "deterministic_rag", 1);
+    const evidenceBrief = buildEvidenceBrief({
+      query,
+      sources,
+      candidates: contextCandidates,
+      searchScope,
+      mode: "search",
+      retrievalMeta,
+    });
+    const inspect = buildInspectMeta({
+      mode: "search",
+      query,
+      searchScope,
+      toolCalls,
+      retrievalMeta,
+      evidenceBrief,
+      contextCandidates,
+      selectedContextConversationIds,
+      totalDurationMs: Date.now() - startedAt,
+    });
+    recordRetrievalObservation("search > deterministic_rag", bundle.windows.length);
     return {
-      answer: answer || buildLocalFallbackAnswer(query, retrieval.sources),
-      sources: retrieval.sources,
+      answer,
+      sources,
+      inspect,
+      agent: inspect,
+      retrievalMeta,
+      assetStatus: bundle.assetStatus,
+      bundleId: bundle.queryHash,
+      queryHash: bundle.queryHash,
     };
   } catch {
+    const retrievalMeta = buildRetrievalMetaFromBundle(bundle, "local_fallback", 0);
+    const evidenceBrief = buildEvidenceBrief({
+      query,
+      sources,
+      candidates: contextCandidates,
+      searchScope,
+      mode: "search",
+      retrievalMeta,
+    });
+    const inspect = buildInspectMeta({
+      mode: "search",
+      query,
+      searchScope,
+      toolCalls,
+      retrievalMeta,
+      evidenceBrief,
+      contextCandidates,
+      selectedContextConversationIds,
+      totalDurationMs: Date.now() - startedAt,
+    });
+    recordRetrievalObservation("search > local_fallback", bundle.windows.length);
     return {
-      answer: buildLocalFallbackAnswer(query, retrieval.sources),
-      sources: retrieval.sources,
+      answer: buildLocalAnswerFromBundle(query, bundle),
+      sources,
+      inspect,
+      agent: inspect,
+      retrievalMeta,
+      assetStatus: bundle.assetStatus,
+      bundleId: bundle.queryHash,
+      queryHash: bundle.queryHash,
     };
   }
 }
@@ -1526,27 +1854,29 @@ async function synthesizeWeeklyAnswer(params: {
   }
 }
 
-async function runAgentKnowledgeBase(
+async function runAskKnowledgeBase(
   query: string,
   historyContext: string,
   limit: number,
-  options?: ExploreAskOptions
+  options?: ExploreAskOptions,
+  sessionId?: string
 ): Promise<RagResponse> {
   const toolCalls: ExploreToolCall[] = [];
   const startedAt = Date.now();
-  let retrieval: RagRetrievalResult | undefined;
-  let plan: ExploreAgentPlan | undefined;
+  let bundle: Awaited<ReturnType<typeof getEvidenceBundle>> | undefined;
+  let routeDecision: ExploreRouteDecision | undefined;
   let weeklyResult: WeeklySummaryToolResult | undefined;
-  let contextDraft = "";
+  let evidenceBrief = "";
   let contextCandidates: ExploreContextCandidate[] = [];
   let selectedContextConversationIds: number[] = [];
   const searchScope = options?.searchScope;
   const settings = await getLlmSettings();
+  const routerLlmCalls = hasUsableLlmSettings(settings) ? 1 : 0;
 
   try {
-    plan = await runToolStep(
+    routeDecision = await runToolStep(
       toolCalls,
-      "intent_planner",
+      "intent_router",
       `query="${truncateInline(query, 100)}", scope=${describeSearchScope(searchScope)}`,
       async () =>
         planAgentIntent({
@@ -1560,43 +1890,54 @@ async function runAgentKnowledgeBase(
         `intent=${value.intent}, route=${value.preferredPath}, sourceLimit=${value.sourceLimit}, reason=${truncateInline(value.reason, 100)}`
     );
 
-    if (plan.needsClarification || plan.preferredPath === "clarify") {
-      contextDraft = buildContextDraft({
+    routeDecision = {
+      ...routeDecision,
+      toolPlan: buildToolPlan(routeDecision.preferredPath, "ask"),
+    };
+
+    if (routeDecision.needsClarification || routeDecision.preferredPath === "clarify") {
+      evidenceBrief = buildEvidenceBrief({
         query,
         sources: [],
         candidates: [],
         searchScope,
-        plan,
+        plan: routeDecision,
+        mode: "ask",
       });
 
-      const agentMeta: ExploreAgentMeta = {
-        mode: "agent",
+      const inspect = buildInspectMeta({
+        mode: "ask",
         query,
         searchScope,
-        plan,
+        routeDecision,
         toolCalls,
-        contextDraft,
+        evidenceBrief,
         contextCandidates,
         selectedContextConversationIds,
         totalDurationMs: Date.now() - startedAt,
-      };
+        llmCalls: routerLlmCalls,
+      });
+      recordRetrievalObservation("ask > clarify", 0);
 
       return {
         answer:
-          plan.clarifyingQuestion ||
+          routeDecision.clarifyingQuestion ||
           "I need one more constraint before I can answer this reliably.",
         sources: [],
-        agent: agentMeta,
+        inspect,
+        agent: inspect,
       };
     }
 
-    if (plan.preferredPath === "weekly_summary") {
+    if (routeDecision.preferredPath === "weekly_summary") {
       const resolvedTimeScope = await runToolStep(
         toolCalls,
         "time_scope_resolver",
-        `requested=${plan.requestedTimeScope?.preset ?? "none"}`,
+        `requested=${routeDecision.requestedTimeScope?.preset ?? "none"}`,
         async () => {
-          const resolved = plan?.resolvedTimeScope ?? resolveRequestedTimeScope(plan?.requestedTimeScope);
+          const resolved =
+            routeDecision?.resolvedTimeScope ??
+            resolveRequestedTimeScope(routeDecision?.requestedTimeScope);
           if (!resolved) {
             throw new Error("TIME_SCOPE_UNRESOLVED");
           }
@@ -1605,10 +1946,10 @@ async function runAgentKnowledgeBase(
         (value) => `${value.label} (${value.startDate} to ${value.endDate})`
       );
 
-      plan = {
-        ...plan,
+      routeDecision = {
+        ...routeDecision,
         resolvedTimeScope,
-        toolPlan: buildToolPlan("weekly_summary"),
+        toolPlan: buildToolPlan("weekly_summary", "ask"),
       };
 
       weeklyResult = await runToolStep(
@@ -1626,30 +1967,15 @@ async function runAgentKnowledgeBase(
           `sourceOrigin=${value.sourceOrigin}, conversations=${value.conversations.length}, sources=${value.sources.length}`
       );
 
-      const compiledContext = await runToolStep(
+      contextCandidates = await runToolStep(
         toolCalls,
         "context_compiler",
         `sources=${weeklyResult.sources.length}, route=weekly_summary`,
-        async () => {
-          const candidates = await buildWeeklyContextCandidates(
-            weeklyResult!.conversations,
-            resolvedTimeScope
-          );
-          const draft = buildContextDraft({
-            query,
-            sources: weeklyResult!.sources,
-            candidates,
-            searchScope,
-            plan,
-            weeklySummaryText: weeklyResult!.summaryText,
-          });
-          return { candidates, draft };
-        },
-        (value) => `draftChars=${value.draft.length}, candidates=${value.candidates.length}`
+        async () =>
+          buildWeeklyContextCandidates(weeklyResult!.conversations, resolvedTimeScope),
+        (value) => `candidates=${value.length}`
       );
 
-      contextCandidates = compiledContext.candidates;
-      contextDraft = compiledContext.draft;
       selectedContextConversationIds = contextCandidates.map(
         (candidate) => candidate.conversationId
       );
@@ -1671,184 +1997,217 @@ async function runAgentKnowledgeBase(
         (value) => `answerChars=${value.length}`
       );
 
-      const agentMeta: ExploreAgentMeta = {
-        mode: "agent",
+      evidenceBrief = buildEvidenceBrief({
+        query,
+        sources: weeklyResult.sources,
+        candidates: contextCandidates,
+        searchScope,
+        plan: routeDecision,
+        weeklySummaryText: weeklyResult.summaryText,
+        mode: "ask",
+      });
+      const inspect = buildInspectMeta({
+        mode: "ask",
         query,
         searchScope,
-        plan,
+        routeDecision,
         toolCalls,
-        contextDraft,
+        evidenceBrief,
         contextCandidates,
         selectedContextConversationIds,
         totalDurationMs: Date.now() - startedAt,
-      };
+        llmCalls: routerLlmCalls + (hasUsableLlmSettings(settings) ? 1 : 0),
+      });
+      recordRetrievalObservation("ask > weekly_summary", 0);
 
       return {
         answer,
         sources: weeklyResult.sources,
-        agent: agentMeta,
+        inspect,
+        agent: inspect,
       };
     }
 
-    retrieval = await runToolStep(
+    const retrievalCore = await runRetrievalCore({
+      query,
+      limit: routeDecision.sourceLimit,
+      sessionId,
+      searchScope,
       toolCalls,
-      "search_rag",
-      `sourceLimit=${plan.sourceLimit}, scope=${describeSearchScope(searchScope)}`,
-      async () => retrieveRagContext(query, plan.sourceLimit, searchScope),
-      (value) => `retrieved=${value.sources.length}, scope=${describeSearchScope(searchScope)}`
-    );
+    });
+    bundle = retrievalCore.bundle;
+    contextCandidates = retrievalCore.contextCandidates;
+    selectedContextConversationIds = retrievalCore.selectedContextConversationIds;
 
-    const summaryResult = await runToolStep(
-      toolCalls,
-      "summary_tool",
-      `target=${plan.summaryTargetCount}`,
-      async () => resolveSummarySnippets(settings, retrieval!.sources, plan.summaryTargetCount),
-      (value) =>
-        `cacheHits=${value.cacheHits}, generated=${value.generated}, failed=${value.failed}`
-    );
-
-    const compiledContext = await runToolStep(
-      toolCalls,
-      "context_compiler",
-      `sources=${retrieval.sources.length}`,
-      async () => {
-        const candidates = buildContextCandidates(retrieval!, summaryResult.snippets);
-        const draft = buildContextDraft({
-          query,
-          sources: retrieval!.sources,
-          candidates,
-          searchScope,
-          plan,
-        });
-        return { candidates, draft };
-      },
-      (value) => `draftChars=${value.draft.length}, candidates=${value.candidates.length}`
-    );
-
-    contextCandidates = compiledContext.candidates;
-    contextDraft = compiledContext.draft;
-    selectedContextConversationIds = contextCandidates.map(
-      (candidate) => candidate.conversationId
-    );
-
-    const summaryHints = buildSummaryHintsText(retrieval.sources, summaryResult.snippets);
     const answer = await runToolStep(
       toolCalls,
       "answer_synthesizer",
-      `sources=${retrieval.sources.length}`,
+      `windows=${bundle.windows.length}`,
       async () =>
-        synthesizeAgentAnswer({
-          query,
-          historyContext,
-          retrieval: retrieval!,
-          summaryHints,
-          settings,
-        }),
+        hasUsableLlmSettings(settings)
+          ? (async () => {
+              const result = await callExploreInference(settings, query, {
+                systemPrompt: buildEvidencePrompt(bundle!, historyContext),
+              });
+              return result.content.trim() || buildLocalAnswerFromBundle(query, bundle!);
+            })()
+          : Promise.resolve(buildLocalAnswerFromBundle(query, bundle!)),
       (value) => `answerChars=${value.length}`
     );
 
-    const agentMeta: ExploreAgentMeta = {
-      mode: "agent",
+    const sources = retrievalCore.sources;
+    const retrievalMeta = buildRetrievalMetaFromBundle(
+      bundle,
+      hasUsableLlmSettings(settings) ? "deterministic_rag" : "local_fallback",
+      hasUsableLlmSettings(settings) ? 1 : 0
+    );
+    evidenceBrief = buildEvidenceBrief({
+      query,
+      sources,
+      candidates: contextCandidates,
+      searchScope,
+      plan: routeDecision,
+      mode: "ask",
+      retrievalMeta,
+    });
+    const inspect = buildInspectMeta({
+      mode: "ask",
       query,
       searchScope,
-      plan,
+      routeDecision,
       toolCalls,
-      contextDraft,
+      retrievalMeta,
+      evidenceBrief,
       contextCandidates,
       selectedContextConversationIds,
       totalDurationMs: Date.now() - startedAt,
-    };
+      llmCalls: routerLlmCalls + retrievalMeta.llmCalls,
+    });
+    recordRetrievalObservation(
+      hasUsableLlmSettings(settings) ? "ask > deterministic_rag" : "ask > local_fallback",
+      bundle.windows.length
+    );
 
     return {
       answer,
-      sources: retrieval.sources,
-      agent: agentMeta,
+      sources,
+      inspect,
+      agent: inspect,
+      retrievalMeta,
+      assetStatus: bundle.assetStatus,
+      bundleId: bundle.queryHash,
+      queryHash: bundle.queryHash,
     };
   } catch {
-    if (plan?.preferredPath === "weekly_summary" && plan.resolvedTimeScope) {
-      if (!contextDraft) {
+    if (routeDecision?.preferredPath === "weekly_summary" && routeDecision.resolvedTimeScope) {
+      if (!evidenceBrief) {
         contextCandidates = weeklyResult
           ? await buildWeeklyContextCandidates(
               weeklyResult.conversations,
-              plan.resolvedTimeScope
+              routeDecision.resolvedTimeScope
             )
           : [];
-        contextDraft = buildContextDraft({
+        evidenceBrief = buildEvidenceBrief({
           query,
           sources: weeklyResult?.sources ?? [],
           candidates: contextCandidates,
           searchScope,
-          plan,
+          plan: routeDecision,
           weeklySummaryText: weeklyResult?.summaryText,
+          mode: "ask",
         });
         selectedContextConversationIds = contextCandidates.map(
           (candidate) => candidate.conversationId
         );
       }
 
-      const agentMeta: ExploreAgentMeta = {
-        mode: "agent",
+      const inspect = buildInspectMeta({
+        mode: "ask",
         query,
         searchScope,
-        plan,
+        routeDecision,
         toolCalls,
-        contextDraft,
+        evidenceBrief,
         contextCandidates,
         selectedContextConversationIds,
         totalDurationMs: Date.now() - startedAt,
-      };
+        llmCalls: routerLlmCalls + (hasUsableLlmSettings(settings) ? 1 : 0),
+      });
+      recordRetrievalObservation("ask > weekly_summary", 0);
 
       return {
         answer: buildWeeklyLocalFallbackAnswer({
           query,
-          timeScope: plan.resolvedTimeScope,
+          timeScope: routeDecision.resolvedTimeScope,
           sources: weeklyResult?.sources ?? [],
           summaryText: weeklyResult?.summaryText,
           scoped: Boolean(getScopedConversationIds(searchScope)),
         }),
         sources: weeklyResult?.sources ?? [],
-        agent: agentMeta,
+        inspect,
+        agent: inspect,
       };
     }
 
-    const fallback = await runClassicKnowledgeBase(
+    const fallback = await runSearchKnowledgeBase(
       query,
       historyContext,
       limit,
       searchScope,
-      retrieval
+      undefined,
+      sessionId
     );
 
-    if (!contextDraft && retrieval) {
-      contextCandidates = buildContextCandidates(retrieval, new Map<number, string>());
-      contextDraft = buildContextDraft({
+    if (!evidenceBrief && bundle) {
+      contextCandidates = await buildContextCandidatesFromBundle(bundle);
+      evidenceBrief = buildEvidenceBrief({
         query,
-        sources: retrieval.sources,
+        sources: buildSourcesFromBundle(bundle),
         candidates: contextCandidates,
         searchScope,
-        plan,
+        plan: routeDecision,
+        mode: "ask",
+        retrievalMeta: fallback.retrievalMeta,
       });
       selectedContextConversationIds = contextCandidates.map(
         (candidate) => candidate.conversationId
       );
     }
 
-    const agentMeta: ExploreAgentMeta = {
-      mode: "agent",
+    const inspect = buildInspectMeta({
+      mode: "ask",
       query,
       searchScope,
-      plan,
-      toolCalls,
-      contextDraft,
+      routeDecision,
+      toolCalls: [...toolCalls, ...(fallback.inspect?.toolCalls ?? [])],
+      retrievalMeta: fallback.retrievalMeta,
+      evidenceBrief:
+        evidenceBrief ??
+        fallback.inspect?.evidenceBrief ??
+        fallback.inspect?.contextDraft,
       contextCandidates,
       selectedContextConversationIds,
       totalDurationMs: Date.now() - startedAt,
-    };
+      llmCalls: routerLlmCalls + (fallback.retrievalMeta?.llmCalls ?? 0),
+    });
+    recordRetrievalObservation(
+      fallback.retrievalMeta?.route === "local_fallback"
+        ? "ask > local_fallback"
+        : fallback.retrievalMeta?.route === "weekly_summary"
+          ? "ask > weekly_summary"
+          : "ask > deterministic_rag",
+      fallback.retrievalMeta?.selectedWindowIds.length ?? 0
+    );
 
     return {
       answer: fallback.answer,
       sources: fallback.sources,
-      agent: agentMeta,
+      inspect,
+      agent: inspect,
+      retrievalMeta: fallback.retrievalMeta,
+      assetStatus: fallback.assetStatus,
+      bundleId: fallback.bundleId,
+      queryHash: fallback.queryHash,
     };
   }
 }
@@ -1927,17 +2286,7 @@ function normalizeConversationIds(conversationIds?: number[]): number[] {
 }
 
 async function ensureVectorsForConversations(conversationIds: number[]): Promise<void> {
-  for (const conversationId of conversationIds) {
-    try {
-      const { text } = await getConversationText(conversationId);
-      await ensureVectorForConversation(conversationId, text);
-    } catch (error) {
-      logger.warn("service", "Failed to ensure vector for network conversation", {
-        conversationId,
-        error: (error as Error)?.message ?? String(error),
-      });
-    }
-  }
+  await buildRetrievalAssets({ conversationIds });
 }
 
 export async function ensureVectorForConversation(
@@ -1986,8 +2335,7 @@ export async function findRelatedConversations(
   conversationId: number,
   limit = 3
 ): Promise<RelatedConversation[]> {
-  const { text } = await getConversationText(conversationId);
-  await ensureVectorForConversation(conversationId, text);
+  await buildRetrievalAssets({ conversationIds: [conversationId] });
 
   const targetVector = await db.vectors
     .where("conversation_id")
@@ -2084,7 +2432,7 @@ export async function askKnowledgeBase(
   userQuery: string,
   existingSessionId?: string,
   limit = MAX_RAG_SOURCES,
-  mode: ExploreMode = "agent",
+  mode: ExploreMode = "search",
   options?: ExploreAskOptions
 ): Promise<RagResponse & { sessionId: string }> {
   const query = userQuery.trim();
@@ -2107,15 +2455,22 @@ export async function askKnowledgeBase(
   const historyContext = buildHistoryContext(recentMessages.slice(-6));
 
   const result =
-    mode === "classic"
-      ? await runClassicKnowledgeBase(query, historyContext, limit, options?.searchScope)
-      : await runAgentKnowledgeBase(query, historyContext, limit, options);
+    mode === "search"
+      ? await runSearchKnowledgeBase(
+          query,
+          historyContext,
+          limit,
+          options?.searchScope,
+          undefined,
+          sessionId
+        )
+      : await runAskKnowledgeBase(query, historyContext, limit, options, sessionId);
 
   await addExploreMessage(sessionId, {
     role: "assistant",
     content: result.answer,
     sources: result.sources,
-    agentMeta: result.agent,
+    inspectMeta: result.inspect ?? result.agent,
     timestamp: Date.now(),
   });
 
@@ -2130,7 +2485,7 @@ export async function askKnowledgeBase(
 }
 
 export async function hybridSearch(query: string): Promise<RagResponse> {
-  return askKnowledgeBase(query, undefined, MAX_RAG_SOURCES, "agent");
+  return askKnowledgeBase(query, undefined, MAX_RAG_SOURCES, "search");
 }
 
 export async function getVectorStats(): Promise<{
@@ -2156,24 +2511,6 @@ export async function getVectorStats(): Promise<{
 }
 
 export async function vectorizeAllConversations(): Promise<number> {
-  const conversations = await db.conversations.toArray();
-
-  let created = 0;
-  for (const conversation of conversations) {
-    if (!conversation?.id) continue;
-    try {
-      const { text } = await getConversationText(conversation.id);
-      await ensureVectorForConversation(conversation.id, text);
-      created += 1;
-    } catch (err) {
-      console.error(
-        "[Vectorize] Failed to vectorize conv",
-        conversation.id,
-        ":",
-        (err as Error).message
-      );
-    }
-  }
-
-  return created;
+  const result = await buildRetrievalAssets();
+  return result.built;
 }

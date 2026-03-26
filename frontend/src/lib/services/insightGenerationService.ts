@@ -20,7 +20,10 @@ import type {
   InsightPipelineStatus,
 } from "../messaging/protocol";
 import {
+  buildWeeklyReportSourceHash,
   getConversationById,
+  getConversationCapsule,
+  getRetrievalAssetStatus,
   getSummary,
   getWeeklyReport,
   listConversationsByRange,
@@ -30,7 +33,6 @@ import {
 } from "../db/repository";
 import { getPrompt } from "../prompts";
 import {
-  buildWeeklySourceHash,
   callInference,
   sanitizeSummaryText,
   truncateForContext,
@@ -2436,6 +2438,10 @@ export async function generateConversationSummary(
 
   try {
     const previous = await getSummary(conversationId);
+    const [capsule, assetStatus] = await Promise.all([
+      getConversationCapsule(conversationId),
+      getRetrievalAssetStatus(conversationId),
+    ]);
     const generated = await generateStructuredSummary(settings, conversation, messages, {
       onStage: (stage) => {
         pipelineEmitter.emit(stage, "in_progress");
@@ -2499,6 +2505,7 @@ export async function generateConversationSummary(
       modelId: getEffectiveModelId(settings),
       createdAt: Date.now(),
       sourceUpdatedAt: getConversationCaptureFreshnessAt(conversation),
+      sourceHash: capsule?.sourceHash || assetStatus?.sourceHash || undefined,
     });
 
     if (generated.status === "fallback") {
@@ -2537,7 +2544,11 @@ export async function generateWeeklyReport(
 
   try {
     const conversations = await listConversationsByRange(rangeStart, rangeEnd);
-    const sourceHash = buildWeeklySourceHash(conversations, rangeStart, rangeEnd);
+    const sourceHash = await buildWeeklyReportSourceHash(
+      rangeStart,
+      rangeEnd,
+      conversations
+    );
     const previous = await getWeeklyReport(rangeStart, rangeEnd);
 
     const generated = await generateStructuredWeekly(

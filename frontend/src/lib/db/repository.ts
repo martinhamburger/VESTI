@@ -1,17 +1,26 @@
 import type {
   Annotation,
   Conversation,
+  ConversationCapsuleV1,
   ConversationMatchSummary,
   ConversationSummaryV2,
   DataOverviewSnapshot,
-  ExploreAgentMeta,
+  ExploreInspectMeta,
   ExploreMessage,
+  ExploreMode,
+  ExploreRouteDecision,
+  ExploreRouteSummary,
   ExploreSession,
+  ExploreToolName,
+  EvidenceWindowV1,
   ExportFormat,
   ExportPayload,
   Message,
   Note,
   RelatedConversation,
+  RetrievalMetaV1,
+  RetrievalAssetStatusV1,
+  RetrievalDiagnosticsSnapshot,
   Topic,
   DashboardStats,
   Platform,
@@ -41,17 +50,43 @@ import { db } from "./schema";
 import { enforceStorageWriteGuard, getStorageUsageSnapshot } from "./storageLimits";
 import type {
   AnnotationRecord,
+  ConversationCapsuleRecord,
   ConversationRecord,
+  EvidenceWindowRecord,
   ExploreMessageRecord,
   ExploreSessionRecord,
   MessageRecord,
   NoteRecord,
+  RetrievalAssetStatusRecord,
   SummaryRecordRecord,
   TopicRecord,
   WeeklyReportRecordRecord,
+  WindowVectorRecord,
 } from "./schema";
 
 type ExploreSourceRecord = RelatedConversation;
+
+const retrievalRuntimeMetrics = {
+  lastRoute: undefined as string | undefined,
+  totalBundleWindows: 0,
+  bundleCount: 0,
+};
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+async function hashText(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 function normalizeExploreSources(
   sources: ExploreSourceRecord[] | undefined
@@ -83,9 +118,262 @@ function parseExploreSources(raw?: string): ExploreSourceRecord[] | undefined {
   }
 }
 
-function normalizeExploreAgentMeta(
-  meta: ExploreAgentMeta | undefined
-): ExploreAgentMeta | undefined {
+function normalizeExploreMode(value: unknown): ExploreMode {
+  if (value === "ask" || value === "agent") {
+    return "ask";
+  }
+  return "search";
+}
+
+function normalizeExploreToolName(value: unknown): ExploreToolName | undefined {
+  if (value === "intent_planner" || value === "intent_router") {
+    return "intent_router";
+  }
+  if (
+    value === "time_scope_resolver" ||
+    value === "weekly_summary_tool" ||
+    value === "query_planner" ||
+    value === "search_rag" ||
+    value === "summary_tool" ||
+    value === "context_compiler" ||
+    value === "answer_synthesizer"
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeRouteDecision(raw: unknown): ExploreRouteDecision | undefined {
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  const requestedTimeScopeRaw =
+    candidate.requestedTimeScope && typeof candidate.requestedTimeScope === "object"
+      ? (candidate.requestedTimeScope as Record<string, unknown>)
+      : undefined;
+  const requestedTimeScopePreset: ExploreRouteDecision["requestedTimeScope"] extends infer T
+    ? T extends { preset: infer P }
+      ? P
+      : never
+    : never =
+    requestedTimeScopeRaw?.preset === "current_week_to_date" ||
+    requestedTimeScopeRaw?.preset === "last_7_days" ||
+    requestedTimeScopeRaw?.preset === "last_full_week" ||
+    requestedTimeScopeRaw?.preset === "custom"
+      ? requestedTimeScopeRaw.preset
+      : "none";
+  const requestedTimeScope =
+    requestedTimeScopeRaw
+      ? {
+          preset: requestedTimeScopePreset,
+          label:
+            typeof requestedTimeScopeRaw.label === "string"
+              ? requestedTimeScopeRaw.label
+              : undefined,
+          startDate:
+            typeof requestedTimeScopeRaw.startDate === "string"
+              ? requestedTimeScopeRaw.startDate
+              : undefined,
+          endDate:
+            typeof requestedTimeScopeRaw.endDate === "string"
+              ? requestedTimeScopeRaw.endDate
+              : undefined,
+        }
+      : undefined;
+
+  const resolvedTimeScopeRaw =
+    candidate.resolvedTimeScope && typeof candidate.resolvedTimeScope === "object"
+      ? (candidate.resolvedTimeScope as Record<string, unknown>)
+      : undefined;
+  const resolvedTimeScopePreset: ExploreRouteDecision["resolvedTimeScope"] extends infer T
+    ? T extends { preset: infer P }
+      ? P
+      : never
+    : never =
+    resolvedTimeScopeRaw?.preset === "current_week_to_date" ||
+    resolvedTimeScopeRaw?.preset === "last_7_days" ||
+    resolvedTimeScopeRaw?.preset === "last_full_week" ||
+    resolvedTimeScopeRaw?.preset === "custom"
+      ? resolvedTimeScopeRaw.preset
+      : "last_7_days";
+  const resolvedTimeScope =
+    resolvedTimeScopeRaw
+      ? {
+          preset: resolvedTimeScopePreset,
+          label:
+            typeof resolvedTimeScopeRaw.label === "string"
+              ? resolvedTimeScopeRaw.label
+              : "Resolved range",
+          rangeStart:
+            typeof resolvedTimeScopeRaw.rangeStart === "number" &&
+            Number.isFinite(resolvedTimeScopeRaw.rangeStart)
+              ? resolvedTimeScopeRaw.rangeStart
+              : 0,
+          rangeEnd:
+            typeof resolvedTimeScopeRaw.rangeEnd === "number" &&
+            Number.isFinite(resolvedTimeScopeRaw.rangeEnd)
+              ? resolvedTimeScopeRaw.rangeEnd
+              : 0,
+          startDate:
+            typeof resolvedTimeScopeRaw.startDate === "string"
+              ? resolvedTimeScopeRaw.startDate
+              : "",
+          endDate:
+            typeof resolvedTimeScopeRaw.endDate === "string"
+              ? resolvedTimeScopeRaw.endDate
+              : "",
+        }
+      : undefined;
+
+  return {
+    intent:
+      candidate.intent === "cross_conversation_summary" ||
+      candidate.intent === "weekly_review" ||
+      candidate.intent === "timeline" ||
+      candidate.intent === "clarification_needed"
+        ? candidate.intent
+        : ("fact_lookup" as const),
+    reason:
+      typeof candidate.reason === "string" && candidate.reason.trim()
+        ? candidate.reason
+        : "UNSPECIFIED_REASON",
+    preferredPath:
+      candidate.preferredPath === "weekly_summary" || candidate.preferredPath === "clarify"
+        ? candidate.preferredPath
+        : ("rag" as const),
+    sourceLimit:
+      typeof candidate.sourceLimit === "number" && Number.isFinite(candidate.sourceLimit)
+        ? candidate.sourceLimit
+        : 5,
+    needsClarification:
+      typeof candidate.needsClarification === "boolean"
+        ? candidate.needsClarification
+        : undefined,
+    clarifyingQuestion:
+      typeof candidate.clarifyingQuestion === "string"
+        ? candidate.clarifyingQuestion
+        : undefined,
+    requestedTimeScope,
+    resolvedTimeScope:
+      resolvedTimeScope &&
+      resolvedTimeScope.rangeStart > 0 &&
+      resolvedTimeScope.rangeEnd >= resolvedTimeScope.rangeStart
+        ? resolvedTimeScope
+        : undefined,
+    toolPlan: Array.isArray(candidate.toolPlan)
+      ? candidate.toolPlan
+          .map((toolName) => normalizeExploreToolName(toolName))
+          .filter((toolName): toolName is ExploreToolName => Boolean(toolName))
+      : undefined,
+  };
+}
+
+function normalizeRetrievalMeta(raw: unknown): RetrievalMetaV1 | undefined {
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  if (candidate.retrievalVersion !== "retrieval_assets_v1") {
+    return undefined;
+  }
+
+  const assetStatusRaw =
+    candidate.assetStatus && typeof candidate.assetStatus === "object"
+      ? (candidate.assetStatus as Record<string, unknown>)
+      : undefined;
+
+  return {
+    retrievalVersion: "retrieval_assets_v1",
+    queryClass:
+      candidate.queryClass === "engineering_exact" ||
+      candidate.queryClass === "time_or_summary" ||
+      candidate.queryClass === "general_semantic"
+        ? candidate.queryClass
+        : "general_semantic",
+    route:
+      candidate.route === "weekly_summary" || candidate.route === "local_fallback"
+        ? candidate.route
+        : "deterministic_rag",
+    bundleId: typeof candidate.bundleId === "string" ? candidate.bundleId : "",
+    queryHash: typeof candidate.queryHash === "string" ? candidate.queryHash : "",
+    candidateConversationIds: Array.isArray(candidate.candidateConversationIds)
+      ? candidate.candidateConversationIds.filter(
+          (id): id is number => typeof id === "number" && Number.isFinite(id)
+        )
+      : [],
+    selectedWindowIds: Array.isArray(candidate.selectedWindowIds)
+      ? candidate.selectedWindowIds.filter((id): id is string => typeof id === "string")
+      : [],
+    assetStatus:
+      assetStatusRaw
+        ? {
+            scopedConversationCount:
+              typeof assetStatusRaw.scopedConversationCount === "number"
+                ? assetStatusRaw.scopedConversationCount
+                : 0,
+            readyConversationCount:
+              typeof assetStatusRaw.readyConversationCount === "number"
+                ? assetStatusRaw.readyConversationCount
+                : 0,
+            staleConversationIds: Array.isArray(assetStatusRaw.staleConversationIds)
+              ? assetStatusRaw.staleConversationIds.filter(
+                  (id): id is number => typeof id === "number" && Number.isFinite(id)
+                )
+              : [],
+            missingConversationIds: Array.isArray(assetStatusRaw.missingConversationIds)
+              ? assetStatusRaw.missingConversationIds.filter(
+                  (id): id is number => typeof id === "number" && Number.isFinite(id)
+                )
+              : [],
+          }
+        : {
+            scopedConversationCount: 0,
+            readyConversationCount: 0,
+            staleConversationIds: [],
+            missingConversationIds: [],
+          },
+    llmCalls:
+      typeof candidate.llmCalls === "number" && Number.isFinite(candidate.llmCalls)
+        ? candidate.llmCalls
+        : 0,
+  };
+}
+
+function normalizeRouteSummary(raw: unknown): ExploreRouteSummary | undefined {
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  return {
+    mode: normalizeExploreMode(candidate.mode),
+    routeLabel:
+      typeof candidate.routeLabel === "string" && candidate.routeLabel.trim()
+        ? candidate.routeLabel
+        : "Unknown",
+    evidenceCount:
+      typeof candidate.evidenceCount === "number" && Number.isFinite(candidate.evidenceCount)
+        ? candidate.evidenceCount
+        : 0,
+    scopeLabel:
+      typeof candidate.scopeLabel === "string" && candidate.scopeLabel.trim()
+        ? candidate.scopeLabel
+        : "All conversations",
+    llmCalls:
+      typeof candidate.llmCalls === "number" && Number.isFinite(candidate.llmCalls)
+        ? candidate.llmCalls
+        : 0,
+    timeScopeLabel:
+      typeof candidate.timeScopeLabel === "string" ? candidate.timeScopeLabel : undefined,
+  };
+}
+
+function normalizeExploreInspectMeta(
+  meta: ExploreInspectMeta | undefined
+): ExploreInspectMeta | undefined {
   if (!meta) {
     return undefined;
   }
@@ -113,11 +401,19 @@ function normalizeExploreAgentMeta(
   const toolCalls = Array.isArray(meta.toolCalls)
     ? meta.toolCalls
         .filter((toolCall) => toolCall && typeof toolCall === "object")
-        .map((toolCall) => ({
-          ...toolCall,
-          description:
-            typeof toolCall.description === "string" ? toolCall.description : undefined,
-        }))
+        .map((toolCall) => {
+          const normalizedName = normalizeExploreToolName(toolCall.name);
+          if (!normalizedName) {
+            return null;
+          }
+          return {
+            ...toolCall,
+            name: normalizedName,
+            description:
+              typeof toolCall.description === "string" ? toolCall.description : undefined,
+          };
+        })
+        .filter(Boolean)
     : [];
 
   const searchScope =
@@ -135,144 +431,54 @@ function normalizeExploreAgentMeta(
         }
       : undefined;
 
-  const requestedTimeScope =
-    meta.plan?.requestedTimeScope && typeof meta.plan.requestedTimeScope === "object"
-      ? {
-          preset:
-            meta.plan.requestedTimeScope.preset === "current_week_to_date" ||
-            meta.plan.requestedTimeScope.preset === "last_7_days" ||
-            meta.plan.requestedTimeScope.preset === "last_full_week" ||
-            meta.plan.requestedTimeScope.preset === "custom"
-              ? meta.plan.requestedTimeScope.preset
-              : ("none" as const),
-          label:
-            typeof meta.plan.requestedTimeScope.label === "string"
-              ? meta.plan.requestedTimeScope.label
-              : undefined,
-          startDate:
-            typeof meta.plan.requestedTimeScope.startDate === "string"
-              ? meta.plan.requestedTimeScope.startDate
-              : undefined,
-          endDate:
-            typeof meta.plan.requestedTimeScope.endDate === "string"
-              ? meta.plan.requestedTimeScope.endDate
-              : undefined,
-        }
-      : undefined;
-
-  const resolvedTimeScope =
-    meta.plan?.resolvedTimeScope && typeof meta.plan.resolvedTimeScope === "object"
-      ? {
-          preset:
-            meta.plan.resolvedTimeScope.preset === "current_week_to_date" ||
-            meta.plan.resolvedTimeScope.preset === "last_7_days" ||
-            meta.plan.resolvedTimeScope.preset === "last_full_week" ||
-            meta.plan.resolvedTimeScope.preset === "custom"
-              ? meta.plan.resolvedTimeScope.preset
-              : ("last_7_days" as const),
-          label:
-            typeof meta.plan.resolvedTimeScope.label === "string"
-              ? meta.plan.resolvedTimeScope.label
-              : "Resolved range",
-          rangeStart:
-            typeof meta.plan.resolvedTimeScope.rangeStart === "number" &&
-            Number.isFinite(meta.plan.resolvedTimeScope.rangeStart)
-              ? meta.plan.resolvedTimeScope.rangeStart
-              : 0,
-          rangeEnd:
-            typeof meta.plan.resolvedTimeScope.rangeEnd === "number" &&
-            Number.isFinite(meta.plan.resolvedTimeScope.rangeEnd)
-              ? meta.plan.resolvedTimeScope.rangeEnd
-              : 0,
-          startDate:
-            typeof meta.plan.resolvedTimeScope.startDate === "string"
-              ? meta.plan.resolvedTimeScope.startDate
-              : "",
-          endDate:
-            typeof meta.plan.resolvedTimeScope.endDate === "string"
-              ? meta.plan.resolvedTimeScope.endDate
-              : "",
-        }
-      : undefined;
-
-  const plan =
-    meta.plan && typeof meta.plan === "object"
-      ? {
-          intent:
-            meta.plan.intent === "cross_conversation_summary" ||
-            meta.plan.intent === "weekly_review" ||
-            meta.plan.intent === "timeline" ||
-            meta.plan.intent === "clarification_needed"
-              ? meta.plan.intent
-              : ("fact_lookup" as const),
-          reason:
-            typeof meta.plan.reason === "string" ? meta.plan.reason : "UNSPECIFIED_REASON",
-          preferredPath:
-            meta.plan.preferredPath === "weekly_summary" ||
-            meta.plan.preferredPath === "clarify"
-              ? meta.plan.preferredPath
-              : ("rag" as const),
-          sourceLimit:
-            typeof meta.plan.sourceLimit === "number" && Number.isFinite(meta.plan.sourceLimit)
-              ? meta.plan.sourceLimit
-              : 5,
-          summaryTargetCount:
-            typeof meta.plan.summaryTargetCount === "number" &&
-            Number.isFinite(meta.plan.summaryTargetCount)
-              ? meta.plan.summaryTargetCount
-              : 0,
-          answerGoal:
-            typeof meta.plan.answerGoal === "string" ? meta.plan.answerGoal : undefined,
-          needsClarification:
-            typeof meta.plan.needsClarification === "boolean"
-              ? meta.plan.needsClarification
-              : undefined,
-          clarifyingQuestion:
-            typeof meta.plan.clarifyingQuestion === "string"
-              ? meta.plan.clarifyingQuestion
-              : undefined,
-          requestedTimeScope,
-          resolvedTimeScope:
-            resolvedTimeScope &&
-            resolvedTimeScope.rangeStart > 0 &&
-            resolvedTimeScope.rangeEnd >= resolvedTimeScope.rangeStart
-              ? resolvedTimeScope
-              : undefined,
-          toolPlan: Array.isArray(meta.plan.toolPlan)
-            ? meta.plan.toolPlan.filter(
-                (toolName): toolName is NonNullable<typeof meta.plan>["toolPlan"][number] =>
-                  typeof toolName === "string"
-              )
-            : undefined,
-        }
-      : undefined;
+  const routeDecision = normalizeRouteDecision(
+    (meta as unknown as Record<string, unknown>).routeDecision ?? meta.plan
+  );
+  const evidenceBrief =
+    typeof meta.evidenceBrief === "string"
+      ? meta.evidenceBrief
+      : typeof meta.contextDraft === "string"
+        ? meta.contextDraft
+        : undefined;
+  const retrievalMeta = normalizeRetrievalMeta(meta.retrievalMeta);
+  const routeSummary = normalizeRouteSummary(meta.routeSummary);
 
   return {
     ...meta,
+    mode: normalizeExploreMode(meta.mode),
     query: typeof meta.query === "string" ? meta.query : undefined,
     searchScope,
-    plan,
+    routeDecision,
+    plan: routeDecision,
     toolCalls,
+    retrievalMeta,
+    evidenceBrief,
+    contextDraft: evidenceBrief,
     contextCandidates: normalizedCandidates,
     selectedContextConversationIds,
+    totalDurationMs:
+      typeof meta.totalDurationMs === "number" && Number.isFinite(meta.totalDurationMs)
+        ? meta.totalDurationMs
+        : undefined,
+    routeSummary,
   };
 }
 
-function parseExploreAgentMeta(raw?: string): ExploreAgentMeta | undefined {
+function parseExploreInspectMeta(raw?: string): ExploreInspectMeta | undefined {
   if (!raw) {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(raw) as ExploreAgentMeta;
-    return normalizeExploreAgentMeta(parsed);
+    const parsed = JSON.parse(raw) as ExploreInspectMeta;
+    return normalizeExploreInspectMeta(parsed);
   } catch {
     return undefined;
   }
 }
 
-function serializeExploreAgentMeta(meta?: ExploreAgentMeta): string | undefined {
-  const normalized = normalizeExploreAgentMeta(meta);
+function serializeExploreInspectMeta(meta?: ExploreInspectMeta): string | undefined {
+  const normalized = normalizeExploreInspectMeta(meta);
   if (!normalized) {
     return undefined;
   }
@@ -405,6 +611,10 @@ function toSummary(record: SummaryRecordRecord): SummaryRecord {
     structured: summary.structured ?? null,
     format,
     status,
+    sourceHash:
+      typeof summary.sourceHash === "string" && summary.sourceHash.trim().length > 0
+        ? summary.sourceHash
+        : undefined,
     schemaVersion:
       summary.schemaVersion ??
       (isV2Structured(summary.structured)
@@ -444,6 +654,91 @@ function toWeeklyReport(record: WeeklyReportRecordRecord): WeeklyReportRecord {
           ? "weekly_report.v1"
           : undefined),
   };
+}
+
+function toConversationCapsule(record: ConversationCapsuleRecord): ConversationCapsuleV1 {
+  return {
+    ...record,
+    keywords: normalizeStringArray(record.keywords),
+    entities: normalizeStringArray(record.entities),
+    tags: normalizeStringArray(record.tags),
+    decisions: Array.isArray(record.decisions) ? record.decisions : [],
+    openQuestions: Array.isArray(record.openQuestions) ? record.openQuestions : [],
+    actionItems: Array.isArray(record.actionItems) ? record.actionItems : [],
+    refs: {
+      filePaths: normalizeStringArray(record.refs?.filePaths),
+      commands: normalizeStringArray(record.refs?.commands),
+      apis: normalizeStringArray(record.refs?.apis),
+      hosts: normalizeStringArray(record.refs?.hosts),
+      urls: normalizeStringArray(record.refs?.urls),
+    },
+    artifacts: Array.isArray(record.artifacts) ? record.artifacts : [],
+    stats: {
+      messageCount:
+        typeof record.stats?.messageCount === "number" && Number.isFinite(record.stats.messageCount)
+          ? Math.max(0, Math.floor(record.stats.messageCount))
+          : 0,
+      windowCount:
+        typeof record.stats?.windowCount === "number" && Number.isFinite(record.stats.windowCount)
+          ? Math.max(0, Math.floor(record.stats.windowCount))
+          : 0,
+      hasCode: Boolean(record.stats?.hasCode),
+      hasArtifacts: Boolean(record.stats?.hasArtifacts),
+      lastMessageAt:
+        typeof record.stats?.lastMessageAt === "number" &&
+        Number.isFinite(record.stats.lastMessageAt)
+          ? record.stats.lastMessageAt
+          : undefined,
+    },
+  };
+}
+
+function toEvidenceWindow(record: EvidenceWindowRecord): EvidenceWindowV1 {
+  return {
+    ...record,
+    labels: Array.isArray(record.labels) ? record.labels : [],
+    lexicalTerms: normalizeStringArray(record.lexicalTerms),
+    artifactRefs: normalizeStringArray(record.artifactRefs),
+  };
+}
+
+function toRetrievalAssetStatus(
+  record: RetrievalAssetStatusRecord
+): RetrievalAssetStatusV1 {
+  return {
+    ...record,
+    windowCount:
+      typeof record.windowCount === "number" && Number.isFinite(record.windowCount)
+        ? Math.max(0, Math.floor(record.windowCount))
+        : 0,
+    windowVectorCount:
+      typeof record.windowVectorCount === "number" && Number.isFinite(record.windowVectorCount)
+        ? Math.max(0, Math.floor(record.windowVectorCount))
+        : 0,
+  };
+}
+
+function markStatusStaleIfNeeded(
+  status: RetrievalAssetStatusV1,
+  conversation?: ConversationRecord
+): RetrievalAssetStatusV1 {
+  if (!conversation || status.state !== "ready") {
+    return status;
+  }
+
+  const conversationUpdatedAt =
+    typeof conversation.updated_at === "number" && Number.isFinite(conversation.updated_at)
+      ? conversation.updated_at
+      : 0;
+
+  if (conversationUpdatedAt > status.sourceUpdatedAt) {
+    return {
+      ...status,
+      state: "stale",
+    };
+  }
+
+  return status;
 }
 
 function normalizeTag(tag: string): string {
@@ -1047,11 +1342,39 @@ export async function searchConversationMatchesByText(
 }
 
 export async function deleteConversation(id: number): Promise<boolean> {
-  await db.transaction("rw", db.conversations, db.messages, db.annotations, async () => {
-    await db.messages.where("conversation_id").equals(id).delete();
-    await db.annotations.where("conversation_id").equals(id).delete();
-    await db.conversations.delete(id);
-  });
+  await db.transaction(
+    "rw",
+    [
+      db.conversations,
+      db.messages,
+      db.annotations,
+      db.summaries,
+      db.vectors,
+      db.conversation_capsules,
+      db.evidence_windows,
+      db.window_vectors,
+      db.retrieval_asset_status,
+    ],
+    async () => {
+      const windowIds = await db.evidence_windows
+        .where("conversationId")
+        .equals(id)
+        .primaryKeys();
+
+      if (windowIds.length > 0) {
+        await db.window_vectors.bulkDelete(windowIds as string[]);
+      }
+
+      await db.summaries.where("conversationId").equals(id).delete();
+      await db.vectors.where("conversation_id").equals(id).delete();
+      await db.conversation_capsules.delete(id);
+      await db.evidence_windows.where("conversationId").equals(id).delete();
+      await db.retrieval_asset_status.delete(id);
+      await db.messages.where("conversation_id").equals(id).delete();
+      await db.annotations.where("conversation_id").equals(id).delete();
+      await db.conversations.delete(id);
+    }
+  );
   return true;
 }
 
@@ -1078,35 +1401,73 @@ export async function updateConversationTitle(
     return toConversation(existing);
   }
 
-  await db.conversations.update(id, { title: normalizedTitle });
-  return toConversation({ ...existing, title: normalizedTitle, id: existing.id });
+  const updated_at = Date.now();
+  await db.conversations.update(id, { title: normalizedTitle, updated_at });
+  return toConversation({
+    ...existing,
+    title: normalizedTitle,
+    updated_at,
+    id: existing.id,
+  });
 }
 
 export async function clearAllData(): Promise<boolean> {
   await db.transaction(
     "rw",
-    [db.conversations, db.messages, db.summaries, db.weekly_reports, db.annotations],
+    [
+      db.conversations,
+      db.messages,
+      db.summaries,
+      db.weekly_reports,
+      db.vectors,
+      db.conversation_capsules,
+      db.evidence_windows,
+      db.window_vectors,
+      db.retrieval_asset_status,
+      db.annotations,
+    ],
     async () => {
       await db.messages.clear();
       await db.conversations.clear();
       await db.summaries.clear();
       await db.weekly_reports.clear();
+      await db.vectors.clear();
+      await db.conversation_capsules.clear();
+      await db.evidence_windows.clear();
+      await db.window_vectors.clear();
+      await db.retrieval_asset_status.clear();
       await db.annotations.clear();
     }
   );
+  retrievalRuntimeMetrics.lastRoute = undefined;
+  retrievalRuntimeMetrics.totalBundleWindows = 0;
+  retrievalRuntimeMetrics.bundleCount = 0;
   return true;
 }
 
 export async function clearInsightsCache(): Promise<boolean> {
   await db.transaction(
     "rw",
-    db.summaries,
-    db.weekly_reports,
+    [
+      db.summaries,
+      db.weekly_reports,
+      db.conversation_capsules,
+      db.evidence_windows,
+      db.window_vectors,
+      db.retrieval_asset_status,
+    ],
     async () => {
       await db.summaries.clear();
       await db.weekly_reports.clear();
+      await db.conversation_capsules.clear();
+      await db.evidence_windows.clear();
+      await db.window_vectors.clear();
+      await db.retrieval_asset_status.clear();
     }
   );
+  retrievalRuntimeMetrics.lastRoute = undefined;
+  retrievalRuntimeMetrics.totalBundleWindows = 0;
+  retrievalRuntimeMetrics.bundleCount = 0;
   return true;
 }
 
@@ -1128,18 +1489,57 @@ export async function getStorageUsage(): Promise<StorageUsageSnapshot> {
 }
 
 export async function getDataOverview(): Promise<DataOverviewSnapshot> {
-  const [storage, totalConversations, summaryRecordCount, weeklyReportCount] =
+  const [storage, totalConversations, summaryRecordCount, weeklyReportCount, capsules, windows, windowVectors, assetStatuses] =
     await Promise.all([
       getStorageUsageSnapshot(),
       db.conversations.count(),
       db.summaries.count(),
       db.weekly_reports.count(),
+      db.conversation_capsules.count(),
+      db.evidence_windows.count(),
+      db.window_vectors.count(),
+      listRetrievalAssetStatus(),
     ]);
 
   const [uniqueSummaryConversationIds, lastSummary] = await Promise.all([
     db.summaries.orderBy("conversationId").uniqueKeys(),
     db.summaries.orderBy("createdAt").last(),
   ]);
+
+  const readyStatuses = assetStatuses.filter((status) => status.state === "ready");
+  const staleCount = assetStatuses.filter((status) => status.state === "stale").length;
+  const failedCount = assetStatuses.filter((status) => status.state === "failed").length;
+  const lastBuildAt = assetStatuses.reduce<number | null>((max, status) => {
+    const candidate =
+      typeof status.lastBuiltAt === "number" && Number.isFinite(status.lastBuiltAt)
+        ? status.lastBuiltAt
+        : null;
+    if (candidate === null) {
+      return max;
+    }
+    return max === null ? candidate : Math.max(max, candidate);
+  }, null);
+
+  const retrievalDiagnostics: RetrievalDiagnosticsSnapshot = {
+    capsuleReadyCount: readyStatuses.length,
+    windowReadyCount: windowVectors,
+    staleCount,
+    failedCount,
+    totalCapsules: capsules,
+    totalWindows: windows,
+    capsuleReadyRatio: totalConversations > 0 ? readyStatuses.length / totalConversations : 0,
+    windowReadyRatio: windows > 0 ? windowVectors / windows : 0,
+    lastBuildAt,
+    lastRetrievalRoute: retrievalRuntimeMetrics.lastRoute,
+    averageBundleWindows:
+      retrievalRuntimeMetrics.bundleCount > 0
+        ? Number(
+            (
+              retrievalRuntimeMetrics.totalBundleWindows / retrievalRuntimeMetrics.bundleCount
+            ).toFixed(1)
+          )
+        : 0,
+  };
 
   return {
     storage,
@@ -1150,6 +1550,7 @@ export async function getDataOverview(): Promise<DataOverviewSnapshot> {
     lastCompactionAt:
       typeof lastSummary?.createdAt === "number" ? lastSummary.createdAt : null,
     indexedDbName: db.name,
+    retrievalDiagnostics,
   };
 }
 
@@ -1172,10 +1573,36 @@ export async function exportAllDataAsJson(): Promise<string> {
 export async function getSummary(
   conversationId: number
 ): Promise<SummaryRecord | null> {
-  const record = await db.summaries
-    .where("conversationId")
-    .equals(conversationId)
-    .last();
+  const [record, conversation, assetStatus] = await Promise.all([
+    db.summaries.where("conversationId").equals(conversationId).last(),
+    db.conversations.get(conversationId),
+    db.retrieval_asset_status.get(conversationId),
+  ]);
+
+  if (!record || !conversation) {
+    return null;
+  }
+
+  if (
+    typeof record.sourceUpdatedAt === "number" &&
+    Number.isFinite(record.sourceUpdatedAt) &&
+    typeof conversation.updated_at === "number" &&
+    Number.isFinite(conversation.updated_at) &&
+    conversation.updated_at > record.sourceUpdatedAt
+  ) {
+    return null;
+  }
+
+  if (
+    typeof record.sourceHash === "string" &&
+    record.sourceHash.trim().length > 0 &&
+    typeof assetStatus?.sourceHash === "string" &&
+    assetStatus.sourceHash.trim().length > 0 &&
+    record.sourceHash !== assetStatus.sourceHash
+  ) {
+    return null;
+  }
+
   return record ? toSummary(record) : null;
 }
 
@@ -1207,7 +1634,20 @@ export async function getWeeklyReport(
     .equals(rangeStart)
     .and((item) => item.rangeEnd === rangeEnd)
     .first();
-  return record ? toWeeklyReport(record) : null;
+  if (!record) {
+    return null;
+  }
+
+  if (!record.sourceHash?.trim()) {
+    return null;
+  }
+
+  const currentSourceHash = await buildWeeklyReportSourceHash(rangeStart, rangeEnd);
+  if (currentSourceHash !== record.sourceHash) {
+    return null;
+  }
+
+  return toWeeklyReport(record);
 }
 
 export async function saveWeeklyReport(
@@ -1228,6 +1668,185 @@ export async function saveWeeklyReport(
 
   const id = await db.weekly_reports.add(record);
   return toWeeklyReport({ ...record, id });
+}
+
+async function computeConversationFreshnessKey(conversationId: number): Promise<string> {
+  const [conversation, assetStatus] = await Promise.all([
+    db.conversations.get(conversationId),
+    db.retrieval_asset_status.get(conversationId),
+  ]);
+
+  if (!conversation?.id) {
+    return "";
+  }
+
+  if (assetStatus?.sourceHash?.trim()) {
+    return assetStatus.sourceHash.trim();
+  }
+
+  return [
+    conversation.id,
+    conversation.updated_at,
+    conversation.message_count,
+    conversation.turn_count,
+    conversation.title,
+  ].join(":");
+}
+
+export async function buildWeeklyReportSourceHash(
+  rangeStart: number,
+  rangeEnd: number,
+  conversations?: Conversation[]
+): Promise<string> {
+  const scopedConversations = conversations ?? (await listConversationsByRange(rangeStart, rangeEnd));
+  if (scopedConversations.length === 0) {
+    return hashText(`weekly:${rangeStart}:${rangeEnd}:empty`);
+  }
+
+  const parts = await Promise.all(
+    scopedConversations.map(async (conversation) => {
+      const freshnessKey = await computeConversationFreshnessKey(conversation.id);
+      return `${conversation.id}:${freshnessKey}`;
+    })
+  );
+
+  return hashText(parts.sort().join("|"));
+}
+
+export function recordRetrievalObservation(route: string, bundleWindowCount: number): void {
+  retrievalRuntimeMetrics.lastRoute = route;
+  retrievalRuntimeMetrics.bundleCount += 1;
+  retrievalRuntimeMetrics.totalBundleWindows += Math.max(0, bundleWindowCount);
+}
+
+export async function getConversationCapsule(
+  conversationId: number
+): Promise<ConversationCapsuleV1 | null> {
+  const record = await db.conversation_capsules.get(conversationId);
+  return record ? toConversationCapsule(record) : null;
+}
+
+export async function listConversationCapsules(
+  conversationIds?: number[]
+): Promise<ConversationCapsuleV1[]> {
+  const records =
+    Array.isArray(conversationIds) && conversationIds.length > 0
+      ? await db.conversation_capsules.bulkGet(conversationIds)
+      : await db.conversation_capsules.toArray();
+
+  return records
+    .filter((record): record is ConversationCapsuleRecord => Boolean(record))
+    .map(toConversationCapsule);
+}
+
+export async function saveConversationCapsule(
+  capsule: ConversationCapsuleV1
+): Promise<ConversationCapsuleV1> {
+  await enforceStorageWriteGuard();
+  await db.conversation_capsules.put(capsule);
+  return toConversationCapsule(capsule);
+}
+
+export async function getEvidenceWindowsByConversationIds(
+  conversationIds: number[]
+): Promise<EvidenceWindowV1[]> {
+  if (!conversationIds.length) {
+    return [];
+  }
+
+  const records = await db.evidence_windows.where("conversationId").anyOf(conversationIds).toArray();
+  return records.map(toEvidenceWindow);
+}
+
+export async function replaceEvidenceWindows(
+  conversationId: number,
+  windows: EvidenceWindowV1[]
+): Promise<EvidenceWindowV1[]> {
+  await enforceStorageWriteGuard();
+
+  await db.transaction("rw", db.evidence_windows, db.window_vectors, async () => {
+    const existingWindowIds = await db.evidence_windows
+      .where("conversationId")
+      .equals(conversationId)
+      .primaryKeys();
+
+    if (existingWindowIds.length > 0) {
+      await db.window_vectors.bulkDelete(existingWindowIds as string[]);
+    }
+
+    await db.evidence_windows.where("conversationId").equals(conversationId).delete();
+    if (windows.length > 0) {
+      await db.evidence_windows.bulkPut(windows);
+    }
+  });
+
+  return windows.map(toEvidenceWindow);
+}
+
+export async function getWindowVectorRecordsByConversationIds(
+  conversationIds: number[]
+): Promise<WindowVectorRecord[]> {
+  if (!conversationIds.length) {
+    return [];
+  }
+
+  return db.window_vectors.where("conversationId").anyOf(conversationIds).toArray();
+}
+
+export async function saveWindowVectors(records: WindowVectorRecord[]): Promise<void> {
+  if (records.length === 0) {
+    return;
+  }
+
+  await enforceStorageWriteGuard();
+  await db.window_vectors.bulkPut(records);
+}
+
+export async function getRetrievalAssetStatus(
+  conversationId: number
+): Promise<RetrievalAssetStatusV1 | null> {
+  const [record, conversation] = await Promise.all([
+    db.retrieval_asset_status.get(conversationId),
+    db.conversations.get(conversationId),
+  ]);
+  return record ? markStatusStaleIfNeeded(toRetrievalAssetStatus(record), conversation) : null;
+}
+
+export async function listRetrievalAssetStatus(
+  conversationIds?: number[]
+): Promise<RetrievalAssetStatusV1[]> {
+  const records =
+    Array.isArray(conversationIds) && conversationIds.length > 0
+      ? await db.retrieval_asset_status.bulkGet(conversationIds)
+      : await db.retrieval_asset_status.toArray();
+  const targetIds = Array.isArray(conversationIds) && conversationIds.length > 0
+    ? conversationIds
+    : records
+        .filter((record): record is RetrievalAssetStatusRecord => Boolean(record))
+        .map((record) => record.conversationId);
+  const conversations = await db.conversations.bulkGet(targetIds);
+  const conversationById = new Map(
+    conversations
+      .filter((conversation): conversation is ConversationRecord => Boolean(conversation?.id))
+      .map((conversation) => [conversation.id as number, conversation] as const)
+  );
+
+  return records
+    .filter((record): record is RetrievalAssetStatusRecord => Boolean(record))
+    .map((record) =>
+      markStatusStaleIfNeeded(
+        toRetrievalAssetStatus(record),
+        conversationById.get(record.conversationId)
+      )
+    );
+}
+
+export async function saveRetrievalAssetStatus(
+  status: RetrievalAssetStatusV1
+): Promise<RetrievalAssetStatusV1> {
+  await enforceStorageWriteGuard();
+  await db.retrieval_asset_status.put(status);
+  return toRetrievalAssetStatus(status);
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -1394,7 +2013,9 @@ export async function addExploreMessage(
 ): Promise<ExploreMessage> {
   await enforceStorageWriteGuard();
   const normalizedSources = normalizeExploreSources(message.sources as ExploreSourceRecord[] | undefined);
-  const serializedAgentMeta = serializeExploreAgentMeta(message.agentMeta);
+  const serializedInspectMeta = serializeExploreInspectMeta(
+    message.inspectMeta ?? message.agentMeta
+  );
   
   const record: ExploreMessageRecord = {
     id: generateId("msg"),
@@ -1402,7 +2023,7 @@ export async function addExploreMessage(
     role: message.role,
     content: message.content,
     sources: normalizedSources ? JSON.stringify(normalizedSources) : undefined,
-    agentMeta: serializedAgentMeta,
+    agentMeta: serializedInspectMeta,
     timestamp: message.timestamp,
   };
   
@@ -1436,7 +2057,7 @@ export async function addExploreMessage(
     role: message.role,
     content: message.content,
     sources: normalizedSources,
-    agentMeta: parseExploreAgentMeta(serializedAgentMeta),
+    inspectMeta: parseExploreInspectMeta(serializedInspectMeta),
     timestamp: message.timestamp,
   };
 }
@@ -1453,7 +2074,7 @@ export async function getExploreMessages(sessionId: string): Promise<ExploreMess
     role: record.role,
     content: record.content,
     sources: parseExploreSources(record.sources),
-    agentMeta: parseExploreAgentMeta(record.agentMeta),
+    inspectMeta: parseExploreInspectMeta(record.agentMeta),
     timestamp: record.timestamp,
   }));
 }
@@ -1478,15 +2099,15 @@ export async function getRecentExploreMessages(
       role: record.role,
       content: record.content,
       sources: parseExploreSources(record.sources),
-      agentMeta: parseExploreAgentMeta(record.agentMeta),
+      inspectMeta: parseExploreInspectMeta(record.agentMeta),
       timestamp: record.timestamp,
     }));
 }
 
-export async function updateExploreMessageContext(
+export async function updateExploreMessageEvidence(
   messageId: string,
-  contextDraft: string,
-  selectedContextConversationIds: number[]
+  selectedContextConversationIds: number[],
+  evidenceBriefSnapshot?: string
 ): Promise<void> {
   await enforceStorageWriteGuard();
 
@@ -1495,19 +2116,34 @@ export async function updateExploreMessageContext(
     throw new Error("EXPLORE_MESSAGE_NOT_FOUND");
   }
 
-  const existingMeta = parseExploreAgentMeta(record.agentMeta);
-  const nextMeta = normalizeExploreAgentMeta({
-    mode: existingMeta?.mode ?? "agent",
+  const existingMeta = parseExploreInspectMeta(record.agentMeta);
+  const nextMeta = normalizeExploreInspectMeta({
+    mode: existingMeta?.mode ?? "search",
     toolCalls: existingMeta?.toolCalls ?? [],
     contextCandidates: existingMeta?.contextCandidates ?? [],
     ...existingMeta,
-    contextDraft,
+    evidenceBrief:
+      typeof evidenceBriefSnapshot === "string"
+        ? evidenceBriefSnapshot
+        : existingMeta?.evidenceBrief ?? existingMeta?.contextDraft,
     selectedContextConversationIds,
   });
 
   await db.explore_messages.update(messageId, {
-    agentMeta: serializeExploreAgentMeta(nextMeta),
+    agentMeta: serializeExploreInspectMeta(nextMeta),
   });
+}
+
+export async function updateExploreMessageContext(
+  messageId: string,
+  contextDraft: string,
+  selectedContextConversationIds: number[]
+): Promise<void> {
+  await updateExploreMessageEvidence(
+    messageId,
+    selectedContextConversationIds,
+    contextDraft
+  );
 }
 
 // Cleanup functions
@@ -1586,7 +2222,7 @@ export async function getAllExploreMessages(): Promise<ExploreMessage[]> {
     role: record.role,
     content: record.content,
     sources: parseExploreSources(record.sources),
-    agentMeta: parseExploreAgentMeta(record.agentMeta),
+    inspectMeta: parseExploreInspectMeta(record.agentMeta),
     timestamp: record.timestamp,
   }));
 }

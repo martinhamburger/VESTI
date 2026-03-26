@@ -367,7 +367,7 @@ function getAbsoluteMinChars(mode: ExportCompressionMode): number {
 }
 
 function getSoftMinChars(
-  messages: Message[],
+  messages: PromptReadyMessage[],
   mode: ExportCompressionMode,
   absoluteMinChars: number
 ): number | null {

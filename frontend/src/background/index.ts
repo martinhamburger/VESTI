@@ -30,13 +30,14 @@ import {
   clearInsightsCache,
   getSummary,
   getWeeklyReport,
+  listRetrievalAssetStatus,
   createExploreSession,
   listExploreSessions,
   getExploreSession,
   getExploreMessages,
   deleteExploreSession,
   updateExploreSession,
-  updateExploreMessageContext,
+  updateExploreMessageEvidence,
 } from "../lib/db/repository";
 import { runGardener } from "../lib/services/gardenerService";
 import {
@@ -45,6 +46,11 @@ import {
   vectorizeAllConversations,
   askKnowledgeBase,
 } from "../lib/services/searchService";
+import {
+  buildRetrievalAssets,
+  getEvidenceBundle,
+  getQueryRewriteHints,
+} from "../lib/services/retrievalAssetsService";
 import {
   exportAnnotationToMyNotes,
   exportAnnotationToNotion,
@@ -69,6 +75,12 @@ import { getLlmAccessMode, normalizeLlmSettings } from "../lib/services/llmConfi
 let isVectorizing = false;
 let rerunVectorizationRequested = false;
 
+function notifyDataUpdated(): void {
+  chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
+    void chrome.runtime.lastError;
+  });
+}
+
 async function runVectorizationTask(reason: string): Promise<boolean> {
   if (isVectorizing) {
     rerunVectorizationRequested = true;
@@ -81,6 +93,9 @@ async function runVectorizationTask(reason: string): Promise<boolean> {
       reason,
       created,
     });
+    if (created > 0) {
+      notifyDataUpdated();
+    }
   } catch (error) {
     logger.warn("vectorize", "Vectorization task failed", {
       reason,
@@ -94,6 +109,10 @@ async function runVectorizationTask(reason: string): Promise<boolean> {
     }
   }
   return true;
+}
+
+function scheduleBackgroundVectorization(reason: string): void {
+  void runVectorizationTask(reason);
 }
 
 function requireSettings(settings: LlmConfig | null): LlmConfig {
@@ -449,6 +468,43 @@ async function handleOffscreenRequest(message: RequestMessage): Promise<Response
         );
         return { ok: true, type: messageType, data };
       }
+      case "BUILD_RETRIEVAL_ASSETS": {
+        const data = await buildRetrievalAssets(message.payload);
+        if (data.built > 0) {
+          notifyDataUpdated();
+        }
+        return { ok: true, type: messageType, data };
+      }
+      case "GET_RETRIEVAL_ASSET_STATUS": {
+        const [statuses, overview] = await Promise.all([
+          listRetrievalAssetStatus(message.payload?.conversationIds),
+          getDataOverview(),
+        ]);
+        return {
+          ok: true,
+          type: messageType,
+          data: {
+            statuses,
+            diagnostics: overview.retrievalDiagnostics ?? null,
+          },
+        };
+      }
+      case "GET_QUERY_REWRITE_HINTS": {
+        const data = await getQueryRewriteHints({
+          query: message.payload.query,
+          sessionId: message.payload.sessionId,
+        });
+        return { ok: true, type: messageType, data };
+      }
+      case "GET_EVIDENCE_BUNDLE": {
+        const data = await getEvidenceBundle({
+          query: message.payload.query,
+          sessionId: message.payload.sessionId,
+          limit: message.payload.limit,
+          searchScope: message.payload.options?.searchScope,
+        });
+        return { ok: true, type: messageType, data };
+      }
       case "GET_MESSAGES": {
         const data = await listMessages(message.payload.conversationId);
         return { ok: true, type: messageType, data };
@@ -603,11 +659,11 @@ async function handleOffscreenRequest(message: RequestMessage): Promise<Response
         await updateExploreSession(message.payload.sessionId, { title: message.payload.title });
         return { ok: true, type: messageType, data: { updated: true } };
       }
-      case "UPDATE_EXPLORE_MESSAGE_CONTEXT": {
-        await updateExploreMessageContext(
+      case "UPDATE_EXPLORE_MESSAGE_EVIDENCE": {
+        await updateExploreMessageEvidence(
           message.payload.messageId,
-          message.payload.contextDraft,
-          message.payload.selectedContextConversationIds
+          message.payload.selectedContextConversationIds,
+          message.payload.evidenceBriefSnapshot
         );
         return { ok: true, type: messageType, data: { updated: true } };
       }
@@ -632,8 +688,20 @@ if (chrome?.alarms?.create) {
   chrome.alarms.create("vectorize-job", { periodInMinutes: 5 });
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "vectorize-job") {
-      void runVectorizationTask("alarm");
+      scheduleBackgroundVectorization("alarm");
     }
+  });
+}
+
+if (chrome?.runtime?.onInstalled) {
+  chrome.runtime.onInstalled.addListener(() => {
+    scheduleBackgroundVectorization("installed");
+  });
+}
+
+if (chrome?.runtime?.onStartup) {
+  chrome.runtime.onStartup.addListener(() => {
+    scheduleBackgroundVectorization("startup");
   });
 }
 

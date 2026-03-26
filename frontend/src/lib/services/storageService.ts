@@ -5,6 +5,7 @@
   ConversationMatchSummary,
   DataOverviewSnapshot,
   DashboardStats,
+  EvidenceBundleV1,
   ExportFormat,
   ForceArchiveTransientResult,
   LlmConfig,
@@ -17,6 +18,9 @@
   ExploreMessage,
   ExploreMode,
   ExploreAskOptions,
+  QueryRewriteHintsV1,
+  RetrievalAssetStatusV1,
+  RetrievalDiagnosticsSnapshot,
   StorageUsageSnapshot,
   SummaryRecord,
   SearchConversationMatchesQuery,
@@ -29,6 +33,7 @@ import { sendRequest } from "../messaging/runtime";
 import type { ConversationUpdateChanges } from "../messaging/protocol";
 import type { LlmDiagnostic } from "./llmService";
 import { toChatSummaryData } from "./insightAdapter";
+import { requestVectorization } from "./vectorizationService";
 
 const LONG_RUNNING_TIMEOUT_MS = 120000;
 const TEST_CONNECTION_TIMEOUT_MS = 45000;
@@ -78,6 +83,7 @@ export async function updateConversationTopic(
   })) as { updated: boolean; conversation: Conversation };
 
   if (result.updated) {
+    requestVectorization([id]);
     chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
       void chrome.runtime.lastError;
     });
@@ -97,6 +103,7 @@ export async function updateConversation(
   })) as { updated: boolean; conversation: Conversation };
 
   if (result.updated) {
+    requestVectorization([id]);
     chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
       void chrome.runtime.lastError;
     });
@@ -155,6 +162,7 @@ export async function renameFolderTag(
   }, LONG_RUNNING_TIMEOUT_MS)) as { updated: number };
 
   if (result.updated > 0) {
+    requestVectorization();
     chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
       void chrome.runtime.lastError;
     });
@@ -174,6 +182,7 @@ export async function moveFolderTag(
   }, LONG_RUNNING_TIMEOUT_MS)) as { updated: number };
 
   if (result.updated > 0) {
+    requestVectorization();
     chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
       void chrome.runtime.lastError;
     });
@@ -192,6 +201,7 @@ export async function removeFolderTag(
   }, LONG_RUNNING_TIMEOUT_MS)) as { updated: number };
 
   if (result.updated > 0) {
+    requestVectorization();
     chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
       void chrome.runtime.lastError;
     });
@@ -357,6 +367,70 @@ export async function askKnowledgeBase(
   ) as Promise<RagResponse & { sessionId: string }>;
 }
 
+export async function buildRetrievalAssets(payload?: {
+  conversationIds?: number[];
+  force?: boolean;
+}): Promise<{ queued: boolean; built: number; conversationIds: number[] }> {
+  return sendRequest(
+    {
+      type: "BUILD_RETRIEVAL_ASSETS",
+      target: "background",
+      payload,
+    },
+    LONG_RUNNING_TIMEOUT_MS
+  ) as Promise<{ queued: boolean; built: number; conversationIds: number[] }>;
+}
+
+export async function getRetrievalAssetStatus(payload?: {
+  conversationIds?: number[];
+}): Promise<{
+  statuses: RetrievalAssetStatusV1[];
+  diagnostics: RetrievalDiagnosticsSnapshot | null;
+}> {
+  return sendRequest(
+    {
+      type: "GET_RETRIEVAL_ASSET_STATUS",
+      target: "offscreen",
+      payload,
+    },
+    LONG_RUNNING_TIMEOUT_MS
+  ) as Promise<{
+    statuses: RetrievalAssetStatusV1[];
+    diagnostics: RetrievalDiagnosticsSnapshot | null;
+  }>;
+}
+
+export async function getQueryRewriteHints(
+  query: string,
+  sessionId?: string,
+  options?: ExploreAskOptions
+): Promise<QueryRewriteHintsV1> {
+  return sendRequest(
+    {
+      type: "GET_QUERY_REWRITE_HINTS",
+      target: "offscreen",
+      payload: { query, sessionId, options },
+    },
+    LONG_RUNNING_TIMEOUT_MS
+  ) as Promise<QueryRewriteHintsV1>;
+}
+
+export async function getEvidenceBundle(
+  query: string,
+  sessionId?: string,
+  limit?: number,
+  options?: ExploreAskOptions
+): Promise<EvidenceBundleV1> {
+  return sendRequest(
+    {
+      type: "GET_EVIDENCE_BUNDLE",
+      target: "offscreen",
+      payload: { query, sessionId, limit, options },
+    },
+    LONG_RUNNING_TIMEOUT_MS
+  ) as Promise<EvidenceBundleV1>;
+}
+
 // Explore Session APIs
 export async function createExploreSession(title: string): Promise<string> {
   const result = (await sendRequest({
@@ -407,15 +481,19 @@ export async function renameExploreSession(sessionId: string, title: string): Pr
   });
 }
 
-export async function updateExploreMessageContext(
+export async function updateExploreMessageEvidence(
   messageId: string,
-  contextDraft: string,
-  selectedContextConversationIds: number[]
+  selectedContextConversationIds: number[],
+  evidenceBriefSnapshot?: string
 ): Promise<void> {
   await sendRequest({
-    type: "UPDATE_EXPLORE_MESSAGE_CONTEXT",
+    type: "UPDATE_EXPLORE_MESSAGE_EVIDENCE",
     target: "offscreen",
-    payload: { messageId, contextDraft, selectedContextConversationIds },
+    payload: {
+      messageId,
+      selectedContextConversationIds,
+      evidenceBriefSnapshot,
+    },
   });
 }
 
@@ -459,6 +537,7 @@ export async function updateConversationTitle(
   })) as { updated: boolean; conversation: Conversation };
 
   if (result.updated) {
+    requestVectorization([id]);
     chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
       void chrome.runtime.lastError;
     });

@@ -31,13 +31,14 @@ import {
   clearInsightsCache,
   getSummary,
   getWeeklyReport,
+  listRetrievalAssetStatus,
   createExploreSession,
   listExploreSessions,
   getExploreSession,
   getExploreMessages,
   deleteExploreSession,
   updateExploreSession,
-  updateExploreMessageContext,
+  updateExploreMessageEvidence,
 } from "../lib/db/repository";
 import { runGardener } from "../lib/services/gardenerService";
 import {
@@ -45,6 +46,11 @@ import {
   findAllEdges,
   askKnowledgeBase,
 } from "../lib/services/searchService";
+import {
+  buildRetrievalAssets,
+  getEvidenceBundle,
+  getQueryRewriteHints,
+} from "../lib/services/retrievalAssetsService";
 import { requestVectorization } from "../lib/services/vectorizationService";
 import {
   exportAnnotationToMyNotes,
@@ -59,6 +65,12 @@ import {
 import type { LlmConfig } from "../lib/types";
 import { logger } from "../lib/utils/logger";
 import { getLlmAccessMode, normalizeLlmSettings } from "../lib/services/llmConfig";
+
+function notifyDataUpdated(): void {
+  chrome.runtime.sendMessage({ type: "VESTI_DATA_UPDATED" }, () => {
+    void chrome.runtime.lastError;
+  });
+}
 
 function requireSettings(settings: LlmConfig | null): LlmConfig {
   if (!settings) {
@@ -155,6 +167,43 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
         );
         return { ok: true, type: messageType, data };
       }
+      case "BUILD_RETRIEVAL_ASSETS": {
+        const data = await buildRetrievalAssets(message.payload);
+        if (data.built > 0) {
+          notifyDataUpdated();
+        }
+        return { ok: true, type: messageType, data };
+      }
+      case "GET_RETRIEVAL_ASSET_STATUS": {
+        const [statuses, overview] = await Promise.all([
+          listRetrievalAssetStatus(message.payload?.conversationIds),
+          getDataOverview(),
+        ]);
+        return {
+          ok: true,
+          type: messageType,
+          data: {
+            statuses,
+            diagnostics: overview.retrievalDiagnostics ?? null,
+          },
+        };
+      }
+      case "GET_QUERY_REWRITE_HINTS": {
+        const data = await getQueryRewriteHints({
+          query: message.payload.query,
+          sessionId: message.payload.sessionId,
+        });
+        return { ok: true, type: messageType, data };
+      }
+      case "GET_EVIDENCE_BUNDLE": {
+        const data = await getEvidenceBundle({
+          query: message.payload.query,
+          sessionId: message.payload.sessionId,
+          limit: message.payload.limit,
+          searchScope: message.payload.options?.searchScope,
+        });
+        return { ok: true, type: messageType, data };
+      }
       case "CREATE_EXPLORE_SESSION": {
         const sessionId = await createExploreSession(message.payload.title);
         return { ok: true, type: messageType, data: { sessionId } };
@@ -181,11 +230,11 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
         });
         return { ok: true, type: messageType, data: { updated: true } };
       }
-      case "UPDATE_EXPLORE_MESSAGE_CONTEXT": {
-        await updateExploreMessageContext(
+      case "UPDATE_EXPLORE_MESSAGE_EVIDENCE": {
+        await updateExploreMessageEvidence(
           message.payload.messageId,
-          message.payload.contextDraft,
-          message.payload.selectedContextConversationIds
+          message.payload.selectedContextConversationIds,
+          message.payload.evidenceBriefSnapshot
         );
         return { ok: true, type: messageType, data: { updated: true } };
       }
@@ -199,7 +248,7 @@ async function handleRequest(message: RequestMessage): Promise<ResponseMessage> 
       }
       case "SAVE_ANNOTATION": {
         const annotation = await saveAnnotation(message.payload);
-        requestVectorization();
+        requestVectorization([message.payload.conversationId]);
         return { ok: true, type: messageType, data: { annotation } };
       }
       case "DELETE_ANNOTATION": {

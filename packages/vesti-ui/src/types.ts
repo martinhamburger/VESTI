@@ -60,7 +60,7 @@ export interface RelatedConversation {
   similarity: number;
 }
 
-export type ExploreMode = "agent" | "classic";
+export type ExploreMode = "search" | "ask";
 
 export type ExploreSearchScopeMode = "all" | "selected";
 
@@ -106,7 +106,7 @@ export interface ExploreResolvedTimeScope {
 export type ExplorePlannerPath = "rag" | "weekly_summary" | "clarify";
 
 export type ExploreToolName =
-  | "intent_planner"
+  | "intent_router"
   | "time_scope_resolver"
   | "weekly_summary_tool"
   | "query_planner"
@@ -135,19 +135,50 @@ export interface ExploreContextCandidate {
   title: string;
   platform: Platform;
   similarity: number;
-  matchType?: "semantic" | "time_scope";
+  matchType?: "semantic" | "time_scope" | "capsule" | "lexical" | "window";
   selectionReason?: string;
   summarySnippet?: string;
   excerpt?: string;
 }
 
-export interface ExploreAgentPlan {
+export type RetrievalQueryClass =
+  | "engineering_exact"
+  | "time_or_summary"
+  | "general_semantic";
+
+export interface EvidenceBundleAssetStatusV1 {
+  scopedConversationCount: number;
+  readyConversationCount: number;
+  staleConversationIds: number[];
+  missingConversationIds: number[];
+}
+
+export interface RetrievalMetaV1 {
+  retrievalVersion: "retrieval_assets_v1";
+  queryClass: RetrievalQueryClass;
+  route: "deterministic_rag" | "weekly_summary" | "local_fallback";
+  bundleId: string;
+  queryHash: string;
+  candidateConversationIds: number[];
+  selectedWindowIds: string[];
+  assetStatus: EvidenceBundleAssetStatusV1;
+  llmCalls: number;
+}
+
+export interface ExploreRouteSummary {
+  mode: ExploreMode;
+  routeLabel: string;
+  evidenceCount: number;
+  scopeLabel: string;
+  llmCalls: number;
+  timeScopeLabel?: string;
+}
+
+export interface ExploreRouteDecision {
   intent: ExploreIntentType;
   reason: string;
   preferredPath: ExplorePlannerPath;
   sourceLimit: number;
-  summaryTargetCount: number;
-  answerGoal?: string;
   needsClarification?: boolean;
   clarifyingQuestion?: string;
   requestedTimeScope?: ExploreRequestedTimeScope;
@@ -155,22 +186,36 @@ export interface ExploreAgentPlan {
   toolPlan?: ExploreToolName[];
 }
 
-export interface ExploreAgentMeta {
+export type ExploreAgentPlan = ExploreRouteDecision;
+
+export interface ExploreInspectMeta {
   mode: ExploreMode;
   query?: string;
   searchScope?: ExploreSearchScope;
-  plan?: ExploreAgentPlan;
+  routeDecision?: ExploreRouteDecision;
   toolCalls: ExploreToolCall[];
-  contextDraft?: string;
+  retrievalMeta?: RetrievalMetaV1;
+  evidenceBrief?: string;
   contextCandidates?: ExploreContextCandidate[];
   selectedContextConversationIds?: number[];
   totalDurationMs?: number;
+  routeSummary?: ExploreRouteSummary;
+  // Legacy aliases kept for persisted Explore records.
+  plan?: ExploreRouteDecision;
+  contextDraft?: string;
 }
+
+export type ExploreAgentMeta = ExploreInspectMeta;
 
 export interface RagResponse {
   answer: string;
   sources: RelatedConversation[];
-  agent?: ExploreAgentMeta;
+  inspect?: ExploreInspectMeta;
+  agent?: ExploreInspectMeta;
+  retrievalMeta?: RetrievalMetaV1;
+  assetStatus?: EvidenceBundleAssetStatusV1;
+  bundleId?: string;
+  queryHash?: string;
 }
 
 export type AstVersion = "ast_v1" | "ast_v2";
@@ -395,7 +440,8 @@ export interface ExploreMessage {
   role: "user" | "assistant";
   content: string;
   sources?: RelatedConversation[];
-  agentMeta?: ExploreAgentMeta;
+  inspectMeta?: ExploreInspectMeta;
+  agentMeta?: ExploreInspectMeta;
   timestamp: number;
 }
 
@@ -454,10 +500,10 @@ export type StorageApi = {
   getExploreMessages?: (sessionId: string) => Promise<ExploreMessage[]>;
   deleteExploreSession?: (sessionId: string) => Promise<void>;
   renameExploreSession?: (sessionId: string, title: string) => Promise<void>;
-  updateExploreMessageContext?: (
+  updateExploreMessageEvidence?: (
     messageId: string,
-    contextDraft: string,
-    selectedContextConversationIds: number[]
+    selectedContextConversationIds: number[],
+    evidenceBriefSnapshot?: string
   ) => Promise<void>;
   getSummary?: (conversationId: number) => Promise<ChatSummaryData | null>;
   generateSummary?: (conversationId: number) => Promise<ChatSummaryData>;

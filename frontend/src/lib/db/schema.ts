@@ -2,7 +2,10 @@ import Dexie from "dexie";
 import type { Table } from "dexie";
 import type {
   Conversation,
+  ConversationCapsuleV1,
+  EvidenceWindowV1,
   Message,
+  RetrievalAssetStatusV1,
   SummaryRecord,
   WeeklyReportRecord,
 } from "../types";
@@ -20,6 +23,9 @@ export type MessageRecord = Omit<Message, "id" | "content_ast"> & {
 };
 export type SummaryRecordRecord = Omit<SummaryRecord, "id"> & { id?: number };
 export type WeeklyReportRecordRecord = Omit<WeeklyReportRecord, "id"> & { id?: number };
+export type ConversationCapsuleRecord = ConversationCapsuleV1;
+export type EvidenceWindowRecord = EvidenceWindowV1;
+export type RetrievalAssetStatusRecord = RetrievalAssetStatusV1;
 export interface TopicRecord {
   id?: number;
   parent_id: number | null;
@@ -30,6 +36,13 @@ export interface TopicRecord {
 export interface VectorRecord {
   id?: number;
   conversation_id: number;
+  text_hash: string;
+  embedding: Float32Array;
+}
+export interface WindowVectorRecord {
+  windowId: string;
+  conversationId: number;
+  sourceHash: string;
   text_hash: string;
   embedding: Float32Array;
 }
@@ -66,7 +79,7 @@ export interface ExploreMessageRecord {
   role: "user" | "assistant";
   content: string;
   sources?: string; // JSON serialized RelatedConversation[]
-  agentMeta?: string; // JSON serialized ExploreAgentMeta
+  agentMeta?: string; // Legacy column name; stores serialized ExploreInspectMeta
   timestamp: number;
 }
 
@@ -131,6 +144,10 @@ export class MemoryHubDB extends Dexie {
   weekly_reports!: Table<WeeklyReportRecordRecord, number>;
   topics!: Table<TopicRecord, number>;
   vectors!: Table<VectorRecord, number>;
+  conversation_capsules!: Table<ConversationCapsuleRecord, number>;
+  evidence_windows!: Table<EvidenceWindowRecord, string>;
+  window_vectors!: Table<WindowVectorRecord, string>;
+  retrieval_asset_status!: Table<RetrievalAssetStatusRecord, number>;
   notes!: Table<NoteRecord, number>;
   annotations!: Table<AnnotationRecord, number>;
   explore_sessions!: Table<ExploreSessionRecord, string>;
@@ -502,6 +519,50 @@ export class MemoryHubDB extends Dexie {
               })
             ) {
               record.content_text = canonicalText;
+            }
+          });
+      });
+    this.version(14)
+      .stores({
+        conversations:
+          "++id, platform, title, created_at, updated_at, uuid, source_created_at, turn_count, topic_id, is_starred, [platform+created_at], [platform+uuid], [topic_id+updated_at]",
+        messages:
+          "++id, conversation_id, role, created_at, [conversation_id+created_at]",
+        summaries: "++id, conversationId, createdAt, sourceUpdatedAt, sourceHash",
+        weekly_reports: "++id, rangeStart, rangeEnd, createdAt, sourceHash",
+        topics:
+          "++id, parent_id, name, created_at, updated_at, [parent_id+name]",
+        vectors: "++id, conversation_id, text_hash",
+        conversation_capsules:
+          "conversationId, sourceHash, sourceUpdatedAt, updatedAt",
+        evidence_windows:
+          "id, conversationId, sourceHash, windowIndex, messageStartId, messageEndId, [conversationId+windowIndex], [conversationId+sourceHash]",
+        window_vectors:
+          "windowId, conversationId, sourceHash, text_hash, [conversationId+sourceHash]",
+        retrieval_asset_status:
+          "conversationId, sourceHash, sourceUpdatedAt, state, lastBuiltAt",
+        notes: "++id, created_at, updated_at",
+        annotations:
+          "++id, conversation_id, message_id, created_at, days_after, [conversation_id+message_id], [conversation_id+created_at]",
+        explore_sessions: "id, updatedAt, createdAt",
+        explore_messages: "id, sessionId, timestamp, [sessionId+timestamp]",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("summaries")
+          .toCollection()
+          .modify((record: Partial<SummaryRecordRecord>) => {
+            if (typeof record.sourceHash !== "string") {
+              delete record.sourceHash;
+            }
+          });
+
+        await tx
+          .table("weekly_reports")
+          .toCollection()
+          .modify((record: Partial<WeeklyReportRecordRecord>) => {
+            if (typeof record.sourceHash !== "string") {
+              record.sourceHash = "";
             }
           });
       });

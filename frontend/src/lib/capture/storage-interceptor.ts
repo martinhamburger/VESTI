@@ -204,7 +204,7 @@ export async function interceptAndPersistCapture(
       payload.messages
     );
     if (persisted.saved && typeof persisted.conversationId === "number") {
-      requestVectorization();
+      requestVectorization([persisted.conversationId]);
       void (async () => {
         try {
           const result = await runGardener(persisted.conversationId);

@@ -17,6 +17,7 @@ import type {
   StorageUsageSnapshot,
 } from "~lib/types";
 import {
+  buildRetrievalAssets,
   clearAllData,
   clearInsightsCache,
   exportData,
@@ -194,7 +195,7 @@ export function DataManagementPanel() {
 
   const handleClearInsightsCache = async () => {
     const confirmed = window.confirm(
-      "Clear cached summaries and weekly reports only?\nConversations and messages will be kept."
+      "Clear cached summaries, weekly reports, and retrieval assets only?\nConversations and messages will be kept."
     );
     if (!confirmed) return;
 
@@ -204,7 +205,7 @@ export function DataManagementPanel() {
     try {
       await clearInsightsCache();
       setStatus("ready");
-      setMessage("Insights cache cleared. Conversations and messages were kept.");
+      setMessage("Insights and retrieval caches cleared. Conversations and messages were kept.");
     } catch (error) {
       setStatus("error");
       setMessage(getErrorMessage(error));
@@ -231,6 +232,25 @@ export function DataManagementPanel() {
       await clearAllData();
       setStatus("ready");
       setMessage("Local data cleared. LLM configuration is kept.");
+    } catch (error) {
+      setStatus("error");
+      setMessage(getErrorMessage(error));
+    } finally {
+      setActionKey(null);
+      await refreshOverview();
+    }
+  };
+
+  const handleBuildRetrievalAssets = async () => {
+    setActionKey("build-retrieval-assets");
+    setStatus("loading");
+    setMessage(null);
+    try {
+      const result = await buildRetrievalAssets();
+      setStatus("ready");
+      setMessage(
+        `Retrieval assets build finished. Rebuilt ${result.built} thread(s) across ${result.conversationIds.length} stored thread(s).`
+      );
     } catch (error) {
       setStatus("error");
       setMessage(getErrorMessage(error));
@@ -354,6 +374,73 @@ export function DataManagementPanel() {
           <div className="data-detail-item">
             <span>IndexedDB store</span>
             <span>{overview?.indexedDbName ?? "MemoryHubDB"}</span>
+          </div>
+          <div className="data-detail-item">
+            <span>Capsule ready</span>
+            <span>
+              {formatCount(overview?.retrievalDiagnostics?.capsuleReadyCount)} /{" "}
+              {formatCount(overview?.totalConversations)}
+            </span>
+          </div>
+          <div className="data-detail-item">
+            <span>Windows indexed</span>
+            <span>{formatCount(overview?.retrievalDiagnostics?.totalWindows)}</span>
+          </div>
+          <div className="data-detail-item">
+            <span>Window vector coverage</span>
+            <span>
+              {overview?.retrievalDiagnostics
+                ? `${Math.round(
+                    (overview.retrievalDiagnostics.windowReadyRatio || 0) * 100
+                  )}%`
+                : "N/A"}
+            </span>
+          </div>
+          <div className="data-detail-item">
+            <span>Stale retrieval assets</span>
+            <span>{formatCount(overview?.retrievalDiagnostics?.staleCount)}</span>
+          </div>
+          <div className="data-detail-item">
+            <span>Failed retrieval assets</span>
+            <span>{formatCount(overview?.retrievalDiagnostics?.failedCount)}</span>
+          </div>
+          <div className="data-detail-item">
+            <span>Last retrieval build</span>
+            <span>{formatDateTime(overview?.retrievalDiagnostics?.lastBuildAt ?? null)}</span>
+          </div>
+          <div className="data-detail-item">
+            <span>Last retrieval route</span>
+            <span>{overview?.retrievalDiagnostics?.lastRetrievalRoute ?? "N/A"}</span>
+          </div>
+          <div className="data-detail-item">
+            <span>Average bundle windows</span>
+            <span>{formatCount(overview?.retrievalDiagnostics?.averageBundleWindows)}</span>
+          </div>
+          <div className="data-detail-actions">
+            <span className="data-detail-actions-label">Retrieval assets</span>
+            <div className="data-detail-actions-right">
+              <button
+                type="button"
+                className="data-mini-btn"
+                disabled={Boolean(actionKey)}
+                onClick={handleBuildRetrievalAssets}
+              >
+                {actionKey === "build-retrieval-assets" ? (
+                  <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />
+                ) : (
+                  <Database className="h-3 w-3" strokeWidth={1.8} />
+                )}
+                Build now
+              </button>
+              <span
+                className="data-help-dot"
+                tabIndex={0}
+                title="Backfills retrieval capsules and evidence windows for stored threads. Use this when historical threads are still missing or stale."
+                aria-label="Backfills retrieval capsules and evidence windows for stored threads. Use this when historical threads are still missing or stale."
+              >
+                ?
+              </span>
+            </div>
           </div>
           <div className="data-detail-item">
             <span>Last compaction</span>

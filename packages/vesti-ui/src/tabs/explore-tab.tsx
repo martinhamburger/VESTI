@@ -8,7 +8,6 @@ import {
   CheckSquare,
   ChevronRight,
   Clipboard,
-  Download,
   FileText,
   Filter,
   Loader2,
@@ -26,11 +25,12 @@ import {
 } from "lucide-react";
 import type {
   Conversation,
-  ExploreAgentPlan,
   ExploreAskOptions,
   ExploreContextCandidate,
+  ExploreInspectMeta,
   ExploreMessage,
   ExploreMode,
+  ExploreRouteDecision,
   ExploreSearchScope,
   ExploreSearchScopeMode,
   ExploreSession,
@@ -41,17 +41,16 @@ import type {
 } from "../types";
 
 const MODE_STAGES: Record<ExploreMode, string[]> = {
-  agent: [
-    "Planning the route...",
-    "Scanning lightweight library cues...",
-    "Collecting source evidence...",
-    "Compiling context draft...",
-    "Synthesizing a longer answer...",
+  ask: [
+    "Understanding the request...",
+    "Choosing the best route...",
+    "Gathering evidence...",
+    "Drafting the answer...",
   ],
-  classic: [
-    "Understanding your question...",
-    "Searching indexed context...",
-    "Synthesizing a longer answer...",
+  search: [
+    "Rewriting the query...",
+    "Retrieving indexed evidence...",
+    "Drafting the answer...",
   ],
 };
 
@@ -245,8 +244,8 @@ type ExploreTabProps = {
   onOpenConversation?: (conversationId: number) => void;
 };
 
-type DrawerTab = "plan" | "tool_calls" | "sources" | "context_draft";
-type ContextSaveStatus = "idle" | "saving" | "saved" | "error";
+type DrawerTab = "overview" | "trace" | "sources" | "evidence_brief";
+type SelectionSaveStatus = "idle" | "saving" | "saved" | "error";
 type StarterDeckStatus = "loading" | "ready";
 
 interface StarterPromptCard {
@@ -265,36 +264,36 @@ interface StarterDeck {
 }
 
 const TOOL_LABELS: Record<ExploreToolName, string> = {
-  intent_planner: "Intent Planner",
+  intent_router: "Intent Router",
   time_scope_resolver: "Time Scope Resolver",
   weekly_summary_tool: "Weekly Summary Tool",
-  query_planner: "Query Planner (Legacy)",
+  query_planner: "Query Rewrite",
   search_rag: "Semantic Search",
   summary_tool: "Summary Tool",
-  context_compiler: "Context Compiler",
+  context_compiler: "Evidence Brief Builder",
   answer_synthesizer: "Answer Synthesizer",
 };
 
 const TOOL_EXPLANATIONS: Record<ExploreToolName, string> = {
-  intent_planner:
+  intent_router:
     "Uses the model to decide what the user is asking for, which route to run, and whether a time window is required.",
   time_scope_resolver:
     "Turns phrases like 'this week' into a concrete date range so the answer is auditable.",
   weekly_summary_tool:
     "Finds the conversations in that period, then reuses or generates a week-level digest.",
   query_planner:
-    "Legacy fixed planning step from the earlier Explore pipeline.",
+    "Rewrites the request into a standalone retrieval query so follow-up questions stay grounded.",
   search_rag:
     "Searches the knowledge base by semantic similarity to retrieve the most relevant conversations.",
   summary_tool:
     "Fills in missing conversation summaries so multi-source answers are easier to synthesize and inspect.",
   context_compiler:
-    "Builds the editable context draft and source set shown in the drawer.",
+    "Builds the evidence brief and source set shown in the drawer.",
   answer_synthesizer:
     "Produces the final answer from the collected evidence and tells the user where to inspect the result.",
 };
 
-const INTENT_LABELS: Record<ExploreAgentPlan["intent"], string> = {
+const INTENT_LABELS: Record<ExploreRouteDecision["intent"], string> = {
   fact_lookup: "Fact Lookup",
   cross_conversation_summary: "Cross-Conversation Summary",
   weekly_review: "Weekly Review",
@@ -302,8 +301,8 @@ const INTENT_LABELS: Record<ExploreAgentPlan["intent"], string> = {
   clarification_needed: "Clarification Needed",
 };
 
-const PATH_LABELS: Record<ExploreAgentPlan["preferredPath"], string> = {
-  rag: "Semantic Search",
+const PATH_LABELS: Record<ExploreRouteDecision["preferredPath"], string> = {
+  rag: "RAG Search",
   weekly_summary: "Weekly Summary",
   clarify: "Clarify First",
 };
@@ -372,54 +371,74 @@ function getSearchScopeSummary(searchScope?: ExploreSearchScope): string {
   return "All conversations";
 }
 
-function getIntentLabel(plan?: ExploreAgentPlan): string {
-  if (!plan) return "Unknown";
-  return INTENT_LABELS[plan.intent];
+function getInspectMeta(message?: ExploreMessage | null): ExploreInspectMeta | undefined {
+  return message?.inspectMeta ?? message?.agentMeta;
 }
 
-function getPathLabel(plan?: ExploreAgentPlan): string {
-  if (!plan) return "Unknown";
-  return PATH_LABELS[plan.preferredPath];
+function getRouteDecision(meta?: ExploreInspectMeta): ExploreRouteDecision | undefined {
+  return meta?.routeDecision ?? meta?.plan;
 }
 
-function getResolvedTimeScopeLabel(plan?: ExploreAgentPlan): string | null {
-  if (plan?.resolvedTimeScope) {
-    return `${plan.resolvedTimeScope.label} (${plan.resolvedTimeScope.startDate} to ${plan.resolvedTimeScope.endDate})`;
+function getIntentLabel(routeDecision?: ExploreRouteDecision): string {
+  if (!routeDecision) return "Unknown";
+  return INTENT_LABELS[routeDecision.intent];
+}
+
+function getPathLabel(routeDecision?: ExploreRouteDecision): string {
+  if (!routeDecision) return "Unknown";
+  return PATH_LABELS[routeDecision.preferredPath];
+}
+
+function getResolvedTimeScopeLabel(routeDecision?: ExploreRouteDecision): string | null {
+  if (routeDecision?.resolvedTimeScope) {
+    return `${routeDecision.resolvedTimeScope.label} (${routeDecision.resolvedTimeScope.startDate} to ${routeDecision.resolvedTimeScope.endDate})`;
   }
-  if (plan?.requestedTimeScope?.label) {
-    return plan.requestedTimeScope.label;
+  if (routeDecision?.requestedTimeScope?.label) {
+    return routeDecision.requestedTimeScope.label;
   }
   if (
-    plan?.requestedTimeScope?.preset &&
-    plan.requestedTimeScope.preset !== "none"
+    routeDecision?.requestedTimeScope?.preset &&
+    routeDecision.requestedTimeScope.preset !== "none"
   ) {
-    return plan.requestedTimeScope.preset.replace(/_/g, " ");
+    return routeDecision.requestedTimeScope.preset.replace(/_/g, " ");
   }
   return null;
 }
 
-function isTimeScopedPlan(plan?: ExploreAgentPlan): boolean {
-  return plan?.preferredPath === "weekly_summary";
+function isTimeScopedPlan(routeDecision?: ExploreRouteDecision): boolean {
+  return routeDecision?.preferredPath === "weekly_summary";
 }
 
 function getSourceBadgeLabel(
   candidateOrSource: Pick<ExploreContextCandidate, "similarity" | "matchType">,
-  plan?: ExploreAgentPlan
+  routeDecision?: ExploreRouteDecision
 ): string {
-  if (candidateOrSource.matchType === "time_scope" || isTimeScopedPlan(plan)) {
+  if (candidateOrSource.matchType === "time_scope" || isTimeScopedPlan(routeDecision)) {
     return "In range";
   }
   return `${candidateOrSource.similarity}%`;
 }
 
-function triggerTxtDownload(content: string, filename: string): void {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+function getEvidenceBriefText(meta?: ExploreInspectMeta): string {
+  return meta?.evidenceBrief ?? meta?.contextDraft ?? "";
+}
+
+function getRouteLabel(meta?: ExploreInspectMeta): string {
+  return meta?.routeSummary?.routeLabel || getPathLabel(getRouteDecision(meta));
+}
+
+function getEvidenceCountLabel(message: ExploreMessage, meta?: ExploreInspectMeta): string {
+  const count =
+    meta?.routeSummary?.evidenceCount ??
+    meta?.retrievalMeta?.selectedWindowIds.length ??
+    meta?.contextCandidates?.length ??
+    message.sources?.length ??
+    0;
+  const routeDecision = getRouteDecision(meta);
+  if (routeDecision?.preferredPath === "weekly_summary") {
+    return `${count} sources`;
+  }
+  return `${count} evidence`;
 }
 
 export function ExploreTab({
@@ -428,7 +447,7 @@ export function ExploreTab({
   onOpenConversation,
 }: ExploreTabProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mode, setMode] = useState<ExploreMode>("agent");
+  const [mode, setMode] = useState<ExploreMode>("search");
   const [sessions, setSessions] = useState<ExploreSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
 
@@ -442,7 +461,7 @@ export function ExploreTab({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRegeneratingSources, setIsRegeneratingSources] = useState(false);
   const [searchStageIndex, setSearchStageIndex] = useState(0);
-  const [submitMode, setSubmitMode] = useState<ExploreMode>("agent");
+  const [submitMode, setSubmitMode] = useState<ExploreMode>("search");
   const [searchScopeMode, setSearchScopeMode] = useState<ExploreSearchScopeMode>("all");
   const [selectedScopeConversationIds, setSelectedScopeConversationIds] = useState<number[]>([]);
   const [scopeChooserOpen, setScopeChooserOpen] = useState(false);
@@ -456,12 +475,12 @@ export function ExploreTab({
   const [renameValue, setRenameValue] = useState("");
 
   const [drawerMessageId, setDrawerMessageId] = useState<string | null>(null);
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>("tool_calls");
-  const [contextDraft, setContextDraft] = useState("");
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
+  const [evidenceBrief, setEvidenceBrief] = useState("");
   const [selectedContextConversationIds, setSelectedContextConversationIds] = useState<
     number[]
   >([]);
-  const [contextSaveStatus, setContextSaveStatus] = useState<ContextSaveStatus>("idle");
+  const [selectionSaveStatus, setSelectionSaveStatus] = useState<SelectionSaveStatus>("idle");
   const [drawerNotice, setDrawerNotice] = useState<string | null>(null);
   const [starterDeckRevision, setStarterDeckRevision] = useState(0);
   const [starterDeckStatus, setStarterDeckStatus] = useState<StarterDeckStatus>("loading");
@@ -478,9 +497,10 @@ export function ExploreTab({
   );
   const currentSession = sessions.find((session) => session.id === currentSessionId);
   const drawerMessage = messages.find((message) => message.id === drawerMessageId) ?? null;
-  const drawerPlan = drawerMessage?.agentMeta?.plan;
-  const drawerCandidates = drawerMessage?.agentMeta?.contextCandidates ?? [];
-  const drawerToolCalls = drawerMessage?.agentMeta?.toolCalls ?? [];
+  const drawerInspectMeta = getInspectMeta(drawerMessage);
+  const drawerPlan = getRouteDecision(drawerInspectMeta);
+  const drawerCandidates = drawerInspectMeta?.contextCandidates ?? [];
+  const drawerToolCalls = drawerInspectMeta?.toolCalls ?? [];
   const starterDeck = useMemo(
     () => getStarterDeck(starterDeckRevision),
     [starterDeckRevision]
@@ -656,9 +676,9 @@ export function ExploreTab({
   };
 
   const getAssistantQuery = (message: ExploreMessage): string => {
-    const agentQuery = message.agentMeta?.query?.trim();
-    if (agentQuery) {
-      return agentQuery;
+    const inspectQuery = getInspectMeta(message)?.query?.trim();
+    if (inspectQuery) {
+      return inspectQuery;
     }
 
     const index = messages.findIndex((item) => item.id === message.id);
@@ -687,15 +707,16 @@ export function ExploreTab({
     setDrawerMessageId(message.id);
     setDrawerTab(tab);
     setDrawerNotice(null);
-    setContextSaveStatus("idle");
-    const nextDraft = message.agentMeta?.contextDraft ?? "";
-    const candidates = message.agentMeta?.contextCandidates ?? [];
-    const selectedFromMessage = message.agentMeta?.selectedContextConversationIds ?? [];
+    setSelectionSaveStatus("idle");
+    const inspectMeta = getInspectMeta(message);
+    const nextBrief = getEvidenceBriefText(inspectMeta);
+    const candidates = inspectMeta?.contextCandidates ?? [];
+    const selectedFromMessage = inspectMeta?.selectedContextConversationIds ?? [];
     const selected =
       selectedFromMessage.length > 0
         ? selectedFromMessage
         : candidates.map((candidate) => candidate.conversationId);
-    setContextDraft(nextDraft);
+    setEvidenceBrief(nextBrief);
     setSelectedContextConversationIds(selected);
   };
 
@@ -755,7 +776,7 @@ export function ExploreTab({
         role: "assistant",
         content: result.answer,
         sources: result.sources,
-        agentMeta: result.agent,
+        inspectMeta: result.inspect ?? result.agent,
         timestamp: Date.now(),
       };
 
@@ -830,23 +851,23 @@ export function ExploreTab({
     });
   };
 
-  const handleSaveContextDraft = async () => {
+  const handleSaveEvidenceSelection = async () => {
     if (!drawerMessage) return;
-    const agentMeta = drawerMessage.agentMeta;
-    if (!agentMeta) return;
+    const inspectMeta = getInspectMeta(drawerMessage);
+    if (!inspectMeta) return;
 
     const normalizedIds = selectedContextConversationIds.filter((id) =>
       drawerCandidates.some((candidate) => candidate.conversationId === id)
     );
 
-    setContextSaveStatus("saving");
+    setSelectionSaveStatus("saving");
     setDrawerNotice(null);
     try {
-      if (storage.updateExploreMessageContext) {
-        await storage.updateExploreMessageContext(
+      if (storage.updateExploreMessageEvidence) {
+        await storage.updateExploreMessageEvidence(
           drawerMessage.id,
-          contextDraft,
-          normalizedIds
+          normalizedIds,
+          evidenceBrief
         );
       }
 
@@ -855,48 +876,42 @@ export function ExploreTab({
           if (message.id !== drawerMessage.id) return message;
           return {
             ...message,
-            agentMeta: {
-              ...agentMeta,
-              contextDraft,
+            inspectMeta: {
+              ...inspectMeta,
+              evidenceBrief,
+              contextDraft: evidenceBrief,
               selectedContextConversationIds: normalizedIds,
             },
           };
         })
       );
 
-      setContextSaveStatus("saved");
+      setSelectionSaveStatus("saved");
       setDrawerNotice(
-        storage.updateExploreMessageContext
-          ? "Context draft saved."
+        storage.updateExploreMessageEvidence
+          ? "Source selection saved."
           : "Saved locally for this view (storage adapter unavailable)."
       );
     } catch (err) {
-      console.error("[Explore] Failed to save context draft:", err);
-      setContextSaveStatus("error");
-      setDrawerNotice((err as Error)?.message ?? "Failed to save context draft.");
+      console.error("[Explore] Failed to save evidence selection:", err);
+      setSelectionSaveStatus("error");
+      setDrawerNotice((err as Error)?.message ?? "Failed to save source selection.");
     }
   };
 
-  const handleCopyContextDraft = async () => {
-    if (!contextDraft.trim()) return;
+  const handleCopyEvidenceBrief = async () => {
+    if (!evidenceBrief.trim()) return;
     try {
-      await navigator.clipboard.writeText(contextDraft);
+      await navigator.clipboard.writeText(evidenceBrief);
       setDrawerNotice("Copied to clipboard.");
     } catch {
       setDrawerNotice("Clipboard is unavailable in this environment.");
     }
   };
 
-  const handleDownloadContextDraft = () => {
-    if (!contextDraft.trim()) return;
-    const filename = `explore-context-${Date.now()}.txt`;
-    triggerTxtDownload(contextDraft, filename);
-    setDrawerNotice(`Downloaded ${filename}.`);
-  };
-
-  const handleStartChatWithContext = () => {
+  const handleStartChatWithBrief = () => {
     handleNewChat();
-    setInputValue(contextDraft);
+    setInputValue(evidenceBrief);
     setDrawerNotice(null);
     textareaRef.current?.focus();
   };
@@ -923,19 +938,21 @@ export function ExploreTab({
     setDrawerNotice(null);
 
     try {
-      if (storage.updateExploreMessageContext) {
-        await storage.updateExploreMessageContext(
+      if (storage.updateExploreMessageEvidence) {
+        await storage.updateExploreMessageEvidence(
           drawerMessage.id,
-          contextDraft,
-          normalizedIds
+          normalizedIds,
+          evidenceBrief
         );
       }
+
+      const drawerMode = getInspectMeta(drawerMessage)?.mode ?? mode;
 
       await storage.askKnowledgeBase(
         query,
         currentSessionId,
         Math.max(normalizedIds.length, 1),
-        "agent",
+        drawerMode,
         {
           searchScope: {
             mode: "selected",
@@ -1071,12 +1088,15 @@ export function ExploreTab({
         ? null
         : DOMPurify.sanitize(marked.parse(message.content, { gfm: true, breaks: false }) as string);
 
+      const inspectMeta = getInspectMeta(message);
       const hasSources = message.sources && message.sources.length > 0;
-      const toolCalls = message.agentMeta?.toolCalls ?? [];
-      const hasToolCalls = message.agentMeta?.mode === "agent" && toolCalls.length > 0;
-      const scopeSummary = getSearchScopeSummary(message.agentMeta?.searchScope);
-      const plan = message.agentMeta?.plan;
-      const timeScopeLabel = getResolvedTimeScopeLabel(plan);
+      const toolCalls = inspectMeta?.toolCalls ?? [];
+      const routeDecision = getRouteDecision(inspectMeta);
+      const routeSummary = inspectMeta?.routeSummary;
+      const scopeSummary = routeSummary?.scopeLabel ?? getSearchScopeSummary(inspectMeta?.searchScope);
+      const timeScopeLabel =
+        routeSummary?.timeScopeLabel ?? getResolvedTimeScopeLabel(routeDecision);
+      const hasInspect = Boolean(inspectMeta || toolCalls.length || routeSummary);
 
       return (
         <div key={message.id} className={`py-4 ${isUser ? "bg-bg-tertiary/50" : ""}`}>
@@ -1110,66 +1130,40 @@ export function ExploreTab({
                   />
                 )}
 
-                {!isUser && hasToolCalls && (
+                {!isUser && hasInspect && (
                   <div className="mt-3 rounded-lg border border-border-subtle bg-bg-surface-card px-3 py-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-3">
-                        {plan && (
-                          <button
-                            onClick={() => openDrawer(message, "plan")}
-                            className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
-                          >
-                            <FileText className="h-3.5 w-3.5" strokeWidth={1.75} />
-                            Plan
-                          </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-[11px] font-sans text-text-tertiary">
+                          Route: {getRouteLabel(inspectMeta)}
+                        </p>
+                        <p className="text-[11px] font-sans text-text-tertiary">
+                          Evidence: {getEvidenceCountLabel(message, inspectMeta)}
+                        </p>
+                        <p className="text-[11px] font-sans text-text-tertiary">
+                          Scope: {scopeSummary}
+                        </p>
+                        <p className="text-[11px] font-sans text-text-tertiary">
+                          LLM calls: {routeSummary?.llmCalls ?? inspectMeta?.retrievalMeta?.llmCalls ?? 0}
+                        </p>
+                        {timeScopeLabel && (
+                          <p className="text-[11px] font-sans text-text-tertiary">
+                            Time: {timeScopeLabel}
+                          </p>
                         )}
-                        <button
-                          onClick={() => openDrawer(message, "tool_calls")}
-                          className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
-                        >
-                          <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
-                          Tool Calls
-                        </button>
                       </div>
-                      <p className="text-xs font-sans text-text-tertiary">
+                      <button
+                        onClick={() => openDrawer(message, "overview")}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-2.5 py-1 text-xs font-sans text-text-secondary hover:bg-bg-primary hover:text-text-primary"
+                      >
+                        <Search className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Inspect
+                      </button>
+                    </div>
+                    {toolCalls.length > 0 && (
+                      <p className="mt-2 text-[11px] font-sans text-text-tertiary">
                         {summarizeToolCalls(toolCalls)}
                       </p>
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                      {plan && (
-                        <>
-                          <p className="text-[11px] font-sans text-text-tertiary">
-                            Intent: {getIntentLabel(plan)}
-                          </p>
-                          <p className="text-[11px] font-sans text-text-tertiary">
-                            Route: {getPathLabel(plan)}
-                          </p>
-                        </>
-                      )}
-                      {timeScopeLabel && (
-                        <p className="text-[11px] font-sans text-text-tertiary">
-                          Time: {timeScopeLabel}
-                        </p>
-                      )}
-                      <p className="text-[11px] font-sans text-text-tertiary">
-                        Scope: {scopeSummary}
-                      </p>
-                      <button
-                        onClick={() => openDrawer(message, "sources")}
-                        className="inline-flex items-center gap-1.5 text-xs font-sans text-text-secondary hover:text-text-primary"
-                      >
-                        <Filter className="h-3.5 w-3.5" strokeWidth={1.75} />
-                        Source Controls
-                      </button>
-                    </div>
-                    {message.agentMeta?.contextDraft && (
-                      <button
-                        onClick={() => openDrawer(message, "context_draft")}
-                        className="mt-2 inline-flex items-center gap-1.5 text-xs font-sans text-accent-primary hover:text-accent-primary/80"
-                      >
-                        <FileText className="h-3.5 w-3.5" strokeWidth={1.75} />
-                        Open Context Draft
-                      </button>
                     )}
                   </div>
                 )}
@@ -1189,7 +1183,7 @@ export function ExploreTab({
                           >
                             <span className="max-w-[120px] truncate">{source.title}</span>
                             <span className="text-accent-primary">
-                              {getSourceBadgeLabel(source, plan)}
+                              {getSourceBadgeLabel(source, routeDecision)}
                             </span>
                           </button>
                         ))}
@@ -1429,24 +1423,24 @@ export function ExploreTab({
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-md border border-border-subtle bg-bg-surface-card p-0.5">
               <button
-                onClick={() => setMode("agent")}
+                onClick={() => setMode("search")}
                 className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
-                  mode === "agent"
+                  mode === "search"
                     ? "bg-accent-primary text-white"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                Agent
+                Search
               </button>
               <button
-                onClick={() => setMode("classic")}
+                onClick={() => setMode("ask")}
                 className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
-                  mode === "classic"
+                  mode === "ask"
                     ? "bg-accent-primary text-white"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                Classic
+                Ask
               </button>
             </div>
             <div className="inline-flex rounded-md border border-border-subtle bg-bg-surface-card p-0.5">
@@ -1557,9 +1551,9 @@ export function ExploreTab({
                   onChange={(event) => setInputValue(event.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={
-                    mode === "agent"
-                      ? "Ask your knowledge base (Agent mode)..."
-                      : "Ask your knowledge base (Classic mode)..."
+                    mode === "ask"
+                      ? "Ask with smart routing for weekly summaries, clarifications, or synthesis..."
+                      : "Search your library with evidence-first retrieval..."
                   }
                   rows={1}
                   className="max-h-32 flex-1 resize-none bg-transparent px-4 py-3 text-base font-sans text-text-primary placeholder:text-text-tertiary focus:outline-none"
@@ -1581,9 +1575,9 @@ export function ExploreTab({
               </div>
               <div className="mt-2 text-center text-xs font-sans text-text-tertiary">
                 <p>
-                  {mode === "agent"
-                    ? "Agent mode shows the planner route, tool calls, source controls, and editable context drafts."
-                    : "Classic mode searches your history and returns concise source-grounded answers."}
+                  {mode === "ask"
+                    ? "Ask uses intent routing for weekly summaries, clarifications, and source-grounded synthesis."
+                    : "Search goes straight to retrieval and keeps the answer evidence-first and predictable."}
                 </p>
                 <p className="mt-1">
                   Current scope: {getSearchScopeSummary(activeSearchScope)}
@@ -1599,7 +1593,7 @@ export function ExploreTab({
           <div className="flex h-12 items-center justify-between border-b border-border-subtle px-3">
             <div className="flex min-w-0 items-center gap-2">
               <Wrench className="h-4 w-4 text-text-secondary" strokeWidth={1.7} />
-              <p className="truncate text-sm font-sans text-text-primary">Execution Details</p>
+              <p className="truncate text-sm font-sans text-text-primary">Inspect Answer</p>
             </div>
             <button
               onClick={() => setDrawerMessageId(null)}
@@ -1612,24 +1606,24 @@ export function ExploreTab({
           <div className="border-b border-border-subtle px-3 py-2">
             <div className="inline-flex rounded-md border border-border-subtle bg-bg-surface-card p-0.5">
               <button
-                onClick={() => setDrawerTab("plan")}
+                onClick={() => setDrawerTab("overview")}
                 className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
-                  drawerTab === "plan"
+                  drawerTab === "overview"
                     ? "bg-accent-primary text-white"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                Plan
+                Overview
               </button>
               <button
-                onClick={() => setDrawerTab("tool_calls")}
+                onClick={() => setDrawerTab("trace")}
                 className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
-                  drawerTab === "tool_calls"
+                  drawerTab === "trace"
                     ? "bg-accent-primary text-white"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                Tool Calls
+                Trace
               </button>
               <button
                 onClick={() => setDrawerTab("sources")}
@@ -1642,32 +1636,36 @@ export function ExploreTab({
                 Sources
               </button>
               <button
-                onClick={() => setDrawerTab("context_draft")}
+                onClick={() => setDrawerTab("evidence_brief")}
                 className={`rounded px-2.5 py-1 text-xs font-sans transition-colors ${
-                  drawerTab === "context_draft"
+                  drawerTab === "evidence_brief"
                     ? "bg-accent-primary text-white"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                Context Draft
+                Evidence Brief
               </button>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3">
-            {drawerTab === "plan" ? (
+            {drawerTab === "overview" ? (
               <div className="space-y-4">
-                {drawerPlan ? (
+                {drawerInspectMeta ? (
                   <>
                     <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
                       <p className="mb-1 text-xs font-sans uppercase tracking-wider text-text-tertiary">
-                        Planner Decision
+                        Answer Route
                       </p>
                       <div className="space-y-1.5 text-sm font-sans text-text-primary">
-                        <p>Intent: {getIntentLabel(drawerPlan)}</p>
-                        <p>Route: {getPathLabel(drawerPlan)}</p>
-                        <p>Source limit: {drawerPlan.sourceLimit}</p>
-                        <p>Summary target: {drawerPlan.summaryTargetCount}</p>
+                        <p>Mode: {drawerInspectMeta.mode === "ask" ? "Ask" : "Search"}</p>
+                        <p>Route: {getRouteLabel(drawerInspectMeta)}</p>
+                        {drawerPlan && <p>Intent: {getIntentLabel(drawerPlan)}</p>}
+                        <p>Scope: {drawerInspectMeta.routeSummary?.scopeLabel ?? "All conversations"}</p>
+                        <p>
+                          Evidence: {drawerInspectMeta.routeSummary?.evidenceCount ?? drawerCandidates.length}
+                        </p>
+                        <p>LLM calls: {drawerInspectMeta.routeSummary?.llmCalls ?? 0}</p>
                         {getResolvedTimeScopeLabel(drawerPlan) && (
                           <p>Time scope: {getResolvedTimeScopeLabel(drawerPlan)}</p>
                         )}
@@ -1676,53 +1674,50 @@ export function ExploreTab({
 
                     <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
                       <p className="mb-1 text-xs font-sans uppercase tracking-wider text-text-tertiary">
-                        Why This Route
+                        Why Vesti Chose This Path
                       </p>
                       <p className="text-sm font-sans text-text-primary">
-                        {drawerPlan.reason}
+                        {drawerPlan?.reason ||
+                          "This answer used the shortest evidence path that could stay source-grounded."}
                       </p>
-                      {drawerPlan.answerGoal && (
+                      {drawerPlan?.clarifyingQuestion && (
                         <p className="mt-2 text-xs font-sans text-text-secondary">
-                          Goal: {drawerPlan.answerGoal}
-                        </p>
-                      )}
-                      {drawerPlan.clarifyingQuestion && (
-                        <p className="mt-2 text-xs font-sans text-text-secondary">
-                          Clarification: {drawerPlan.clarifyingQuestion}
+                          Clarification prompt: {drawerPlan.clarifyingQuestion}
                         </p>
                       )}
                     </div>
 
                     <div className="rounded-lg border border-border-subtle bg-bg-surface-card p-3">
-                      <p className="mb-2 text-xs font-sans uppercase tracking-wider text-text-tertiary">
-                        Planned Tools
+                      <p className="mb-1 text-xs font-sans uppercase tracking-wider text-text-tertiary">
+                        Evidence Coverage
                       </p>
-                      <div className="space-y-2">
-                        {(drawerPlan.toolPlan ?? []).map((toolName, index) => (
-                          <div key={`${toolName}-${index}`} className="rounded-md bg-bg-primary p-2">
-                            <p className="text-sm font-sans text-text-primary">
-                              {index + 1}. {TOOL_LABELS[toolName]}
-                            </p>
-                            <p className="mt-1 text-xs font-sans text-text-secondary">
-                              {TOOL_EXPLANATIONS[toolName]}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
+                      <p className="text-sm font-sans text-text-primary">
+                        {drawerCandidates.length > 0
+                          ? `This answer considered ${drawerCandidates.length} candidate source${
+                              drawerCandidates.length === 1 ? "" : "s"
+                            } and currently keeps ${selectedContextConversationIds.length} selected for inspection.`
+                          : "No candidate sources were preserved for this answer."}
+                      </p>
+                      {drawerInspectMeta.retrievalMeta && (
+                        <p className="mt-2 text-xs font-sans text-text-secondary">
+                          Retrieval route: {drawerInspectMeta.retrievalMeta.route}. Selected windows:{" "}
+                          {drawerInspectMeta.retrievalMeta.selectedWindowIds.length}.
+                        </p>
+                      )}
                     </div>
 
                     <p className="text-[11px] font-sans text-text-tertiary">
-                      The planner chooses the high-level route with the model. Tool execution stays
-                      bounded and inspectable in the app.
+                      Open Trace for step-by-step execution details, Sources to tune the evidence set,
+                      or Evidence Brief for the reusable source-grounded brief.
                     </p>
                   </>
                 ) : (
                   <p className="text-sm font-sans text-text-tertiary">
-                    No planner metadata was recorded for this answer.
+                    No inspect metadata was recorded for this answer.
                   </p>
                 )}
               </div>
-            ) : drawerTab === "tool_calls" ? (
+            ) : drawerTab === "trace" ? (
               <div className="space-y-3">
                 {drawerToolCalls.length > 0 ? (
                   drawerToolCalls.map(renderToolCallItem)
@@ -1742,7 +1737,7 @@ export function ExploreTab({
                     {getAssistantQuery(drawerMessage) || "Unavailable"}
                   </p>
                   <p className="mt-2 text-xs font-sans text-text-tertiary">
-                    Scope: {getSearchScopeSummary(drawerMessage.agentMeta?.searchScope)}
+                    Scope: {drawerInspectMeta?.routeSummary?.scopeLabel ?? getSearchScopeSummary(drawerInspectMeta?.searchScope)}
                   </p>
                   {getResolvedTimeScopeLabel(drawerPlan) && (
                     <p className="mt-1 text-xs font-sans text-text-tertiary">
@@ -1822,7 +1817,7 @@ export function ExploreTab({
                 {drawerNotice && (
                   <p
                     className={`text-xs font-sans ${
-                      contextSaveStatus === "error" ? "text-danger" : "text-text-secondary"
+                      selectionSaveStatus === "error" ? "text-danger" : "text-text-secondary"
                     }`}
                   >
                     {drawerNotice}
@@ -1831,11 +1826,11 @@ export function ExploreTab({
 
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={handleSaveContextDraft}
-                    disabled={contextSaveStatus === "saving"}
+                    onClick={handleSaveEvidenceSelection}
+                    disabled={selectionSaveStatus === "saving"}
                     className="rounded-md bg-accent-primary px-3 py-1.5 text-xs font-sans text-white transition-colors hover:bg-accent-primary/90 disabled:opacity-50"
                   >
-                    {contextSaveStatus === "saving" ? "Saving..." : "Save Selection"}
+                    {selectionSaveStatus === "saving" ? "Saving..." : "Save Source Set"}
                   </button>
                   <button
                     onClick={handleRegenerateWithSelectedSources}
@@ -1850,11 +1845,11 @@ export function ExploreTab({
                     Regenerate Answer
                   </button>
                   <button
-                    onClick={() => setDrawerTab("context_draft")}
+                    onClick={() => setDrawerTab("evidence_brief")}
                     className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
                   >
                     <FileText className="h-3.5 w-3.5" />
-                    Open Draft
+                    Open Brief
                   </button>
                 </div>
 
@@ -1866,23 +1861,20 @@ export function ExploreTab({
               <div className="space-y-4">
                 <div>
                   <p className="mb-2 text-xs font-sans uppercase tracking-wider text-text-tertiary">
-                    Draft (Editable)
+                    Evidence Brief
                   </p>
                   <textarea
-                    value={contextDraft}
-                    onChange={(event) => {
-                      setContextDraft(event.target.value);
-                      setContextSaveStatus("idle");
-                    }}
+                    value={evidenceBrief}
+                    readOnly
                     rows={14}
-                    className="w-full resize-y rounded-lg border border-border-default bg-bg-primary p-3 text-sm font-sans text-text-primary focus:border-accent-primary focus:outline-none"
+                    className="w-full resize-y rounded-lg border border-border-default bg-bg-primary p-3 text-sm font-sans text-text-primary focus:outline-none"
                   />
                 </div>
 
                 {drawerNotice && (
                   <p
                     className={`text-xs font-sans ${
-                      contextSaveStatus === "error" ? "text-danger" : "text-text-secondary"
+                      selectionSaveStatus === "error" ? "text-danger" : "text-text-secondary"
                     }`}
                   >
                     {drawerNotice}
@@ -1891,32 +1883,18 @@ export function ExploreTab({
 
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={handleSaveContextDraft}
-                    disabled={contextSaveStatus === "saving"}
-                    className="rounded-md bg-accent-primary px-3 py-1.5 text-xs font-sans text-white transition-colors hover:bg-accent-primary/90 disabled:opacity-50"
-                  >
-                    {contextSaveStatus === "saving" ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    onClick={handleCopyContextDraft}
+                    onClick={handleCopyEvidenceBrief}
                     className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
                   >
                     <Clipboard className="h-3.5 w-3.5" />
                     Copy
                   </button>
                   <button
-                    onClick={handleDownloadContextDraft}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Download TXT
-                  </button>
-                  <button
-                    onClick={handleStartChatWithContext}
+                    onClick={handleStartChatWithBrief}
                     className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs font-sans text-text-secondary hover:bg-bg-surface-card"
                   >
                     <FileText className="h-3.5 w-3.5" />
-                    New Chat (Prefill)
+                    Start New Chat From Brief
                   </button>
                 </div>
               </div>
@@ -1934,7 +1912,7 @@ export function ExploreTab({
                   Choose Conversations
                 </p>
                 <p className="mt-1 text-xs font-sans text-text-tertiary">
-                  Search, preview, and pick the conversations the agent is allowed to use.
+                  Search, preview, and pick the conversations this answer is allowed to use.
                 </p>
               </div>
               <button
