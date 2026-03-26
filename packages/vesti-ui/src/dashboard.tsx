@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft,
   ChevronDown,
   Database,
   Loader2,
@@ -353,115 +352,117 @@ export function VestiDashboard({
     themeSyncStatus === "syncing"
       ? "Syncing appearance..."
       : themeSyncMessage || "Changes here stay in sync with the dock settings panel.";
+  const returnToSourceLabel =
+    activeTab === "library" && returnTab
+      ? returnTab === "explore"
+        ? "Back to Explore"
+        : "Back to Network"
+      : null;
+
+  const brand = (
+    <div className="flex items-center gap-2">
+      <img src={logoSrc} alt={logoAlt} className="h-7 w-7" />
+      <h1 className="text-base font-[family-name:var(--font-lora)] font-semibold text-text-primary">
+        Vesti
+      </h1>
+    </div>
+  );
+
+  const tabNav = (
+    <nav
+      aria-label="Dashboard sections"
+      className="flex items-center justify-center gap-3 lg:gap-5"
+    >
+      <button
+        type="button"
+        onClick={() => handleSelectTab("library")}
+        className={`inline-flex items-center px-3 py-1.5 text-[14px] leading-none font-mono font-medium uppercase tracking-[0.26em] transition-colors ${
+          activeTab === "library"
+            ? "text-text-primary"
+            : "text-text-tertiary hover:text-text-secondary"
+        }`}
+      >
+        LIBRARY
+      </button>
+      <button
+        type="button"
+        onClick={() => handleSelectTab("explore")}
+        className={`inline-flex items-center px-3 py-1.5 text-[14px] leading-none font-mono font-medium uppercase tracking-[0.26em] transition-colors ${
+          activeTab === "explore"
+            ? "text-text-primary"
+            : "text-text-tertiary hover:text-text-secondary"
+        }`}
+      >
+        EXPLORE
+      </button>
+      <button
+        type="button"
+        onClick={() => handleSelectTab("network")}
+        className={`inline-flex items-center px-3 py-1.5 text-[14px] leading-none font-mono font-medium uppercase tracking-[0.26em] transition-colors ${
+          activeTab === "network"
+            ? "text-text-primary"
+            : "text-text-tertiary hover:text-text-secondary"
+        }`}
+      >
+        NETWORK
+      </button>
+    </nav>
+  );
+
+  const userMenu = (
+    <div ref={userMenuRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setSettingsOpen((open) => !open)}
+        className="inline-flex items-center gap-1 rounded-lg p-1.5 transition-colors hover:bg-bg-surface-card"
+      >
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-primary text-sm font-sans text-white">
+          U
+        </div>
+        <ChevronDown strokeWidth={1.75} className="h-4 w-4 text-text-secondary" />
+      </button>
+      {settingsOpen && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-lg border border-border-subtle bg-bg-primary py-1 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
+          <button
+            type="button"
+            onClick={() => openDrawer("settings")}
+            className="inline-flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-sans text-text-primary transition-colors hover:bg-bg-surface-card"
+          >
+            <Settings strokeWidth={1.6} className="h-4 w-4" />
+            <span>Settings</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => openDrawer("data")}
+            className="inline-flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-sans text-text-primary transition-colors hover:bg-bg-surface-card"
+          >
+            <Database strokeWidth={1.6} className="h-4 w-4" />
+            <span>Data Operations</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <LibraryDataProvider storage={storage}>
       <div
         className={`${rootClassName ?? ""} relative flex h-screen flex-col bg-bg-primary text-text-primary`}
       >
-        <header className="flex h-14 items-center justify-between border-b border-border-subtle bg-bg-tertiary px-6">
-          <div className="flex items-center gap-2">
-            <img src={logoSrc} alt={logoAlt} className="h-7 w-7" />
-            <h1 className="text-base font-[family-name:var(--font-lora)] font-semibold text-text-primary">
-              Vesti
-            </h1>
+        <header className="bg-bg-tertiary">
+          <div className="hidden h-14 border-b border-border-subtle px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
+            <div className="justify-self-start">{brand}</div>
+            <div className="justify-self-center self-center">{tabNav}</div>
+            <div className="justify-self-end">{userMenu}</div>
           </div>
-
-          <div className="flex-1" />
-
-          <div ref={userMenuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setSettingsOpen((open) => !open)}
-              className="inline-flex items-center gap-1 rounded-lg p-1.5 transition-colors hover:bg-bg-surface-card"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-primary text-sm font-sans text-white">
-                U
-              </div>
-              <ChevronDown strokeWidth={1.75} className="h-4 w-4 text-text-secondary" />
-            </button>
-            {settingsOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-lg border border-border-subtle bg-bg-primary py-1 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
-                <button
-                  type="button"
-                  onClick={() => openDrawer("settings")}
-                  className="inline-flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-sans text-text-primary transition-colors hover:bg-bg-surface-card"
-                >
-                  <Settings strokeWidth={1.6} className="h-4 w-4" />
-                  <span>Settings</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openDrawer("data")}
-                  className="inline-flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-sans text-text-primary transition-colors hover:bg-bg-surface-card"
-                >
-                  <Database strokeWidth={1.6} className="h-4 w-4" />
-                  <span>Data Operations</span>
-                </button>
-              </div>
-            )}
+          <div className="lg:hidden">
+            <div className="flex h-14 items-center justify-between border-b border-border-subtle px-4 sm:px-6">
+              {brand}
+              {userMenu}
+            </div>
+            <div className="border-b border-border-subtle px-4 sm:px-6">{tabNav}</div>
           </div>
         </header>
-
-        <div className="border-b border-border-subtle bg-bg-tertiary px-6">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => handleSelectTab("library")}
-              className={`relative px-4 py-2.5 text-sm font-sans font-medium transition-all ${
-                activeTab === "library"
-                  ? "text-text-primary"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              Library
-              {activeTab === "library" && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-primary" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectTab("explore")}
-              className={`relative px-4 py-2.5 text-sm font-sans font-medium transition-all ${
-                activeTab === "explore"
-                  ? "text-text-primary"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              Explore
-              {activeTab === "explore" && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-primary" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectTab("network")}
-              className={`relative px-4 py-2.5 text-sm font-sans font-medium transition-all ${
-                activeTab === "network"
-                  ? "text-text-primary"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              Network
-              {activeTab === "network" && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-primary" />
-              )}
-            </button>
-            </div>
-
-            {activeTab === "library" && returnTab && (
-              <button
-                type="button"
-                onClick={handleReturnToSource}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-primary px-3 py-1.5 text-xs font-sans text-text-secondary transition-colors hover:bg-bg-surface-card hover:text-text-primary"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.7} />
-                {returnTab === "explore" ? "Back to Explore" : "Back to Network"}
-              </button>
-            )}
-          </div>
-        </div>
 
         <div className="flex-1 overflow-hidden">
           {mountedTabs.library && (
@@ -471,6 +472,8 @@ export function VestiDashboard({
                 themeMode={themeMode}
                 openConversationId={openConversationId}
                 onConversationOpened={() => setOpenConversationId(null)}
+                returnToSourceLabel={returnToSourceLabel}
+                onReturnToSource={returnToSourceLabel ? handleReturnToSource : undefined}
               />
             </div>
           )}
