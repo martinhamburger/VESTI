@@ -21,6 +21,11 @@ export {
   getArtifactExcerptLines,
   getArtifactExcerptText,
 } from "./lib/artifactSummary";
+export {
+  buildMessageFallbackDisplayText,
+  buildMessagePreviewText,
+  buildMessageSidecarSummaryLines,
+} from "./lib/messagePackage";
 export type { PipelineStageState } from "./components/SummaryPipelineProgress";
 export type {
   NotionDatabaseOption,
@@ -40,6 +45,7 @@ export type {
   GardenerResult,
   RagResponse,
   Message,
+  MessageAttachment,
   MessageArtifact,
   MessageCitation,
   ExportFormat,

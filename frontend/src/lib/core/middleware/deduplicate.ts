@@ -4,6 +4,7 @@ import { db } from "../../db/schema";
 import type { ConversationRecord, MessageRecord } from "../../db/schema";
 import { enforceStorageWriteGuard } from "../../db/storageLimits";
 import { isAstRoot } from "../../utils/astText";
+import { normalizeMessageAttachments } from "../../utils/messageAttachments";
 import { buildRichOnlyNormalizedHtmlSnapshot } from "../../utils/normalizedHtmlSnapshot";
 import { normalizeMessageArtifacts } from "../../utils/messageArtifacts";
 import { normalizeMessageCitations } from "../../utils/messageCitations";
@@ -19,11 +20,12 @@ function buildParsedSignatures(messages: ParsedMessage[]): string[] {
       contentText: message.textContent,
       contentAst: message.contentAst ?? null,
       contentAstVersion: message.contentAstVersion ?? null,
-      degradedNodesCount: message.degradedNodesCount,
-      citations: message.citations ?? [],
-      artifacts: message.artifacts ?? [],
-      normalizedHtmlSnapshot: message.normalizedHtmlSnapshot ?? null,
-    })
+        degradedNodesCount: message.degradedNodesCount,
+        citations: message.citations ?? [],
+        attachments: message.attachments ?? [],
+        artifacts: message.artifacts ?? [],
+        normalizedHtmlSnapshot: message.normalizedHtmlSnapshot ?? null,
+      })
   );
 }
 
@@ -43,6 +45,7 @@ function buildStoredSignatures(messages: MessageRecord[]): string[] {
         contentAstVersion: message.content_ast_version ?? null,
         degradedNodesCount: message.degraded_nodes_count,
         citations: message.citations ?? [],
+        attachments: message.attachments ?? [],
         artifacts: message.artifacts ?? [],
         normalizedHtmlSnapshot: message.normalized_html_snapshot ?? null,
       })
@@ -57,7 +60,9 @@ function signaturesMatch(a: string[], b: string[]): boolean {
 function sanitizeIncomingMessages(messages: ParsedMessage[]): ParsedMessage[] {
   return messages.filter(
     (message) =>
-      normalizeText(message.textContent).length > 0 || (message.artifacts?.length ?? 0) > 0,
+      normalizeText(message.textContent).length > 0 ||
+      (message.attachments?.length ?? 0) > 0 ||
+      (message.artifacts?.length ?? 0) > 0,
   );
 }
 
@@ -75,6 +80,7 @@ function buildSignature(params: {
   contentAstVersion: string | null | undefined;
   degradedNodesCount: number | undefined;
   citations: unknown;
+  attachments: unknown;
   artifacts: unknown;
   normalizedHtmlSnapshot: string | null;
 }): string {
@@ -85,6 +91,7 @@ function buildSignature(params: {
     contentAstVersion,
     degradedNodesCount,
     citations,
+    attachments,
     artifacts,
     normalizedHtmlSnapshot,
   } = params;
@@ -108,6 +115,14 @@ function buildSignature(params: {
       normalizedHtmlSnapshot: artifact.normalizedHtmlSnapshot ?? null,
     }))
   );
+  const attachmentSignature = JSON.stringify(
+    normalizeMessageAttachments(attachments).map((attachment) => ({
+      indexAlt: attachment.indexAlt,
+      label: attachment.label ?? null,
+      mime: attachment.mime ?? null,
+      occurrenceRole: attachment.occurrenceRole,
+    }))
+  );
   const snapshotSignature = normalizedHtmlSnapshot ?? "";
   return [
     role,
@@ -116,6 +131,7 @@ function buildSignature(params: {
     normalizeDegradedNodesCount(degradedNodesCount),
     astSignature,
     citationSignature,
+    attachmentSignature,
     artifactSignature,
     snapshotSignature,
   ].join("|");
@@ -194,6 +210,7 @@ export async function deduplicateAndSave(
         content_ast_version: message.contentAstVersion ?? null,
         degraded_nodes_count: normalizeDegradedNodesCount(message.degradedNodesCount),
         citations: normalizeMessageCitations(message.citations ?? []),
+        attachments: normalizeMessageAttachments(message.attachments ?? []),
         artifacts: normalizeMessageArtifacts(message.artifacts ?? []),
         normalized_html_snapshot:
           message.normalizedHtmlSnapshot ??
@@ -201,6 +218,7 @@ export async function deduplicateAndSave(
             html: message.htmlContent ?? null,
             ast: message.contentAst ?? null,
             hasCitations: (message.citations ?? []).length > 0,
+            hasAttachments: (message.attachments ?? []).length > 0,
             hasArtifacts: (message.artifacts ?? []).length > 0,
           }),
         created_at: message.timestamp ?? baseTimestamp + index,
@@ -259,19 +277,21 @@ export async function deduplicateAndSave(
       role: message.role,
       content_text: message.textContent,
       content_ast: message.contentAst ?? null,
-      content_ast_version: message.contentAstVersion ?? null,
-      degraded_nodes_count: normalizeDegradedNodesCount(message.degradedNodesCount),
-      citations: normalizeMessageCitations(message.citations ?? []),
-      artifacts: normalizeMessageArtifacts(message.artifacts ?? []),
-      normalized_html_snapshot:
-        message.normalizedHtmlSnapshot ??
+        content_ast_version: message.contentAstVersion ?? null,
+        degraded_nodes_count: normalizeDegradedNodesCount(message.degradedNodesCount),
+        citations: normalizeMessageCitations(message.citations ?? []),
+        attachments: normalizeMessageAttachments(message.attachments ?? []),
+        artifacts: normalizeMessageArtifacts(message.artifacts ?? []),
+        normalized_html_snapshot:
+          message.normalizedHtmlSnapshot ??
         buildRichOnlyNormalizedHtmlSnapshot({
-          html: message.htmlContent ?? null,
-          ast: message.contentAst ?? null,
-          hasCitations: (message.citations ?? []).length > 0,
-          hasArtifacts: (message.artifacts ?? []).length > 0,
-        }),
-      created_at: message.timestamp ?? baseTimestamp + index,
+            html: message.htmlContent ?? null,
+            ast: message.contentAst ?? null,
+            hasCitations: (message.citations ?? []).length > 0,
+            hasAttachments: (message.attachments ?? []).length > 0,
+            hasArtifacts: (message.artifacts ?? []).length > 0,
+          }),
+        created_at: message.timestamp ?? baseTimestamp + index,
     }));
 
     await db.messages.bulkAdd(inserts);

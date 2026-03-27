@@ -35,6 +35,7 @@ import {
   getConversationOriginAt,
 } from "../conversations/timestamps";
 import { SUPPORTED_PLATFORMS, normalizePlatform } from "../platform";
+import { normalizeMessageAttachments } from "../utils/messageAttachments";
 import { normalizeMessageArtifacts } from "../utils/messageArtifacts";
 import { normalizeMessageCitations } from "../utils/messageCitations";
 import { db } from "./schema";
@@ -358,6 +359,7 @@ function toMessage(record: MessageRecord): Message {
     content_ast_version: record.content_ast_version ?? null,
     degraded_nodes_count: degradedNodesCount,
     citations: normalizeMessageCitations(record.citations),
+    attachments: normalizeMessageAttachments(record.attachments),
     artifacts: normalizeMessageArtifacts(record.artifacts),
     normalized_html_snapshot:
       typeof record.normalized_html_snapshot === "string"

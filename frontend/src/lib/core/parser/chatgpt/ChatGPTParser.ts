@@ -20,6 +20,11 @@ import {
 } from "../shared/citationNoise";
 import { resolveCanonicalMessageText } from "../shared/canonicalMessageText";
 import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
+import {
+  createMessageAttachment,
+  inferMimeFromLabel,
+  sanitizeAttachmentLabel,
+} from "../../../utils/messageAttachments";
 import { logger } from "../../../utils/logger";
 
 const SELECTORS = {
@@ -128,6 +133,22 @@ const SELECTORS = {
     "[class*='model']",
   ],
   sourceTimes: ["main time[datetime]", "article time[datetime]"],
+  userAttachmentFileTiles: [
+    "[role='group'][aria-label]",
+    "[class*='group/file-tile'][aria-label]",
+  ],
+  userAttachmentImageButtons: [
+    "button[aria-label*='open image' i]",
+    "button[aria-label*='uploaded image' i]",
+    "button[aria-label*='view image' i]",
+    "button[aria-label*='打开图片' i]",
+    "button[aria-label*='全视图' i]",
+  ],
+  userAttachmentImages: [
+    "img[alt*='uploaded image' i]",
+    "img[alt*='已上传的图片' i]",
+    "img[alt*='图片' i]",
+  ],
 };
 
 const LANGUAGE_TOKEN_PATTERN = /^[a-z0-9+#.-]{1,24}$/i;
@@ -382,7 +403,7 @@ export class ChatGPTParser implements IParser {
         continue;
       }
 
-      if (!parsed.message.textContent.trim()) {
+      if (!this.hasParsedMessageSignal(parsed.message)) {
         droppedNoise += 1;
         continue;
       }
@@ -456,7 +477,7 @@ export class ChatGPTParser implements IParser {
         continue;
       }
 
-      if (!parsed.message.textContent.trim()) {
+      if (!this.hasParsedMessageSignal(parsed.message)) {
         droppedNoise += 1;
         continue;
       }
@@ -586,6 +607,7 @@ export class ChatGPTParser implements IParser {
       ast: ast.root,
       normalizeAstText: (value: string) => this.cleanExtractedText(value),
     });
+    const attachments = role === "user" ? this.extractUserAttachments(node) : [];
 
     return {
       message: {
@@ -595,6 +617,7 @@ export class ChatGPTParser implements IParser {
         contentAstVersion: ast.root ? "ast_v2" : null,
         degradedNodesCount: ast.degradedNodesCount,
         citations: sanitized.citations ?? [],
+        attachments,
         htmlContent: sanitizedContent.innerHTML,
       },
       astNodeCount: ast.astNodeCount,
@@ -777,6 +800,118 @@ export class ChatGPTParser implements IParser {
     return safeTextContent(element);
   }
 
+  private extractUserAttachments(node: Element): ParsedMessage["attachments"] {
+    type AttachmentCandidate = {
+      kind: "image" | "file";
+      element: Element;
+      label?: string;
+      mime?: string | null;
+    };
+
+    const candidates: AttachmentCandidate[] = [];
+    const seenElements = new Set<Element>();
+
+    const pushCandidate = (candidate: AttachmentCandidate) => {
+      if (seenElements.has(candidate.element)) {
+        return;
+      }
+      seenElements.add(candidate.element);
+      candidates.push(candidate);
+    };
+
+    for (const tile of queryAllWithinUnique(node, SELECTORS.userAttachmentFileTiles)) {
+      const label = this.readUserFileTileLabel(tile);
+      const mime = this.readUserFileTileMime(tile, label);
+      if (!label && !mime) {
+        continue;
+      }
+
+      pushCandidate({
+        kind: "file",
+        element: tile,
+        label,
+        mime,
+      });
+    }
+
+    for (const button of queryAllWithinUnique(node, SELECTORS.userAttachmentImageButtons)) {
+      pushCandidate({
+        kind: "image",
+        element: button,
+        label: undefined,
+        mime: null,
+      });
+    }
+
+    for (const image of queryAllWithinUnique(node, SELECTORS.userAttachmentImages)) {
+      const root = image.closest("button") ?? image;
+      const alt = image instanceof HTMLImageElement ? image.alt : image.getAttribute("alt");
+      pushCandidate({
+        kind: "image",
+        element: root,
+        label: sanitizeAttachmentLabel(alt),
+        mime: inferMimeFromLabel(alt),
+      });
+    }
+
+    candidates.sort((a, b) => {
+      if (a.element === b.element) return 0;
+      return a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING
+        ? -1
+        : 1;
+    });
+
+    let imageCount = 0;
+    let fileCount = 0;
+
+    return candidates.flatMap((candidate) => {
+      if (candidate.kind === "image") {
+        imageCount += 1;
+        const attachment = createMessageAttachment({
+          indexAlt: `Uploaded image ${imageCount}`,
+          label: candidate.label,
+          mime: candidate.mime,
+          occurrenceRole: "user_upload",
+        });
+        return attachment ? [attachment] : [];
+      }
+
+      fileCount += 1;
+      const attachment = createMessageAttachment({
+        indexAlt: `Uploaded file ${fileCount}`,
+        label: candidate.label,
+        mime: candidate.mime,
+        occurrenceRole: "user_upload",
+      });
+      return attachment ? [attachment] : [];
+    });
+  }
+
+  private readUserFileTileLabel(tile: Element): string | undefined {
+    const visibleLabel = queryFirstWithin(tile, [
+      ".font-semibold",
+      "[class*='font-semibold']",
+      "[class*='truncate']",
+    ]);
+    const directLabel = sanitizeAttachmentLabel(safeTextContent(visibleLabel));
+    if (directLabel) {
+      return directLabel;
+    }
+    return sanitizeAttachmentLabel(tile.getAttribute("aria-label"));
+  }
+
+  private readUserFileTileMime(tile: Element, label?: string): string | null {
+    const mimeHint = queryFirstWithin(tile, [
+      ".text-token-text-secondary",
+      "[class*='text-secondary']",
+    ]);
+    const fromVisibleType = inferMimeFromLabel(safeTextContent(mimeHint));
+    if (fromVisibleType) {
+      return fromVisibleType;
+    }
+    return inferMimeFromLabel(label);
+  }
+
   private inferRole(node: Element): MessageRole | null {
     if (this.hasConflictingExplicitMarkers(node)) {
       return null;
@@ -944,12 +1079,9 @@ export class ChatGPTParser implements IParser {
     const deduped: ParsedMessage[] = [];
 
     for (const message of messages) {
-      const signature = `${message.role}|${message.textContent.replace(/\s+/g, " ").trim()}`;
+      const signature = this.buildMessageSignature(message);
       const isDuplicate = deduped.slice(Math.max(0, deduped.length - 2)).some((existing) => {
-        const existingSignature = `${existing.role}|${existing.textContent
-          .replace(/\s+/g, " ")
-          .trim()}`;
-        return existingSignature === signature;
+        return this.buildMessageSignature(existing) === signature;
       });
 
       if (!isDuplicate) {
@@ -958,6 +1090,30 @@ export class ChatGPTParser implements IParser {
     }
 
     return deduped;
+  }
+
+  private buildMessageSignature(message: ParsedMessage): string {
+    const attachmentSignature = JSON.stringify(
+      (message.attachments ?? []).map((attachment) => ({
+        indexAlt: attachment.indexAlt,
+        label: attachment.label ?? null,
+        mime: attachment.mime ?? null,
+      })),
+    );
+    return [
+      message.role,
+      message.textContent.replace(/\s+/g, " ").trim(),
+      attachmentSignature,
+    ].join("|");
+  }
+
+  private hasParsedMessageSignal(message: ParsedMessage): boolean {
+    return (
+      message.textContent.trim().length > 0 ||
+      (message.attachments?.length ?? 0) > 0 ||
+      (message.citations?.length ?? 0) > 0 ||
+      (message.artifacts?.length ?? 0) > 0
+    );
   }
 
   private chooseBestExtraction(

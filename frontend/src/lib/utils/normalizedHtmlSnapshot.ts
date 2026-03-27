@@ -5,6 +5,7 @@ export function buildRichOnlyNormalizedHtmlSnapshot(params: {
   html: string | null | undefined;
   ast: AstRoot | null | undefined;
   hasCitations?: boolean;
+  hasAttachments?: boolean;
   hasArtifacts?: boolean;
 }): string | null {
   const html = params.html?.trim();
@@ -12,7 +13,7 @@ export function buildRichOnlyNormalizedHtmlSnapshot(params: {
     return null;
   }
 
-  if (params.hasCitations || params.hasArtifacts) {
+  if (params.hasCitations || params.hasAttachments || params.hasArtifacts) {
     return html;
   }
 

@@ -1,6 +1,10 @@
 import type { Conversation, Message } from "../types";
 import { formatArtifactDescriptor, getArtifactExcerptText } from "@vesti/ui";
 import { extractAstPlainText, inspectAstStructure, isAstRoot, shouldPreferAstCanonicalText } from "../utils/astText";
+import {
+  buildMessageSidecarSummaryLines,
+  resolveCanonicalBodyText,
+} from "../utils/messageContentPackage";
 
 const PATH_PATTERN =
   /(?:[A-Za-z]:\\[^\s`"')]+|(?:\.?\.?(?:\/|\\))?(?:[\w.-]+(?:\/|\\))+[\w./\\-]*[\w-]+(?:\.[A-Za-z0-9]+)?)/g;
@@ -36,15 +40,6 @@ export interface PromptReadyConversationContext {
   messages: PromptReadyMessage[];
   transcript: string;
   bodyChars: number;
-}
-
-function normalizeBodyText(value: string): string {
-  return value
-    .replace(/\r/g, "")
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t\f\v]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
 
 function unique(values: string[]): string[] {
@@ -93,36 +88,16 @@ function buildStructureSignals(message: Message, bodyText: string): PromptStruct
     hasList: astStats?.hasList ?? false,
     hasTable: astStats?.hasTable ?? /\|.+\|/.test(bodyText),
     hasCode:
-      astStats?.hasCodeBlock ??
-      /```/.test(bodyText) ||
+      (astStats?.hasCodeBlock ?? /```/.test(bodyText)) ||
       hasCommandLikeText,
     hasMath: astStats?.hasMath ?? INLINE_MATH_PATTERN.test(bodyText),
     hasBlockquote: astStats?.hasBlockquote ?? false,
     hasHeading: astStats?.hasHeading ?? false,
-    hasAttachment: astStats?.hasAttachment ?? false,
+    hasAttachment:
+      (astStats?.hasAttachment ?? false) || (message.attachments ?? []).length > 0,
     hasCitations: (message.citations ?? []).length > 0,
     hasArtifacts: (message.artifacts ?? []).length > 0,
   };
-}
-
-function resolveCanonicalBodyText(message: Message): string {
-  const fallbackText = normalizeBodyText(message.content_text);
-  const astRoot = isAstRoot(message.content_ast) ? message.content_ast : null;
-
-  if (
-    astRoot &&
-    shouldPreferAstCanonicalText({
-      root: astRoot,
-      fallbackText,
-    })
-  ) {
-    const canonical = normalizeBodyText(extractAstPlainText(astRoot));
-    if (canonical) {
-      return canonical;
-    }
-  }
-
-  return fallbackText;
 }
 
 function buildSignalSummaryLine(signals: PromptStructureSignals): string | null {
@@ -143,23 +118,6 @@ function buildSignalSummaryLine(signals: PromptStructureSignals): string | null 
   }
 
   return `Signals: ${labels.join(", ")}`;
-}
-
-function buildCitationSummaryLines(message: Message): string[] {
-  const citations = message.citations ?? [];
-  if (citations.length === 0) {
-    return [];
-  }
-
-  const lines = citations
-    .slice(0, 3)
-    .map((citation) => `Source: ${citation.label} (${citation.host})`);
-
-  if (citations.length > 3) {
-    lines.push(`Source: ... and ${citations.length - 3} more`);
-  }
-
-  return lines;
 }
 
 function buildArtifactSummaryLines(message: Message): string[] {
@@ -250,8 +208,7 @@ export function createPromptReadyMessages(messages: Message[]): PromptReadyMessa
       const bodyText = resolveCanonicalBodyText(message);
       const structureSignals = buildStructureSignals(message, bodyText);
       const sidecarSummaryLines = [
-        ...buildCitationSummaryLines(message),
-        ...buildArtifactSummaryLines(message),
+        ...buildMessageSidecarSummaryLines(message).slice(0, 6),
       ];
       const transcriptText = buildTranscriptText(
         bodyText,

@@ -44,7 +44,7 @@ function collectExcerptLines(value: string, maxLines: number, maxCharsPerLine: n
 }
 
 export function formatArtifactDescriptor(artifact: MessageArtifact): string {
-  const parts = [artifact.kind];
+  const parts: string[] = [artifact.kind];
 
   if (artifact.captureMode) {
     parts.push(`mode=${artifact.captureMode}`);

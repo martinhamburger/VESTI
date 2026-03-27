@@ -14,6 +14,11 @@ import {
 import { extractAstFromElement } from "../shared/astExtractor";
 import { resolveCanonicalMessageText } from "../shared/canonicalMessageText";
 import { astPerfModeController, type AstPerfMode } from "../shared/astPerfMode";
+import {
+  createMessageAttachment,
+  inferMimeFromLabel,
+  sanitizeAttachmentLabel,
+} from "../../../utils/messageAttachments";
 import { logger } from "../../../utils/logger";
 
 const SELECTORS = {
@@ -74,6 +79,16 @@ const SELECTORS = {
     /^gemini can make mistakes\.?/i,
   ],
   sourceTimes: ["main time[datetime]", "article time[datetime]"],
+  userAttachmentContainers: [".file-preview-container"],
+  userAttachmentImages: [
+    ".file-preview-container img[data-test-id='uploaded-img']",
+    ".file-preview-container img[alt*='uploaded image']",
+  ],
+  userAttachmentInteractive: [
+    ".file-preview-container button[aria-label]",
+    ".file-preview-container [role='button'][aria-label]",
+    ".file-preview-container [aria-label]",
+  ],
 };
 
 const SESSION_ID_QUERY_KEYS = [
@@ -256,7 +271,7 @@ export class GeminiParser implements IParser {
         droppedUnknownRole += 1;
         continue;
       }
-      if (!parsed.message.textContent.trim()) {
+      if (!this.hasParsedMessageSignal(parsed.message)) {
         droppedNoise += 1;
         continue;
       }
@@ -307,7 +322,7 @@ export class GeminiParser implements IParser {
         droppedUnknownRole += 1;
         continue;
       }
-      if (!parsed.message.textContent.trim()) {
+      if (!this.hasParsedMessageSignal(parsed.message)) {
         droppedNoise += 1;
         continue;
       }
@@ -374,6 +389,7 @@ export class GeminiParser implements IParser {
           ? this.stripUserLabelPrefix(this.cleanExtractedText(value))
           : this.cleanExtractedText(value),
     });
+    const attachments = role === "user" ? this.extractUserAttachments(node) : [];
 
     return {
       message: {
@@ -382,11 +398,253 @@ export class GeminiParser implements IParser {
         contentAst,
         contentAstVersion: contentAst ? "ast_v2" : null,
         degradedNodesCount: astResult.degradedNodesCount,
+        attachments,
         htmlContent: contentEl ? contentEl.innerHTML : undefined,
       },
       degradedNodesCount: astResult.degradedNodesCount,
       astNodeCount: astResult.astNodeCount,
     };
+  }
+
+  private extractUserAttachments(node: Element): ParsedMessage["attachments"] {
+    type AttachmentCandidate = {
+      kind: "image" | "file";
+      element: Element;
+      label?: string;
+      mime?: string | null;
+    };
+
+    const containers = queryAllWithinUnique(node, SELECTORS.userAttachmentContainers).filter(
+      (container) => this.hasAttachmentContainerSignal(container),
+    );
+    if (containers.length === 0) {
+      return [];
+    }
+
+    const candidates: AttachmentCandidate[] = [];
+    const seen = new Set<Element>();
+
+    const pushCandidate = (candidate: AttachmentCandidate) => {
+      if (seen.has(candidate.element)) {
+        return;
+      }
+      seen.add(candidate.element);
+      candidates.push(candidate);
+    };
+
+    for (const container of containers) {
+      for (const image of queryAllWithinUnique(container, SELECTORS.userAttachmentImages)) {
+        const root = image.closest("button, [role='button']") ?? image;
+        const label = this.readAttachmentLabel(image);
+        pushCandidate({
+          kind: "image",
+          element: root,
+          label,
+          mime: inferMimeFromLabel(label),
+        });
+      }
+
+      for (const interactive of queryAllWithinUnique(container, SELECTORS.userAttachmentInteractive)) {
+        const kind = this.classifyAttachmentKind(interactive);
+        if (!kind) {
+          continue;
+        }
+
+        const label = this.readAttachmentLabel(interactive);
+        const mime = this.readMimeHint(interactive) ?? inferMimeFromLabel(label);
+        pushCandidate({
+          kind,
+          element: interactive,
+          label,
+          mime,
+        });
+      }
+    }
+
+    candidates.sort((a, b) => {
+      if (a.element === b.element) return 0;
+      return a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING
+        ? -1
+        : 1;
+    });
+
+    let imageCount = 0;
+    let fileCount = 0;
+
+    return candidates.flatMap((candidate) => {
+      if (candidate.kind === "image") {
+        imageCount += 1;
+        const attachment = createMessageAttachment({
+          indexAlt: `Uploaded image ${imageCount}`,
+          label: candidate.label,
+          mime: candidate.mime,
+          occurrenceRole: "user_upload",
+        });
+        return attachment ? [attachment] : [];
+      }
+
+      fileCount += 1;
+      const attachment = createMessageAttachment({
+        indexAlt: `Uploaded file ${fileCount}`,
+        label: candidate.label,
+        mime: candidate.mime,
+        occurrenceRole: "user_upload",
+      });
+      return attachment ? [attachment] : [];
+    });
+  }
+
+  private hasAttachmentContainerSignal(container: Element): boolean {
+    if (container.querySelector("[data-test-id='uploaded-img']")) {
+      return true;
+    }
+
+    if (container.querySelector("[data-test-id='uploaded-file'], .new-file-preview-container")) {
+      return true;
+    }
+
+    const text = safeTextContent(container);
+    if (this.hasFileLikeSignal(text) || this.hasImageLikeSignal(text)) {
+      return true;
+    }
+
+    return Array.from(container.querySelectorAll("[aria-label]")).some((element) => {
+      const label = element.getAttribute("aria-label");
+      return this.hasFileLikeSignal(label) || this.hasImageLikeSignal(label);
+    });
+  }
+
+  private classifyAttachmentKind(element: Element): "image" | "file" | null {
+    if (this.findFileAttachmentRoot(element)) {
+      return "file";
+    }
+
+    if (this.hasUploadedImageSignal(element)) {
+      return "image";
+    }
+
+    const label = [
+      element.getAttribute("aria-label"),
+      safeTextContent(element),
+      this.readMimeHint(element),
+    ]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .join(" ");
+
+    if (this.hasImageLikeSignal(label)) {
+      return "image";
+    }
+
+    if (this.hasFileLikeSignal(label)) {
+      return "file";
+    }
+
+    return null;
+  }
+
+  private hasImageLikeSignal(value: string | null | undefined): boolean {
+    if (typeof value !== "string") {
+      return false;
+    }
+    return /(?:image|photo|picture|图片|照片|相片)/i.test(value);
+  }
+
+  private hasFileLikeSignal(value: string | null | undefined): boolean {
+    if (typeof value !== "string") {
+      return false;
+    }
+    return (
+      /\.[a-z0-9]{2,8}\b/i.test(value) ||
+      /\b(?:pdf|csv|json|html|txt|markdown|docx?|xlsx?|pptx?|zip)\b/i.test(value)
+    );
+  }
+
+  private readAttachmentLabel(element: Element): string | undefined {
+    const fileLabel = this.readFileAttachmentLabel(element);
+    if (fileLabel) {
+      return fileLabel;
+    }
+
+    const visible = sanitizeAttachmentLabel(safeTextContent(element));
+    if (visible) {
+      return visible;
+    }
+    return sanitizeAttachmentLabel(element.getAttribute("aria-label"));
+  }
+
+  private readMimeHint(element: Element): string | undefined {
+    const fileMime = this.readFileAttachmentMime(element);
+    if (fileMime) {
+      return fileMime;
+    }
+
+    const text = safeTextContent(element);
+    const mime = inferMimeFromLabel(text);
+    if (mime) {
+      return mime;
+    }
+
+    const aria = element.getAttribute("aria-label");
+    const fromAria = inferMimeFromLabel(aria);
+    return fromAria ?? undefined;
+  }
+
+  private hasUploadedImageSignal(element: Element): boolean {
+    if (element.matches("[data-test-id='uploaded-img']")) {
+      return true;
+    }
+
+    if (element.querySelector("[data-test-id='uploaded-img']")) {
+      return true;
+    }
+
+    const alt = element.getAttribute("alt");
+    return typeof alt === "string" && /uploaded image|上传图片/i.test(alt);
+  }
+
+  private findFileAttachmentRoot(element: Element): Element | null {
+    if (element.matches("[data-test-id='uploaded-file'], .new-file-preview-container")) {
+      return element;
+    }
+    return element.closest("[data-test-id='uploaded-file'], .new-file-preview-container");
+  }
+
+  private readFileAttachmentLabel(element: Element): string | undefined {
+    const fileRoot = this.findFileAttachmentRoot(element);
+    if (!fileRoot) {
+      return undefined;
+    }
+
+    const nameEl = queryFirstWithin(fileRoot, [".new-file-name", "[class*='new-file-name']"]);
+    const visibleName = sanitizeAttachmentLabel(safeTextContent(nameEl));
+    if (visibleName) {
+      return visibleName;
+    }
+
+    return sanitizeAttachmentLabel(fileRoot.getAttribute("aria-label")) ??
+      sanitizeAttachmentLabel(element.getAttribute("aria-label"));
+  }
+
+  private readFileAttachmentMime(element: Element): string | undefined {
+    const fileRoot = this.findFileAttachmentRoot(element);
+    if (!fileRoot) {
+      return undefined;
+    }
+
+    const typeEl = queryFirstWithin(fileRoot, [".new-file-type", "[class*='new-file-type']"]);
+    const visibleType = inferMimeFromLabel(safeTextContent(typeEl));
+    if (visibleType) {
+      return visibleType ?? undefined;
+    }
+
+    const icon = queryFirstWithin(fileRoot, ["img[alt]", "[data-test-id='new-file-icon'][alt]"]);
+    const iconAlt = icon?.getAttribute("alt");
+    const fromIconAlt = inferMimeFromLabel(iconAlt);
+    if (fromIconAlt) {
+      return fromIconAlt ?? undefined;
+    }
+
+    return undefined;
   }
 
   private inferRole(node: Element): MessageRole | null {
@@ -605,14 +863,11 @@ export class GeminiParser implements IParser {
     const deduped: ParsedMessage[] = [];
 
     for (const message of messages) {
-      const signature = `${message.role}|${message.textContent.replace(/\s+/g, " ").trim()}`;
+      const signature = this.buildMessageSignature(message);
       const isDuplicate = deduped
         .slice(Math.max(0, deduped.length - 2))
         .some((existing) => {
-          const existingSignature = `${existing.role}|${existing.textContent
-            .replace(/\s+/g, " ")
-            .trim()}`;
-          return existingSignature === signature;
+          return this.buildMessageSignature(existing) === signature;
         });
 
       if (!isDuplicate) {
@@ -621,6 +876,30 @@ export class GeminiParser implements IParser {
     }
 
     return deduped;
+  }
+
+  private buildMessageSignature(message: ParsedMessage): string {
+    const attachmentSignature = JSON.stringify(
+      (message.attachments ?? []).map((attachment) => ({
+        indexAlt: attachment.indexAlt,
+        label: attachment.label ?? null,
+        mime: attachment.mime ?? null,
+      })),
+    );
+    return [
+      message.role,
+      message.textContent.replace(/\s+/g, " ").trim(),
+      attachmentSignature,
+    ].join("|");
+  }
+
+  private hasParsedMessageSignal(message: ParsedMessage): boolean {
+    return (
+      message.textContent.trim().length > 0 ||
+      (message.attachments?.length ?? 0) > 0 ||
+      (message.citations?.length ?? 0) > 0 ||
+      (message.artifacts?.length ?? 0) > 0
+    );
   }
 
   private chooseBestExtraction(

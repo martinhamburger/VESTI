@@ -27,6 +27,7 @@ import type {
   SearchConversationMatchesQuery,
   MessageCitation,
   MessageArtifact,
+  MessageAttachment,
 } from "../types";
 import type { AstRoot, AstVersion } from "../types/ast";
 
@@ -84,6 +85,7 @@ export interface ParsedMessage {
   contentAstVersion?: AstVersion | null;
   degradedNodesCount?: number;
   citations?: MessageCitation[];
+  attachments?: MessageAttachment[];
   artifacts?: MessageArtifact[];
   normalizedHtmlSnapshot?: string | null;
   htmlContent?: string;
