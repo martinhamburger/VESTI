@@ -1,27 +1,54 @@
-﻿import { SearchLineIcon } from "./ThreadSearchIcons";
+import type { KeyboardEventHandler } from "react";
+import { SearchLineIcon } from "./ThreadSearchIcons";
 
 interface SearchInputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  autoFocus?: boolean;
+  onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
+  ariaLabel?: string;
+  className?: string;
+  variant?: "default" | "threads-glass";
 }
 
 export function SearchInput({
   value,
   onChange,
   placeholder = "Search conversations",
+  autoFocus = false,
+  onKeyDown,
+  ariaLabel,
+  className,
+  variant = "default",
 }: SearchInputProps) {
+  const isEmpty = value.trim().length === 0;
+  const rootClassName = [
+    "vesti-search-input",
+    variant === "threads-glass" ? "vesti-search-input-glass" : "vesti-search-input-default",
+    className ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="relative flex items-center">
-      <SearchLineIcon className="pointer-events-none absolute left-3 h-4 w-4 text-text-tertiary" />
+    <div className={rootClassName} data-empty={isEmpty ? "true" : "false"}>
+      <SearchLineIcon className="vesti-search-input-icon" />
+      {variant === "threads-glass" ? (
+        <span className="vesti-search-input-placeholder" aria-hidden="true">
+          {placeholder}
+        </span>
+      ) : null}
       <input
         type="text"
+        autoFocus={autoFocus}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-9 w-full rounded-sm border border-border-default bg-bg-primary pl-9 pr-3 text-vesti-md font-sans text-text-primary placeholder:text-text-tertiary transition-[border-color,box-shadow] [transition-duration:120ms] ease-in-out focus-visible:border-border-focus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary-light"
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={onKeyDown}
+        aria-label={ariaLabel ?? placeholder}
+        placeholder={variant === "threads-glass" ? "" : placeholder}
+        className="vesti-search-input-field"
       />
     </div>
   );
 }
-

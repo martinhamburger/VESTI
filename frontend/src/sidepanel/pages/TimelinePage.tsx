@@ -12,6 +12,7 @@ import {
 } from "~lib/services/storageService";
 import { PLATFORM_TONE } from "../components/platformTone";
 import { ThreadsFilterDisclosure } from "../components/ThreadsFilterDisclosure";
+import { SearchInput } from "../components/SearchInput";
 import { ConversationList } from "../containers/ConversationList";
 import { SearchLineIcon } from "../components/ThreadSearchIcons";
 import {
@@ -481,52 +482,51 @@ export function TimelinePage({
   };
 
   return (
-    <div className="flex h-full flex-col bg-bg-app">
+      <div className="flex h-full flex-col bg-bg-app">
       {headerMode === "search" ? (
-        <header className="vesti-page-header gap-2">
-          <div className="threads-search-surface flex h-8 flex-1 items-center gap-2 rounded-lg px-3">
-            <SearchLineIcon className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
-            <input
-              type="text"
-              autoFocus
-              value={query}
-              onChange={(event) => {
-                const nextQuery = event.target.value;
-                dispatch({ type: "QUERY_CHANGED", query: nextQuery });
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  handleCancelSearch();
-                }
-              }}
-              placeholder="Search conversations"
-              className="h-full w-full bg-transparent text-vesti-sm text-text-primary outline-none placeholder:text-text-tertiary"
-            />
-          </div>
+        <header className="vesti-page-header threads-header threads-header-searching">
+          <SearchInput
+            autoFocus
+            value={query}
+            onChange={(nextQuery) => {
+              dispatch({ type: "QUERY_CHANGED", query: nextQuery });
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                handleCancelSearch();
+              }
+            }}
+            placeholder="Search conversations"
+            ariaLabel="Search conversations"
+            variant="threads-glass"
+            className="threads-header-search-input"
+          />
           <button
             type="button"
             onClick={handleCancelSearch}
-            className="rounded-sm px-1 py-1 text-vesti-sm font-medium text-text-secondary transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+            className="threads-header-search-cancel"
           >
             Cancel
           </button>
         </header>
       ) : (
-        <header className="vesti-page-header justify-between">
-          <div className="flex min-w-0 items-center gap-3">
+        <header className="vesti-page-header threads-header">
+          <div className="threads-header-main">
             <h1 className="vesti-page-title text-text-primary">Threads</h1>
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-vesti-xs font-medium text-success/90">
+            <span className="threads-header-capture-status" title={`${firstCapturedTodayCount} first captured today`}>
               <span className="h-1.5 w-1.5 rounded-full bg-success" />
-              {firstCapturedTodayCount} first captured today
+              <span className="threads-header-capture-copy">
+                {firstCapturedTodayCount} first captured today
+              </span>
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-0.5">
+          <div className="threads-header-actions">
             <button
               type="button"
               aria-label="Search conversations"
               onClick={handleOpenSearch}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-text-tertiary transition-colors duration-150 hover:bg-bg-secondary hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+              className="threads-header-icon-btn"
             >
               <SearchLineIcon className="h-3.5 w-3.5" />
             </button>
@@ -534,15 +534,14 @@ export function TimelinePage({
               type="button"
               aria-label="Filter conversations"
               onClick={handleToggleFilter}
-              className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
+              className={`threads-header-icon-btn ${
                 headerMode === "filter"
-                  ? "bg-bg-secondary text-text-primary"
-                  : "text-text-tertiary hover:bg-bg-secondary hover:text-text-secondary"
+                  ? "threads-header-icon-btn-active"
+                  : ""
               }`}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.8} />
             </button>
-
           </div>
         </header>
       )}
