@@ -1,11 +1,11 @@
 import { formatArtifactDescriptor, getArtifactExcerptText } from "@vesti/ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Copy, Check, ChevronDown, Link2, Paperclip } from "lucide-react";
+import { Copy, Check, ChevronDown, Link2, Paperclip, Sparkles } from "lucide-react";
 import type { Message, Platform } from "~lib/types";
 import type { AstRoot } from "~lib/types/ast";
 import { AstMessageRenderer } from "./AstMessageRenderer";
-import { DisclosureSection } from "./DisclosureSection";
 import { PLATFORM_TONE } from "./platformTone";
+import { ReaderSidecarDisclosure } from "./ReaderSidecarDisclosure";
 import {
   buildMessageFallbackDisplayText,
   buildMessagePreviewText,
@@ -89,6 +89,10 @@ export function MessageBubble({
 
   const isAi = message.role === "ai";
   const shouldCollapse = canCollapse && !isExpanded;
+  const citationCount = message.citations?.length ?? 0;
+  const attachmentCount = message.attachments?.length ?? 0;
+  const artifactCount = message.artifacts?.length ?? 0;
+  const hasSidecars = citationCount > 0 || attachmentCount > 0 || artifactCount > 0;
 
   useLayoutEffect(() => {
     const bodyEl = bodyRef.current;
@@ -208,112 +212,6 @@ export function MessageBubble({
         ) : null}
       </div>
 
-      {(message.citations ?? []).length > 0 ? (
-        <div className="mt-3">
-          <DisclosureSection
-            title="Sources"
-            description={`${message.citations?.length ?? 0} linked source${(message.citations?.length ?? 0) === 1 ? "" : "s"}`}
-            icon={<Link2 className="h-3.5 w-3.5" strokeWidth={1.75} />}
-          >
-            <div className="space-y-2">
-              {(message.citations ?? []).map((citation) => (
-                <a
-                  key={citation.href}
-                  href={citation.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block rounded-lg border border-border-subtle bg-bg-primary/80 px-3 py-2 transition-colors hover:bg-bg-secondary/70"
-                >
-                  <div className="text-[12px] font-medium text-text-primary">
-                    {citation.label}
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-text-tertiary">
-                    {citation.host}
-                  </div>
-                </a>
-              ))}
-            </div>
-          </DisclosureSection>
-        </div>
-      ) : null}
-
-      {(message.attachments ?? []).length > 0 ? (
-        <div className="mt-3">
-          <DisclosureSection
-            title="Attachments"
-            description={`${message.attachments?.length ?? 0} indexed attachment${(message.attachments?.length ?? 0) === 1 ? "" : "s"}`}
-            icon={<Paperclip className="h-3.5 w-3.5" strokeWidth={1.75} />}
-          >
-            <div className="space-y-2">
-              {(message.attachments ?? []).map((attachment, index) => {
-                const secondaryLabel =
-                  attachment.label && attachment.label !== attachment.indexAlt
-                    ? attachment.label
-                    : null;
-
-                return (
-                  <div
-                    key={`${attachment.indexAlt}-${attachment.label ?? index}`}
-                    className="rounded-lg border border-border-subtle bg-bg-primary/80 px-3 py-2"
-                  >
-                    <div className="text-[12px] font-medium text-text-primary">
-                      {attachment.indexAlt}
-                    </div>
-                    {secondaryLabel ? (
-                      <div className="mt-0.5 text-[11px] text-text-secondary">
-                        {secondaryLabel}
-                      </div>
-                    ) : null}
-                    {attachment.mime ? (
-                      <div className="mt-0.5 text-[11px] text-text-tertiary">
-                        {attachment.mime}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </DisclosureSection>
-        </div>
-      ) : null}
-
-      {(message.artifacts ?? []).length > 0 ? (
-        <div className="mt-3">
-          <DisclosureSection
-            title="Artifacts"
-            description={`${message.artifacts?.length ?? 0} captured artifact${(message.artifacts?.length ?? 0) === 1 ? "" : "s"}`}
-          >
-            <div className="space-y-2">
-              {(message.artifacts ?? []).map((artifact, index) => {
-                const excerpt = getArtifactExcerptText(artifact, {
-                  maxLines: 2,
-                  maxCharsPerLine: 100,
-                });
-
-                return (
-                  <div
-                    key={`${artifact.kind}-${artifact.label ?? index}`}
-                    className="rounded-lg border border-border-subtle bg-bg-primary/80 px-3 py-2"
-                  >
-                    <div className="text-[12px] font-medium text-text-primary">
-                      {artifact.label || artifact.kind}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-text-tertiary">
-                      {formatArtifactDescriptor(artifact)}
-                    </div>
-                    {excerpt ? (
-                      <div className="mt-2 whitespace-pre-wrap text-[11px] leading-5 text-text-secondary">
-                        {excerpt}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </DisclosureSection>
-        </div>
-      ) : null}
-
       <div className={`reader-expand-row ${canCollapse ? "has-btn" : ""}`}>
         {canCollapse ? (
           <button
@@ -326,6 +224,106 @@ export function MessageBubble({
           </button>
         ) : null}
       </div>
+
+      {hasSidecars ? (
+        <div className="reader-turn-sidecars">
+          {citationCount > 0 ? (
+            <div className="reader-sidecar-block">
+              <ReaderSidecarDisclosure
+                title={citationCount === 1 ? "Source" : "Sources"}
+                count={citationCount}
+                icon={<Link2 className="h-3.5 w-3.5" />}
+              >
+                <div className="reader-sidecar-list">
+                  {(message.citations ?? []).map((citation) => (
+                    <a
+                      key={citation.href}
+                      href={citation.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="reader-sidecar-row reader-sidecar-row-link"
+                    >
+                      <div className="reader-sidecar-row-title">{citation.label}</div>
+                      <div className="reader-sidecar-row-meta">{citation.host}</div>
+                    </a>
+                  ))}
+                </div>
+              </ReaderSidecarDisclosure>
+            </div>
+          ) : null}
+
+          {attachmentCount > 0 ? (
+            <div className="reader-sidecar-block">
+              <ReaderSidecarDisclosure
+                title={attachmentCount === 1 ? "Attachment" : "Attachments"}
+                count={attachmentCount}
+                icon={<Paperclip className="h-3.5 w-3.5" />}
+                trayVariant="compact"
+              >
+                <div className="reader-sidecar-list">
+                  {(message.attachments ?? []).map((attachment, index) => {
+                    const secondaryLabel =
+                      attachment.label && attachment.label !== attachment.indexAlt
+                        ? attachment.label
+                        : null;
+
+                    return (
+                      <div
+                        key={`${attachment.indexAlt}-${attachment.label ?? index}`}
+                        className="reader-sidecar-row reader-sidecar-row-attachment"
+                      >
+                        <div className="reader-sidecar-row-title">{attachment.indexAlt}</div>
+                        {secondaryLabel ? (
+                          <div className="reader-sidecar-row-meta">{secondaryLabel}</div>
+                        ) : null}
+                        {attachment.mime ? (
+                          <div className="reader-sidecar-row-meta">{attachment.mime}</div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </ReaderSidecarDisclosure>
+            </div>
+          ) : null}
+
+          {artifactCount > 0 ? (
+            <div className="reader-sidecar-block">
+              <ReaderSidecarDisclosure
+                title={artifactCount === 1 ? "Artifact" : "Artifacts"}
+                count={artifactCount}
+                icon={<Sparkles className="h-3.5 w-3.5" />}
+              >
+                <div className="reader-sidecar-list">
+                  {(message.artifacts ?? []).map((artifact, index) => {
+                    const excerpt = getArtifactExcerptText(artifact, {
+                      maxLines: 2,
+                      maxCharsPerLine: 100,
+                    });
+
+                    return (
+                      <div
+                        key={`${artifact.kind}-${artifact.label ?? index}`}
+                        className="reader-sidecar-row"
+                      >
+                        <div className="reader-sidecar-row-title">
+                          {artifact.label || artifact.kind}
+                        </div>
+                        <div className="reader-sidecar-row-meta">
+                          {formatArtifactDescriptor(artifact)}
+                        </div>
+                        {excerpt ? (
+                          <div className="reader-sidecar-row-excerpt">{excerpt}</div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </ReaderSidecarDisclosure>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

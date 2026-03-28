@@ -103,6 +103,16 @@ Each level must map to explicit design tokens (background, border, shadow, text 
 - Secondary actions: grouped and visually subordinate.
 - Destructive actions: isolated with explicit confirmation guard.
 
+## 4.5.1 Reader sidecar hierarchy
+- Reader message body remains the primary reading surface; `Sources`, `Attachments`, and `Artifacts` are secondary sidecar surfaces.
+- Reader sidecars must render as single-line compact disclosure capsules, collapsed by default, instead of heavy card-like panels or two-line summary blocks.
+- Reader sidecars share the same tool-surface language as the inline `Expand` / `Collapse` control: compact pill summary, muted emphasis, and utility-level density.
+- Reader sidecar shells must be visually inset from the message-turn boundary and must not collapse into the sidepanel outer frame or turn divider line.
+- Expanded sidecar content must drop into a separate inset tray below the capsule; do not keep the tray inside one shared bordered shell with the summary row.
+- Reader sidecar typography must remain subordinate to message body typography; sidecar title/summary copy must not visually outrank the message text.
+- `Attachments` is the lightest sidecar tier. Attachment items render as compact index rows only and must not use preview-card styling or image-heavy emphasis.
+- Attachment-only messages still keep a minimal body anchor, but the attachment disclosure must not become the dominant headline block for the turn.
+
 ## 4.6 Settings density and grouping
 - Settings is grouped into `Personalisation`, `System`, and `Support`.
 - `Appearance` and system controls remain disclosure-based.

@@ -85,6 +85,11 @@ Threads child flow (mandatory):
 39. Threads export mode selector baseline: batch export panel shows `Full` / `Compact` / `Summary` above the Data-style `JSON` / `TXT` / `MD` rows, with `Full` selected by default and selector density matching the tray surface.
 40. Threads compressed export resilience baseline: `Compact` and `Summary` first try the current LLM settings path, but export must still succeed through deterministic local fallback when the LLM path is unavailable or returns unusable output; post-export feedback must surface when fallback happened.
 41. Threads export architecture baseline: the page must keep using the batch action tray flow and must not regress to the legacy modal-style `ExportDialog`.
+42. Reader sidecar hierarchy baseline: `Sources`, `Attachments`, and `Artifacts` render as compact collapsed disclosure rows, remain visually subordinate to message body text, and do not read like primary content cards.
+43. Reader sidecar spacing baseline: sidecar shells are inset from the Reader turn boundary and sidepanel outer frame; disclosure borders must not visually merge with the turn divider or page frame.
+44. Gemini upload dedupe baseline: a single uploaded user turn with attachments renders exactly one `YOU` message row; attachment presence must not create a duplicate user turn.
+45. Reader sidecar capsule baseline: collapsed `Attachment` / `Source` / `Artifact` renders as a single-line utility capsule aligned with the `Expand` / `Collapse` tool language; no second-line summary copy is shown in collapsed state.
+46. Reader sidecar tray baseline: expanded sidecar content drops into a separate inset tray below the capsule, and the last visible tray edge remains visually separated from the Reader turn divider.
 
 ---
 

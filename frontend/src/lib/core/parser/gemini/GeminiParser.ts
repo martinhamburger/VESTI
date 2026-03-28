@@ -863,19 +863,159 @@ export class GeminiParser implements IParser {
     const deduped: ParsedMessage[] = [];
 
     for (const message of messages) {
-      const signature = this.buildMessageSignature(message);
-      const isDuplicate = deduped
-        .slice(Math.max(0, deduped.length - 2))
-        .some((existing) => {
-          return this.buildMessageSignature(existing) === signature;
-        });
+      const mergeSignature = this.buildMergeSignature(message);
+      let merged = false;
 
-      if (!isDuplicate) {
+      for (let index = deduped.length - 1; index >= Math.max(0, deduped.length - 3); index -= 1) {
+        const existing = deduped[index];
+        if (existing.role !== message.role) {
+          break;
+        }
+        if (this.buildMergeSignature(existing) !== mergeSignature) {
+          continue;
+        }
+
+        deduped[index] = this.mergeParsedMessages(existing, message);
+        merged = true;
+        break;
+      }
+
+      if (!merged) {
         deduped.push(message);
       }
     }
 
     return deduped;
+  }
+
+  private mergeParsedMessages(primary: ParsedMessage, secondary: ParsedMessage): ParsedMessage {
+    const mergedAttachments = this.mergeAttachments(primary.attachments, secondary.attachments);
+    const mergedCitations = this.mergeCitations(primary.citations, secondary.citations);
+    const mergedArtifacts = this.mergeArtifacts(primary.artifacts, secondary.artifacts);
+
+    const preferredAst =
+      this.getAstWeight(secondary.contentAst) > this.getAstWeight(primary.contentAst)
+        ? secondary.contentAst
+        : primary.contentAst;
+    const preferredAstVersion =
+      preferredAst === secondary.contentAst
+        ? secondary.contentAstVersion ?? primary.contentAstVersion
+        : primary.contentAstVersion ?? secondary.contentAstVersion;
+    const preferredHtmlContent = this.pickPreferredTextBlock(primary.htmlContent, secondary.htmlContent);
+    const preferredSnapshot = this.pickPreferredTextBlock(
+      primary.normalizedHtmlSnapshot ?? undefined,
+      secondary.normalizedHtmlSnapshot ?? undefined,
+    );
+
+    return {
+      role: primary.role,
+      textContent:
+        secondary.textContent.trim().length > primary.textContent.trim().length
+          ? secondary.textContent
+          : primary.textContent,
+      contentAst: preferredAst,
+      contentAstVersion: preferredAstVersion,
+      degradedNodesCount: Math.max(primary.degradedNodesCount ?? 0, secondary.degradedNodesCount ?? 0),
+      citations: mergedCitations.length > 0 ? mergedCitations : undefined,
+      attachments: mergedAttachments.length > 0 ? mergedAttachments : undefined,
+      artifacts: mergedArtifacts.length > 0 ? mergedArtifacts : undefined,
+      normalizedHtmlSnapshot: preferredSnapshot ?? undefined,
+      htmlContent: preferredHtmlContent,
+      timestamp: primary.timestamp ?? secondary.timestamp,
+    };
+  }
+
+  private mergeAttachments(
+    primary: ParsedMessage["attachments"],
+    secondary: ParsedMessage["attachments"],
+  ): NonNullable<ParsedMessage["attachments"]> {
+    const merged = new Map<string, NonNullable<ParsedMessage["attachments"]>[number]>();
+
+    for (const attachment of [...(primary ?? []), ...(secondary ?? [])]) {
+      const key = JSON.stringify({
+        indexAlt: attachment.indexAlt,
+        label: attachment.label ?? null,
+        mime: attachment.mime ?? null,
+        occurrenceRole: attachment.occurrenceRole,
+      });
+      if (!merged.has(key)) {
+        merged.set(key, attachment);
+      }
+    }
+
+    return Array.from(merged.values());
+  }
+
+  private mergeCitations(
+    primary: ParsedMessage["citations"],
+    secondary: ParsedMessage["citations"],
+  ): NonNullable<ParsedMessage["citations"]> {
+    const merged = new Map<string, NonNullable<ParsedMessage["citations"]>[number]>();
+
+    for (const citation of [...(primary ?? []), ...(secondary ?? [])]) {
+      const key = JSON.stringify({
+        href: citation.href,
+        label: citation.label,
+        host: citation.host,
+      });
+      if (!merged.has(key)) {
+        merged.set(key, citation);
+      }
+    }
+
+    return Array.from(merged.values());
+  }
+
+  private mergeArtifacts(
+    primary: ParsedMessage["artifacts"],
+    secondary: ParsedMessage["artifacts"],
+  ): NonNullable<ParsedMessage["artifacts"]> {
+    const merged = new Map<string, NonNullable<ParsedMessage["artifacts"]>[number]>();
+
+    for (const artifact of [...(primary ?? []), ...(secondary ?? [])]) {
+      const key = JSON.stringify({
+        kind: artifact.kind,
+        label: artifact.label ?? null,
+        captureMode: artifact.captureMode ?? null,
+        renderDimensions: artifact.renderDimensions ?? null,
+        plainText: artifact.plainText ?? null,
+        normalizedHtmlSnapshot: artifact.normalizedHtmlSnapshot ?? null,
+        markdownSnapshot: artifact.markdownSnapshot ?? null,
+      });
+      if (!merged.has(key)) {
+        merged.set(key, artifact);
+      }
+    }
+
+    return Array.from(merged.values());
+  }
+
+  private getAstWeight(root: AstRoot | null | undefined): number {
+    if (!root || !Array.isArray(root.children)) {
+      return 0;
+    }
+    return root.children.length;
+  }
+
+  private pickPreferredTextBlock(
+    primary: string | undefined,
+    secondary: string | undefined,
+  ): string | undefined {
+    const primaryLength = primary?.trim().length ?? 0;
+    const secondaryLength = secondary?.trim().length ?? 0;
+    if (secondaryLength > primaryLength) {
+      return secondary;
+    }
+    return primary;
+  }
+
+  private buildMergeSignature(message: ParsedMessage): string {
+    const normalizedText = message.textContent.replace(/\s+/g, " ").trim();
+    if (message.role === "user" && normalizedText.length > 0) {
+      return [message.role, normalizedText].join("|");
+    }
+
+    return this.buildMessageSignature(message);
   }
 
   private buildMessageSignature(message: ParsedMessage): string {

@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Check, ChevronDown, Copy, Link2, Paperclip, Sparkles } from "lucide-react";
 import katex from "katex";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AstNode, AstRoot, AstTableNode, Message } from "../types";
@@ -317,11 +317,11 @@ function renderArtifactMeta(message: Message): ReactNode {
   }
 
   return (
-    <details className="mt-3 rounded-xl border border-border-subtle bg-bg-primary/60">
-      <summary className="cursor-pointer list-none px-3 py-2 text-[12px] font-medium text-text-primary">
-        Artifacts ({message.artifacts?.length ?? 0})
-      </summary>
-      <div className="space-y-2 border-t border-border-subtle px-3 py-3">
+    <CompactSidecarSection
+      title={(message.artifacts?.length ?? 0) === 1 ? "Artifact" : "Artifacts"}
+      count={message.artifacts?.length ?? 0}
+      icon={<Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} />}
+    >
         {(message.artifacts ?? []).map((artifact, index) => (
           (() => {
             const excerpt = getArtifactExcerptText(artifact, {
@@ -331,16 +331,16 @@ function renderArtifactMeta(message: Message): ReactNode {
             return (
               <div
                 key={`${artifact.kind}-${artifact.label ?? index}`}
-                className="rounded-lg border border-border-subtle bg-bg-surface-card/60 px-3 py-2"
+                className="block py-1.5 first:pt-0 last:pb-0"
               >
-                <div className="text-[12px] font-medium text-text-primary">
+                <div className="text-[10.75px] font-medium leading-[1.3] text-text-secondary">
                   {artifact.label || artifact.kind}
                 </div>
-                <div className="mt-1 text-[11px] text-text-tertiary">
+                <div className="mt-0.5 text-[10px] leading-[1.35] text-text-tertiary">
                   {formatArtifactDescriptor(artifact)}
                 </div>
                 {excerpt ? (
-                  <div className="mt-2 whitespace-pre-wrap text-[11px] leading-5 text-text-secondary">
+                  <div className="mt-1 whitespace-pre-wrap text-[10px] leading-[1.4] text-text-secondary">
                     {excerpt}
                   </div>
                 ) : null}
@@ -348,6 +348,45 @@ function renderArtifactMeta(message: Message): ReactNode {
             );
           })()
         ))}
+    </CompactSidecarSection>
+  );
+}
+
+function CompactSidecarSection(props: {
+  title: string;
+  count: number;
+  icon: ReactNode;
+  children: ReactNode;
+  trayVariant?: "default" | "compact";
+}) {
+  const { title, count, icon, children, trayVariant = "default" } = props;
+  const trayWrapClassName =
+    trayVariant === "compact"
+      ? "mt-1 w-auto pl-1.5"
+      : "mt-1.5 w-full pl-2";
+  const trayClassName =
+    trayVariant === "compact"
+      ? "divide-y divide-border-subtle/55 rounded-md border border-border-subtle/65 bg-bg-secondary/22 px-2.5 py-1.5"
+      : "divide-y divide-border-subtle/60 rounded-lg border border-border-subtle/70 bg-bg-secondary/25 px-3 py-2.5";
+
+  return (
+    <details className="group mt-3 flex flex-col items-start">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full bg-bg-secondary/80 px-2.5 py-1 text-text-tertiary marker:content-none [&::-webkit-details-marker]:hidden">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="text-text-tertiary">{icon}</span>
+          <span className="block text-[10px] font-semibold leading-none tracking-[0.018em] text-text-secondary">
+            {title}
+          </span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="text-[9.5px] font-semibold leading-none text-text-tertiary">{count}</span>
+          <ChevronDown className="h-3.25 w-3.25 shrink-0 text-text-tertiary transition-transform duration-200 group-open:rotate-180" />
+        </span>
+      </summary>
+      <div className={trayWrapClassName}>
+        <div className={trayClassName}>
+          {children}
+        </div>
       </div>
     </details>
   );
@@ -359,11 +398,12 @@ function renderAttachmentMeta(message: Message): ReactNode {
   }
 
   return (
-    <details className="mt-3 rounded-xl border border-border-subtle bg-bg-primary/60">
-      <summary className="cursor-pointer list-none px-3 py-2 text-[12px] font-medium text-text-primary">
-        Attachments ({message.attachments?.length ?? 0})
-      </summary>
-      <div className="space-y-2 border-t border-border-subtle px-3 py-3">
+    <CompactSidecarSection
+      title={(message.attachments?.length ?? 0) === 1 ? "Attachment" : "Attachments"}
+      count={message.attachments?.length ?? 0}
+      icon={<Paperclip className="h-3.5 w-3.5" strokeWidth={1.75} />}
+      trayVariant="compact"
+    >
         {(message.attachments ?? []).map((attachment, index) => {
           const secondaryLabel =
             attachment.label && attachment.label !== attachment.indexAlt
@@ -373,22 +413,21 @@ function renderAttachmentMeta(message: Message): ReactNode {
           return (
             <div
               key={`${attachment.indexAlt}-${attachment.label ?? index}`}
-              className="rounded-lg border border-border-subtle bg-bg-surface-card/60 px-3 py-2"
+              className="block py-1 first:pt-0 last:pb-0"
             >
-              <div className="text-[12px] font-medium text-text-primary">
+              <div className="text-[10.25px] font-medium leading-[1.28] text-text-secondary">
                 {attachment.indexAlt}
               </div>
               {secondaryLabel ? (
-                <div className="mt-1 text-[11px] text-text-secondary">{secondaryLabel}</div>
+                <div className="mt-0.5 text-[10px] leading-[1.35] text-text-tertiary">{secondaryLabel}</div>
               ) : null}
               {attachment.mime ? (
-                <div className="mt-1 text-[11px] text-text-tertiary">{attachment.mime}</div>
+                <div className="mt-0.5 text-[10px] leading-[1.35] text-text-tertiary">{attachment.mime}</div>
               ) : null}
             </div>
           );
         })}
-      </div>
-    </details>
+    </CompactSidecarSection>
   );
 }
 
@@ -398,25 +437,24 @@ function renderSourceMeta(message: Message): ReactNode {
   }
 
   return (
-    <details className="mt-3 rounded-xl border border-border-subtle bg-bg-primary/60">
-      <summary className="cursor-pointer list-none px-3 py-2 text-[12px] font-medium text-text-primary">
-        Sources ({message.citations?.length ?? 0})
-      </summary>
-      <div className="space-y-2 border-t border-border-subtle px-3 py-3">
+    <CompactSidecarSection
+      title={(message.citations?.length ?? 0) === 1 ? "Source" : "Sources"}
+      count={message.citations?.length ?? 0}
+      icon={<Link2 className="h-3.5 w-3.5" strokeWidth={1.75} />}
+    >
         {(message.citations ?? []).map((citation, index) => (
           <a
             key={`${citation.href}-${index}`}
             href={citation.href}
             target="_blank"
             rel="noreferrer"
-            className="block rounded-lg border border-border-subtle bg-bg-surface-card/60 px-3 py-2 transition-colors hover:bg-bg-surface-card"
+            className="block py-1.5 first:pt-0 last:pb-0 transition-opacity hover:opacity-85"
           >
-            <div className="text-[12px] font-medium text-text-primary">{citation.label}</div>
-            <div className="mt-1 text-[11px] text-text-tertiary">{citation.host}</div>
+            <div className="text-[10.75px] font-medium leading-[1.3] text-text-secondary">{citation.label}</div>
+            <div className="mt-0.5 text-[10px] leading-[1.35] text-text-tertiary">{citation.host}</div>
           </a>
         ))}
-      </div>
-    </details>
+    </CompactSidecarSection>
   );
 }
 
