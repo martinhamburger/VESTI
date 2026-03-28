@@ -5,9 +5,17 @@ on:
     paths:
       - "documents/prompt_engineering/**"
       - "frontend/src/lib/prompts/**"
+      - "frontend/src/lib/services/**"
+      - "frontend/src/lib/utils/**"
       - "frontend/src/lib/services/insightSchemas.ts"
+      - "packages/vesti-content-package/**"
+      - "packages/vesti-ui/src/lib/artifactSummary.ts"
+      - "packages/vesti-ui/src/lib/messagePackage.ts"
       - "scripts/eval-prompts.ts"
+      - "scripts/check-frontend-ui-boundary.mjs"
+      - "scripts/tsconfig.eval.json"
       - "eval/**"
+      - "package.json"
       - "frontend/package.json"
       - "frontend/pnpm-lock.yaml"
 
@@ -29,8 +37,11 @@ jobs:
         with:
           version: 10.29.2
 
-      - name: Install frontend deps
-        run: pnpm -C frontend install --frozen-lockfile
+      - name: Install workspace deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Check frontend non-UI boundary
+        run: pnpm -C frontend check:ui-boundaries
 
       - name: Run prompt eval (mock strict)
         run: pnpm -C frontend eval:prompts --mode=mock --strict

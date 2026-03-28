@@ -62,6 +62,10 @@ on:
 - `documents/capture_engine/`
 - `documents/reader_pipeline/`
 
+Pure text-side content-package helpers used by prompt/eval/export now live under the internal
+workspace package `@vesti/content-package`. `@vesti/ui` may re-export those helpers for UI
+consumers, but prompt/runtime service code must not depend on `@vesti/ui` as their source.
+
 ## Active canonical docs
 
 - `export_ai_handoff_architecture.md`
