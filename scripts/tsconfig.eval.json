@@ -8,6 +8,10 @@
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "typeRoots": ["../frontend/node_modules/@types"],
+    "baseUrl": "..",
+    "paths": {
+      "@vesti/content-package": ["packages/vesti-content-package/src/index.ts"]
+    },
     "outDir": "../.tmp/eval"
   },
   "include": ["./eval-prompts.ts"]

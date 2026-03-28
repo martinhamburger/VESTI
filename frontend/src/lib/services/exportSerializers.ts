@@ -1,4 +1,4 @@
-import { formatArtifactDescriptor, getArtifactExcerptText } from "@vesti/ui";
+import { formatArtifactDescriptor, getArtifactExcerptText } from "@vesti/content-package";
 import type {
   Annotation,
   Conversation,

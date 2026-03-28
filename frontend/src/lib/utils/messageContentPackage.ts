@@ -1,8 +1,8 @@
 import {
-  buildMessageFallbackDisplayText as buildSharedFallbackDisplayText,
-  buildMessagePreviewText as buildSharedPreviewText,
-  buildMessageSidecarSummaryLines as buildSharedSidecarSummaryLines,
-} from "@vesti/ui";
+  buildMessageFallbackDisplayText as buildContentPackageFallbackDisplayText,
+  buildMessagePreviewText as buildContentPackagePreviewText,
+  buildMessageSidecarSummaryLines as buildContentPackageSidecarSummaryLines,
+} from "@vesti/content-package";
 import type { Message } from "../types";
 import { extractAstPlainText, isAstRoot, shouldPreferAstCanonicalText } from "./astText";
 
@@ -46,7 +46,7 @@ export function resolveCanonicalBodyText(
 }
 
 export function buildMessageSidecarSummaryLines(message: MessageContentPackageLike): string[] {
-  return buildSharedSidecarSummaryLines(message);
+  return buildContentPackageSidecarSummaryLines(message);
 }
 
 export function buildMessagePreviewText(
@@ -57,7 +57,7 @@ export function buildMessagePreviewText(
     includeSidecarsWhenBodyPresent?: boolean;
   } = {},
 ): string {
-  return buildSharedPreviewText(
+  return buildContentPackagePreviewText(
     {
       ...message,
       content_text: resolveCanonicalBodyText(message),
@@ -69,7 +69,7 @@ export function buildMessagePreviewText(
 export function buildMessageFallbackDisplayText(
   message: MessageContentPackageLike
 ): string {
-  return buildSharedFallbackDisplayText({
+  return buildContentPackageFallbackDisplayText({
     ...message,
     content_text: resolveCanonicalBodyText(message),
   });
@@ -77,6 +77,6 @@ export function buildMessageFallbackDisplayText(
 
 export function buildMessageSearchIndexText(message: MessageContentPackageLike): string {
   const bodyText = resolveCanonicalBodyText(message);
-  const sidecarLines = buildSharedSidecarSummaryLines(message);
+  const sidecarLines = buildContentPackageSidecarSummaryLines(message);
   return [bodyText, ...sidecarLines].filter(Boolean).join("\n").trim();
 }

@@ -1,5 +1,5 @@
 import type { Conversation, Message } from "../types";
-import { formatArtifactDescriptor, getArtifactExcerptText } from "@vesti/ui";
+import { formatArtifactDescriptor, getArtifactExcerptText } from "@vesti/content-package";
 import { extractAstPlainText, inspectAstStructure, isAstRoot, shouldPreferAstCanonicalText } from "../utils/astText";
 import {
   buildMessageSidecarSummaryLines,

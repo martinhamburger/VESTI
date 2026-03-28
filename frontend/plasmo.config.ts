@@ -4,6 +4,12 @@ export default {
   vite: (config) => {
     const repoRoot = path.resolve(__dirname, "..", "..");
     const packagesRoot = path.resolve(repoRoot, "packages");
+    const vestiContentPackageEntry = path.resolve(
+      packagesRoot,
+      "vesti-content-package",
+      "src",
+      "index.ts"
+    );
     const vestiUiEntry = path.resolve(packagesRoot, "vesti-ui", "src", "index.ts");
     const localNodeModules = path.resolve(__dirname, "node_modules");
 
@@ -11,6 +17,7 @@ export default {
     config.resolve.preserveSymlinks = false;
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
+      "@vesti/content-package": vestiContentPackageEntry,
       // Force the extension to consume the shared UI through a frontend-controlled
       // entrypoint so all React imports resolve to the frontend's React 18 runtime.
       "@vesti/ui": vestiUiEntry,

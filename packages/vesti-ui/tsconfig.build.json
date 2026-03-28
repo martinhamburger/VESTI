@@ -5,6 +5,9 @@
     "moduleResolution": "Bundler",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@vesti/content-package": ["../vesti-content-package/src/index.ts"]
+    }
   }
 }

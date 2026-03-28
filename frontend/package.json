@@ -6,12 +6,13 @@
   "author": "Vesti",
   "scripts": {
     "dev": "plasmo dev",
-    "prebuild": "pnpm -C ../packages/vesti-ui build && pnpm -C .. install --frozen-lockfile",
+    "prebuild": "pnpm -C ../packages/vesti-content-package build && pnpm -C ../packages/vesti-ui build && pnpm -C .. install --frozen-lockfile",
     "build": "plasmo build",
     "package": "node -e \"console.error('Local packaging is disabled. Use CI workflow extension-package or run pnpm -C frontend package:safe.'); process.exit(1)\"",
     "package:ci": "pnpm run build && plasmo package",
     "package:safe": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/safe-package.ps1 -Overwrite",
-    "eval:prompts": "pnpm exec tsc --project ../scripts/tsconfig.eval.json && node ../.tmp/eval/scripts/eval-prompts.js"
+    "eval:prompts": "pnpm -C ../packages/vesti-content-package build && pnpm exec tsc --project ../scripts/tsconfig.eval.json && node ../.tmp/eval/scripts/eval-prompts.js",
+    "check:ui-boundaries": "node ../scripts/check-frontend-ui-boundary.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
@@ -19,6 +20,7 @@
     "@fontsource/newsreader": "^5.2.10",
     "@fontsource/nunito-sans": "^5.2.7",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@vesti/content-package": "file:../packages/vesti-content-package",
     "@vesti/ui": "file:../packages/vesti-ui",
     "dexie": "^4.3.0",
     "katex": "^0.16.25",
