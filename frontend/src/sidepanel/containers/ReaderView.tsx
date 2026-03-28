@@ -14,6 +14,7 @@ import {
   buildReaderSearchArtifacts,
   type MessageRenderPlan,
   type OccurrenceIndexMap,
+  type ReaderSidecarTarget,
 } from "../lib/readerSearch";
 import {
   createSearchModel,
@@ -24,6 +25,7 @@ import type {
   ThreadsEvent,
   ThreadsState,
 } from "../types/threadsSearch";
+import { shouldRunFullTextSearch } from "~lib/utils/searchReadiness";
 
 interface ReaderViewProps {
   conversation: Conversation;
@@ -51,8 +53,11 @@ export function ReaderView({
   const [renderPlanByMessageId, setRenderPlanByMessageId] = useState<
     Record<number, MessageRenderPlan>
   >({});
+  const [sidecarTargetMap, setSidecarTargetMap] = useState<Record<string, ReaderSidecarTarget>>(
+    {}
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const hasQuery = searchQuery.trim().length > 0;
+  const hasQuery = shouldRunFullTextSearch(searchQuery);
   const occurrenceCount = searchModel?.occurrences.length ?? 0;
   const currentIndex = searchModel?.currentIndex ?? 0;
   const isLoading = mode === "reader_loading_messages";
@@ -77,6 +82,7 @@ export function ReaderView({
     setMessages([]);
     setLoadedConversationId(null);
     setRenderPlanByMessageId({});
+    setSidecarTargetMap({});
     getMessages(conversation.id)
       .then((data) => {
         if (cancelled) return;
@@ -98,12 +104,17 @@ export function ReaderView({
 
   useEffect(() => {
     if (!isBuilding) return;
-    const { occurrences, renderPlanByMessageId: plans } = buildReaderSearchArtifacts({
+    const {
+      occurrences,
+      renderPlanByMessageId: plans,
+      sidecarTargetMap: nextSidecarTargetMap,
+    } = buildReaderSearchArtifacts({
       messages,
       platform: conversation.platform,
       query: searchQuery,
     });
     setRenderPlanByMessageId(plans);
+    setSidecarTargetMap(nextSidecarTargetMap);
     const nextSearchModel = createSearchModel(
       searchQuery,
       firstMatchedMessageId,
@@ -237,6 +248,7 @@ export function ReaderView({
                 platform={conversation.platform}
                 renderPlan={renderPlanByMessageId[msg.id] ?? null}
                 occurrenceIndexMap={occurrenceIndexMap}
+                sidecarTargetMap={sidecarTargetMap}
                 currentIndex={isReady ? currentIndex : null}
               />
             ))}

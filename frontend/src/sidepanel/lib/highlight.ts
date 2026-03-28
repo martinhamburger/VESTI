@@ -1,11 +1,13 @@
+import { normalizeSearchQuery, shouldHighlightSearchQuery } from "~lib/utils/searchReadiness";
+
 export interface HighlightSegment {
   text: string;
   highlight: boolean;
 }
 
 export function splitWithHighlight(text: string, query: string): HighlightSegment[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!text || !normalizedQuery || normalizedQuery.length < 2) {
+  const normalizedQuery = normalizeSearchQuery(query);
+  if (!text || !shouldHighlightSearchQuery(normalizedQuery)) {
     return [{ text, highlight: false }];
   }
 

@@ -30,10 +30,11 @@ import {
 } from "./ui/dropdown-menu";
 import { resolveTurnCount } from "~lib/capture/turn-metrics";
 import { getConversationCaptureFreshnessAt } from "~lib/conversations/timestamps";
-import type { Conversation } from "~lib/types";
+import type { Conversation, SearchMatchSurface } from "~lib/types";
 import { updateConversationAndSync } from "~lib/services/syncActions";
 import { PlatformTag } from "./PlatformTag";
 import { splitWithHighlight } from "../lib/highlight";
+import { getSearchMatchHintLabel } from "~lib/utils/messageSearchProjection";
 
 const TOOLTIP_DELAY_MS = 200;
 const COPY_FEEDBACK_MS = 1500;
@@ -149,6 +150,7 @@ interface ConversationCardProps {
   matchedInMessagesOnly?: boolean;
   searchQuery?: string;
   messageExcerpt?: string | null;
+  messageMatchSurface?: SearchMatchSurface | null;
   // Batch selection support
   isBatchMode?: boolean;
   isSelected?: boolean;
@@ -168,6 +170,7 @@ export function ConversationCard({
   matchedInMessagesOnly = false,
   searchQuery = "",
   messageExcerpt = null,
+  messageMatchSurface = null,
   isBatchMode = false,
   isSelected = false,
   onToggleSelect,
@@ -194,6 +197,9 @@ export function ConversationCard({
     matchedInMessagesOnly && messageExcerpt
       ? messageExcerpt
       : conversation.snippet;
+  const messageMatchHint = matchedInMessagesOnly
+    ? getSearchMatchHintLabel(messageMatchSurface ?? "body")
+    : null;
 
   const renderHighlightedText = (text: string) => {
     const segments = splitWithHighlight(text, searchQuery);
@@ -657,6 +663,11 @@ export function ConversationCard({
       {showExpandedDetails && (
         <div className="grid grid-rows-[1fr] opacity-100 transition-[grid-template-rows,opacity] duration-150 ease-in-out">
           <div className="overflow-hidden">
+            {messageMatchHint ? (
+              <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+                {messageMatchHint}
+              </p>
+            ) : null}
             <p className="mt-1.5 line-clamp-2 text-vesti-sm leading-[1.5] text-text-secondary">
               {renderHighlightedText(snippetText)}
             </p>

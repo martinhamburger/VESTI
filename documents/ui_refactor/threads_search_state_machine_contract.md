@@ -28,7 +28,8 @@ stateDiagram-v2
     [*] --> list_idle
 
     list_idle --> list_results: QUERY_CHANGED / local title-snippet hit
-    list_idle --> list_searching_body: QUERY_CHANGED(query.length >= 2)
+    list_idle --> list_searching_body: QUERY_CHANGED(fulltext query)
+    list_idle --> list_results: QUERY_CHANGED(title/snippet-only query)
     list_idle --> list_empty: QUERY_CHANGED / no local hit and no body hit
 
     list_searching_body --> list_results: BODY_SEARCH_RESOLVED(results > 0)
@@ -38,7 +39,8 @@ stateDiagram-v2
     list_results --> list_results: QUERY_CHANGED / FILTER_CHANGED / RESULTS_RESHAPED
     list_results --> reader_loading_messages: OPEN_READER / freeze search session
 
-    list_empty --> list_searching_body: QUERY_CHANGED(query.length >= 2)
+    list_empty --> list_searching_body: QUERY_CHANGED(fulltext query)
+    list_empty --> list_results: QUERY_CHANGED(title/snippet-only query)
     list_empty --> list_idle: QUERY_CLEARED
 
     reader_loading_messages --> reader_building_index: MESSAGES_LOADED
@@ -67,6 +69,8 @@ export interface ConversationMatchSummary {
   conversationId: number;
   firstMatchedMessageId: number;
   bestExcerpt: string;
+  firstMatchedSurface: "body" | "source" | "attachment" | "artifact" | "annotation";
+  matchedSurfaces: Array<"body" | "source" | "attachment" | "artifact" | "annotation">;
 }
 ```
 
@@ -74,9 +78,22 @@ Rules:
 - repository, `storageService`, and messaging/offscreen handler all keep the same query and response shape.
 - message type for this contract is `SEARCH_CONVERSATION_MATCHES_BY_TEXT`.
 - `firstMatchedMessageId` is the earliest matched message by `created_at`; ties fall back to lower message id.
-- `bestExcerpt` must be cut from the same message identified by `firstMatchedMessageId`.
+- `bestExcerpt` and `firstMatchedSurface` must be cut from the same message identified by `firstMatchedMessageId`.
 - `conversationIds` limits the scan to the current list candidate set when provided.
 - offscreen never returns occurrence-level detail.
+
+### 3.1.1 Query readiness contract
+
+```ts
+export type SearchReadiness = "empty" | "title_snippet_only" | "fulltext";
+```
+
+Rules:
+- empty query => `empty`
+- single CJK character => `fulltext`
+- single non-CJK character => `title_snippet_only`
+- query length `>= 2` => `fulltext`
+- title/snippet-only queries must not dispatch offscreen full-text search
 
 ### 3.2 Search session contract
 
@@ -105,6 +122,7 @@ Rules:
 export interface ReaderOccurrence {
   occurrenceKey: string;
   messageId: number;
+  surface: "body" | "source" | "attachment" | "artifact" | "annotation";
   nodeKey: string;
   charOffset: number;
   length: number;
@@ -120,9 +138,14 @@ export interface ReaderSearchModel {
 
 Rules:
 - `ReaderOccurrence` is derived locally from loaded messages.
+- `surface` distinguishes body hits from sidecar hits and must survive prev/next navigation.
 - `nodeKey` must be stable between index building and render targeting.
 - `nodeKey` should use an AST/renderer path string, not a random uuid.
-- recommended form: `msg-42:p[1]:text[0]`
+- recommended forms:
+  - `msg-42:p[1]:text[0]`
+  - `msg-42:source[0]:label`
+  - `msg-42:attachment[0]:indexAlt`
+  - `msg-42:artifact[0]:excerpt`
 
 ### 3.4 Threads state union
 
@@ -208,6 +231,7 @@ Rules:
 - `BACK_TO_LIST` restores the same session as mutable list state.
 - `MESSAGES_LOADED` does not imply navigation readiness.
 - only `INDEX_BUILT` may enter `reader_ready`.
+- `QUERY_CHANGED` for `title_snippet_only` query must never enter `list_searching_body`.
 
 ---
 
@@ -232,6 +256,7 @@ Required behavior:
   - building `occurrences[]`
   - injecting `<mark>` segments
   - locating the active occurrence for `scrollIntoView` and focus
+- sidecar targets must be mappable back to a disclosure section plus concrete item key so Reader can auto-expand on match
 
 This bridge is the reason `nodeKey` is a first-class field in the state contract rather than an implementation footnote.
 

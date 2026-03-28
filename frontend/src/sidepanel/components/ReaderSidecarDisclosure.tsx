@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
@@ -7,6 +8,7 @@ interface ReaderSidecarDisclosureProps {
   icon: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
+  forceOpen?: boolean;
   trayVariant?: "default" | "compact";
 }
 
@@ -16,8 +18,10 @@ export function ReaderSidecarDisclosure({
   icon,
   children,
   defaultOpen = false,
+  forceOpen = false,
   trayVariant = "default",
 }: ReaderSidecarDisclosureProps) {
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const trayWrapClassName =
     trayVariant === "compact"
       ? "reader-sidecar-tray-wrap reader-sidecar-tray-wrap-compact"
@@ -27,8 +31,17 @@ export function ReaderSidecarDisclosure({
       ? "reader-sidecar-tray reader-sidecar-tray-compact"
       : "reader-sidecar-tray";
 
+  useEffect(() => {
+    if (!forceOpen || !detailsRef.current || detailsRef.current.open) {
+      return;
+    }
+
+    detailsRef.current.open = true;
+  }, [forceOpen]);
+
   return (
     <details
+      ref={detailsRef}
       open={defaultOpen || undefined}
       className="reader-sidecar-disclosure group"
     >

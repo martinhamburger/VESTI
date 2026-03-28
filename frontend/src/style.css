@@ -2982,6 +2982,14 @@
   opacity: 0.88;
 }
 
+.reader-sidecar-row-active {
+  background-color: hsl(var(--accent-primary-light) / 0.55);
+  border-radius: 7px;
+  margin: 0 -5px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
 .reader-sidecar-row-title {
   font-size: 10.75px;
   font-weight: 600;

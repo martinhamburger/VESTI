@@ -22,6 +22,7 @@ import type {
   WeeklyLiteReportV1,
   WeeklyReportRecord,
   SearchConversationMatchesQuery,
+  SearchMatchSurface,
 } from "../types";
 import type { ConversationFilters } from "../messaging/protocol";
 import {
@@ -38,6 +39,13 @@ import { SUPPORTED_PLATFORMS, normalizePlatform } from "../platform";
 import { normalizeMessageAttachments } from "../utils/messageAttachments";
 import { normalizeMessageArtifacts } from "../utils/messageArtifacts";
 import { normalizeMessageCitations } from "../utils/messageCitations";
+import {
+  buildAnnotationSearchEntry,
+  buildMessageSearchEntries,
+  buildSearchExcerpt,
+  compareSearchSurfacePriority,
+} from "../utils/messageSearchProjection";
+import { normalizeSearchQuery, shouldRunFullTextSearch } from "../utils/searchReadiness";
 import { db } from "./schema";
 import { enforceStorageWriteGuard, getStorageUsageSnapshot } from "./storageLimits";
 import type {
@@ -925,65 +933,18 @@ export async function getAnnotationExportContext(
 }
 
 export async function searchConversationIdsByText(query: string): Promise<number[]> {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery.length < 2) {
+  if (!shouldRunFullTextSearch(query)) {
     return [];
   }
-
-  const conversationIds = new Set<number>();
-  await db.messages.toCollection().each((record) => {
-    const conversationId = record.conversation_id;
-    if (typeof conversationId !== "number" || conversationIds.has(conversationId)) {
-      return;
-    }
-
-    const content = record.content_text;
-    if (typeof content !== "string") {
-      return;
-    }
-
-    if (content.toLowerCase().includes(normalizedQuery)) {
-      conversationIds.add(conversationId);
-    }
-  });
-
-  await db.annotations.toCollection().each((record) => {
-    const conversationId = (record as AnnotationRecord).conversation_id;
-    if (typeof conversationId !== "number" || conversationIds.has(conversationId)) {
-      return;
-    }
-
-    const content = (record as AnnotationRecord).content_text;
-    if (typeof content !== "string") {
-      return;
-    }
-
-    if (content.toLowerCase().includes(normalizedQuery)) {
-      conversationIds.add(conversationId);
-    }
-  });
-
-  return Array.from(conversationIds);
-}
-
-function buildExcerpt(text: string, normalizedQuery: string): string {
-  const lower = text.toLowerCase();
-  const idx = lower.indexOf(normalizedQuery);
-  if (idx < 0) {
-    return "";
-  }
-  const start = Math.max(0, idx - 30);
-  const end = Math.min(text.length, idx + normalizedQuery.length + 60);
-  const prefix = start > 0 ? "..." : "";
-  const suffix = end < text.length ? "..." : "";
-  return `${prefix}${text.slice(start, end)}${suffix}`;
+  const summaries = await searchConversationMatchesByText({ query });
+  return summaries.map((summary) => summary.conversationId);
 }
 
 export async function searchConversationMatchesByText(
   params: SearchConversationMatchesQuery
 ): Promise<ConversationMatchSummary[]> {
-  const normalizedQuery = params.query.trim().toLowerCase();
-  if (normalizedQuery.length < 2) {
+  const normalizedQuery = normalizeSearchQuery(params.query);
+  if (!shouldRunFullTextSearch(normalizedQuery)) {
     return [];
   }
 
@@ -998,7 +959,13 @@ export async function searchConversationMatchesByText(
 
   const matchMap = new Map<
     number,
-    { messageId: number; createdAt: number; excerpt: string }
+    {
+      messageId: number;
+      createdAt: number;
+      excerpt: string;
+      firstMatchedSurface: SearchMatchSurface;
+      matchedSurfaces: Set<SearchMatchSurface>;
+    }
   >();
 
   const collection = candidateIds
@@ -1011,40 +978,106 @@ export async function searchConversationMatchesByText(
       return;
     }
 
-    const content = record.content_text;
-    if (typeof content !== "string") {
-      return;
-    }
-
-    if (!content.toLowerCase().includes(normalizedQuery)) {
-      return;
-    }
-
     const messageId = record.id;
     if (typeof messageId !== "number") {
       return;
     }
+
+    const matchedEntries = buildMessageSearchEntries({
+      id: messageId,
+      content_text: record.content_text,
+      content_ast: record.content_ast,
+      citations: record.citations,
+      attachments: record.attachments,
+      artifacts: record.artifacts,
+    }).filter((entry) => entry.text.toLowerCase().includes(normalizedQuery));
+    if (matchedEntries.length === 0) {
+      return;
+    }
+
+    const surfaceSet = new Set<SearchMatchSurface>(matchedEntries.map((entry) => entry.surface));
+    const bestEntry = [...matchedEntries].sort((left, right) =>
+      compareSearchSurfacePriority(left.surface, right.surface)
+    )[0];
 
     const createdAt = record.created_at ?? 0;
     const existing = matchMap.get(conversationId);
     const shouldReplace =
       !existing ||
       createdAt < existing.createdAt ||
-      (createdAt === existing.createdAt && messageId < existing.messageId);
+      (createdAt === existing.createdAt && messageId < existing.messageId) ||
+      (createdAt === existing.createdAt &&
+        messageId === existing.messageId &&
+        compareSearchSurfacePriority(bestEntry.surface, existing.firstMatchedSurface) < 0);
 
     if (shouldReplace) {
+      const nextSurfaces = existing
+        ? new Set<SearchMatchSurface>([...existing.matchedSurfaces, ...surfaceSet])
+        : surfaceSet;
       matchMap.set(conversationId, {
         messageId,
         createdAt,
-        excerpt: buildExcerpt(content, normalizedQuery),
+        excerpt: buildSearchExcerpt(bestEntry.text, normalizedQuery),
+        firstMatchedSurface: bestEntry.surface,
+        matchedSurfaces: nextSurfaces,
       });
+      return;
     }
+
+    surfaceSet.forEach((surface) => existing?.matchedSurfaces.add(surface));
+  });
+
+  await db.annotations.toCollection().each((record) => {
+    const conversationId = record.conversation_id;
+    if (
+      typeof conversationId !== "number" ||
+      (candidateIds && !candidateIds.includes(conversationId))
+    ) {
+      return;
+    }
+
+    const entry = buildAnnotationSearchEntry(record);
+    if (!entry || !entry.text.toLowerCase().includes(normalizedQuery)) {
+      return;
+    }
+
+    const existing = matchMap.get(conversationId);
+    if (existing) {
+      existing.matchedSurfaces.add("annotation");
+    }
+
+    const createdAt = record.created_at ?? 0;
+    const shouldReplace =
+      !existing ||
+      createdAt < existing.createdAt ||
+      (createdAt === existing.createdAt && entry.messageId < existing.messageId) ||
+      (createdAt === existing.createdAt &&
+        entry.messageId === existing.messageId &&
+        compareSearchSurfacePriority("annotation", existing.firstMatchedSurface) < 0);
+
+    if (!shouldReplace) {
+      return;
+    }
+
+    const nextSurfaces = existing
+      ? new Set<SearchMatchSurface>([...existing.matchedSurfaces, "annotation"])
+      : new Set<SearchMatchSurface>(["annotation"]);
+
+    matchMap.set(conversationId, {
+      messageId: entry.messageId,
+      createdAt,
+      excerpt: buildSearchExcerpt(entry.text, normalizedQuery),
+      firstMatchedSurface: "annotation",
+      matchedSurfaces: nextSurfaces,
+    });
   });
 
   return Array.from(matchMap.entries()).map(([conversationId, match]) => ({
     conversationId,
     firstMatchedMessageId: match.messageId,
     bestExcerpt: match.excerpt,
+    firstMatchedSurface: match.firstMatchedSurface,
+    matchedSurfaces: Array.from(match.matchedSurfaces).sort(compareSearchSurfacePriority),
   }));
 }
 

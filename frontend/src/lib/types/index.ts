@@ -65,10 +65,28 @@ export interface SearchConversationMatchesQuery {
   conversationIds?: number[];
 }
 
+export type SearchMatchSurface =
+  | "body"
+  | "source"
+  | "attachment"
+  | "artifact"
+  | "annotation";
+
+export type SearchReadiness = "empty" | "title_snippet_only" | "fulltext";
+
+export interface MessageSearchEntry {
+  surface: SearchMatchSurface;
+  messageId: number;
+  targetKey: string;
+  text: string;
+}
+
 export interface ConversationMatchSummary {
   conversationId: number;
   firstMatchedMessageId: number;
   bestExcerpt: string;
+  firstMatchedSurface: SearchMatchSurface;
+  matchedSurfaces: SearchMatchSurface[];
 }
 
 export interface VectorRecord {

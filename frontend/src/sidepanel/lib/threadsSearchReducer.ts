@@ -3,6 +3,7 @@ import type {
   Message,
   Platform,
 } from "~lib/types";
+import { getSearchReadiness, shouldRunFullTextSearch } from "~lib/utils/searchReadiness";
 import type { DatePreset, HeaderMode } from "../types/timelineFilters";
 import type {
   ReaderSearchModel,
@@ -57,10 +58,14 @@ function resolveListMode(
   session: SearchSession,
   preferResults: boolean
 ): ThreadsState {
-  const hasQuery = session.normalizedQuery.length >= 2;
+  const readiness = getSearchReadiness(session.normalizedQuery);
+  const hasQuery = readiness !== "empty";
   const hasResults = Object.keys(session.resultSummaryMap).length > 0;
   if (!hasQuery) {
     return { mode: "list_idle", session };
+  }
+  if (readiness === "title_snippet_only") {
+    return { mode: "list_results", session };
   }
   if (preferResults || hasResults) {
     return { mode: "list_results", session };
@@ -124,7 +129,7 @@ export function threadsReducer(
     case "QUERY_CHANGED": {
       if (readerMode) return state;
       const session = updateSessionQuery(state.session, event.query);
-      if (session.normalizedQuery.length < 2) {
+      if (!shouldRunFullTextSearch(session.normalizedQuery)) {
         return resolveListMode(session, false);
       }
       return {
@@ -149,7 +154,7 @@ export function threadsReducer(
         event.datePreset,
         event.selectedPlatforms
       );
-      if (session.normalizedQuery.length < 2) {
+      if (!shouldRunFullTextSearch(session.normalizedQuery)) {
         return resolveListMode(session, false);
       }
       return {
@@ -159,7 +164,7 @@ export function threadsReducer(
     }
     case "BODY_SEARCH_STARTED": {
       if (readerMode) return state;
-      if (state.session.normalizedQuery.length < 2) {
+      if (!shouldRunFullTextSearch(state.session.normalizedQuery)) {
         return resolveListMode(state.session, false);
       }
       if (state.mode === "list_searching_body") {
@@ -176,7 +181,7 @@ export function threadsReducer(
         ...state.session,
         resultSummaryMap: buildResultSummaryMap(event.summaries),
       };
-      if (session.normalizedQuery.length < 2) {
+      if (!shouldRunFullTextSearch(session.normalizedQuery)) {
         return resolveListMode(session, false);
       }
       return event.hasResults

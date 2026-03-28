@@ -17,6 +17,7 @@ import {
   resolveMessageRenderPlan,
   type MessageRenderPlan,
   type OccurrenceIndexMap,
+  type ReaderSidecarTarget,
 } from "../lib/readerSearch";
 
 const COLLAPSE_THRESHOLD_PX = 110;
@@ -38,6 +39,7 @@ interface MessageBubbleProps {
   platform: Platform;
   renderPlan?: MessageRenderPlan | null;
   occurrenceIndexMap?: OccurrenceIndexMap | null;
+  sidecarTargetMap?: Record<string, ReaderSidecarTarget> | null;
   currentIndex?: number | null;
 }
 
@@ -46,17 +48,24 @@ export function MessageBubble({
   platform,
   renderPlan,
   occurrenceIndexMap,
+  sidecarTargetMap,
   currentIndex,
 }: MessageBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [canCollapse, setCanCollapse] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const sidecarsRef = useRef<HTMLDivElement | null>(null);
   const copyTimerRef = useRef<number | null>(null);
   const plan = renderPlan ?? resolveMessageRenderPlan(message, platform);
   const shouldUseAst = plan.mode === "ast" && plan.renderAst;
   const indexMap = occurrenceIndexMap ?? {};
   const activeIndex = typeof currentIndex === "number" ? currentIndex : null;
+  const activeSidecarTarget = resolveActiveSidecarTarget(
+    indexMap,
+    sidecarTargetMap ?? {},
+    activeIndex
+  );
   const canonicalBodyText = resolveCanonicalBodyText(message);
   const renderedFallbackText =
     canonicalBodyText || buildMessagePreviewText(message);
@@ -144,6 +153,26 @@ export function MessageBubble({
     };
   }, []);
 
+  useEffect(() => {
+    if (!activeSidecarTarget || activeSidecarTarget.itemKey.indexOf(`msg-${message.id}:`) !== 0) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const selector = `[data-sidecar-item-key="${escapeAttributeValue(
+        activeSidecarTarget.itemKey
+      )}"]`;
+      const target = sidecarsRef.current?.querySelector(selector);
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [activeSidecarTarget, message.id]);
+
   const handleCopy = () => {
     navigator.clipboard.writeText(copyText).catch(() => {});
     setCopied(true);
@@ -226,27 +255,40 @@ export function MessageBubble({
       </div>
 
       {hasSidecars ? (
-        <div className="reader-turn-sidecars">
+        <div ref={sidecarsRef} className="reader-turn-sidecars">
           {citationCount > 0 ? (
             <div className="reader-sidecar-block">
               <ReaderSidecarDisclosure
                 title={citationCount === 1 ? "Source" : "Sources"}
                 count={citationCount}
                 icon={<Link2 className="h-3.5 w-3.5" />}
+                forceOpen={activeSidecarTarget?.section === "sources"}
               >
                 <div className="reader-sidecar-list">
-                  {(message.citations ?? []).map((citation) => (
-                    <a
-                      key={citation.href}
-                      href={citation.href}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="reader-sidecar-row reader-sidecar-row-link"
-                    >
-                      <div className="reader-sidecar-row-title">{citation.label}</div>
-                      <div className="reader-sidecar-row-meta">{citation.host}</div>
-                    </a>
-                  ))}
+                  {(message.citations ?? []).map((citation, index) => {
+                    const itemKey = `msg-${message.id}:source[${index}]`;
+                    const isActive = activeSidecarTarget?.itemKey === itemKey;
+
+                    return (
+                      <a
+                        key={`${citation.href}-${index}`}
+                        href={citation.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        data-sidecar-item-key={itemKey}
+                        className={`reader-sidecar-row reader-sidecar-row-link ${
+                          isActive ? "reader-sidecar-row-active" : ""
+                        }`}
+                      >
+                        <div className="reader-sidecar-row-title">
+                          {renderHighlightSegments(citation.label, `${itemKey}:label`)}
+                        </div>
+                        <div className="reader-sidecar-row-meta">
+                          {renderHighlightSegments(citation.host, `${itemKey}:host`)}
+                        </div>
+                      </a>
+                    );
+                  })}
                 </div>
               </ReaderSidecarDisclosure>
             </div>
@@ -259,9 +301,12 @@ export function MessageBubble({
                 count={attachmentCount}
                 icon={<Paperclip className="h-3.5 w-3.5" />}
                 trayVariant="compact"
+                forceOpen={activeSidecarTarget?.section === "attachments"}
               >
                 <div className="reader-sidecar-list">
                   {(message.attachments ?? []).map((attachment, index) => {
+                    const itemKey = `msg-${message.id}:attachment[${index}]`;
+                    const isActive = activeSidecarTarget?.itemKey === itemKey;
                     const secondaryLabel =
                       attachment.label && attachment.label !== attachment.indexAlt
                         ? attachment.label
@@ -270,14 +315,23 @@ export function MessageBubble({
                     return (
                       <div
                         key={`${attachment.indexAlt}-${attachment.label ?? index}`}
-                        className="reader-sidecar-row reader-sidecar-row-attachment"
+                        data-sidecar-item-key={itemKey}
+                        className={`reader-sidecar-row reader-sidecar-row-attachment ${
+                          isActive ? "reader-sidecar-row-active" : ""
+                        }`}
                       >
-                        <div className="reader-sidecar-row-title">{attachment.indexAlt}</div>
+                        <div className="reader-sidecar-row-title">
+                          {renderHighlightSegments(attachment.indexAlt, `${itemKey}:indexAlt`)}
+                        </div>
                         {secondaryLabel ? (
-                          <div className="reader-sidecar-row-meta">{secondaryLabel}</div>
+                          <div className="reader-sidecar-row-meta">
+                            {renderHighlightSegments(secondaryLabel, `${itemKey}:label`)}
+                          </div>
                         ) : null}
                         {attachment.mime ? (
-                          <div className="reader-sidecar-row-meta">{attachment.mime}</div>
+                          <div className="reader-sidecar-row-meta">
+                            {renderHighlightSegments(attachment.mime, `${itemKey}:mime`)}
+                          </div>
                         ) : null}
                       </div>
                     );
@@ -293,9 +347,12 @@ export function MessageBubble({
                 title={artifactCount === 1 ? "Artifact" : "Artifacts"}
                 count={artifactCount}
                 icon={<Sparkles className="h-3.5 w-3.5" />}
+                forceOpen={activeSidecarTarget?.section === "artifacts"}
               >
                 <div className="reader-sidecar-list">
                   {(message.artifacts ?? []).map((artifact, index) => {
+                    const itemKey = `msg-${message.id}:artifact[${index}]`;
+                    const isActive = activeSidecarTarget?.itemKey === itemKey;
                     const excerpt = getArtifactExcerptText(artifact, {
                       maxLines: 2,
                       maxCharsPerLine: 100,
@@ -304,16 +361,27 @@ export function MessageBubble({
                     return (
                       <div
                         key={`${artifact.kind}-${artifact.label ?? index}`}
-                        className="reader-sidecar-row"
+                        data-sidecar-item-key={itemKey}
+                        className={`reader-sidecar-row ${
+                          isActive ? "reader-sidecar-row-active" : ""
+                        }`}
                       >
                         <div className="reader-sidecar-row-title">
-                          {artifact.label || artifact.kind}
+                          {renderHighlightSegments(
+                            artifact.label || artifact.kind,
+                            `${itemKey}:title`
+                          )}
                         </div>
                         <div className="reader-sidecar-row-meta">
-                          {formatArtifactDescriptor(artifact)}
+                          {renderHighlightSegments(
+                            formatArtifactDescriptor(artifact),
+                            `${itemKey}:descriptor`
+                          )}
                         </div>
                         {excerpt ? (
-                          <div className="reader-sidecar-row-excerpt">{excerpt}</div>
+                          <div className="reader-sidecar-row-excerpt">
+                            {renderHighlightSegments(excerpt, `${itemKey}:excerpt`)}
+                          </div>
                         ) : null}
                       </div>
                     );
@@ -326,6 +394,31 @@ export function MessageBubble({
       ) : null}
     </div>
   );
+}
+
+function resolveActiveSidecarTarget(
+  occurrenceIndexMap: OccurrenceIndexMap,
+  sidecarTargetMap: Record<string, ReaderSidecarTarget>,
+  activeIndex: number | null
+): ReaderSidecarTarget | null {
+  if (activeIndex === null) {
+    return null;
+  }
+
+  for (const [nodeKey, indexes] of Object.entries(occurrenceIndexMap)) {
+    if (!sidecarTargetMap[nodeKey]) {
+      continue;
+    }
+    if (indexes.some((entry) => entry.index === activeIndex)) {
+      return sidecarTargetMap[nodeKey];
+    }
+  }
+
+  return null;
+}
+
+function escapeAttributeValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function renderFallbackContent(

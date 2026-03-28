@@ -2,7 +2,7 @@
 
 Version: topic-based canonical spec  
 Phase: threads-search-and-reader-navigation  
-Status: Decision Complete (Docs only; no code implementation in this pass)  
+Status: Active implementation baseline  
 Audience: Frontend engineers, QA, release owners
 
 ---
@@ -18,11 +18,12 @@ Locked decisions:
 
 1. `SearchSession` is promoted to `VestiSidepanel` top-level state instead of remaining local to `TimelinePage`.
 2. Search result ordering remains `updated_at` descending.
-3. Offscreen search returns only lightweight conversation-level match summaries.
-4. Reader builds occurrence-level navigation locally after messages are loaded.
+3. Offscreen search returns lightweight conversation-level match summaries with source taxonomy.
+4. Reader builds occurrence-level navigation locally after messages are loaded, including sidecar targets.
 5. Reader must expose an explicit `reader_building_index` state.
 6. List restore uses `anchorConversationId` as the primary restore target rather than raw `scrollTop`.
 7. Highlight scope is limited to text-capable nodes; it does not expand into `code_block`, `math`, or table-cell-level rich parsing in this phase.
+8. Query readiness is shared: empty query disables search, a single CJK character enters full-text, and a single non-CJK character remains title/snippet-only.
 
 ---
 
@@ -31,8 +32,8 @@ Locked decisions:
 Current behavior remains split across two unrelated mechanisms:
 
 1. Title and snippet matching happen locally in the Threads list.
-2. Message-body search goes through `searchConversationIdsByText(query)` and returns only `number[]` conversation ids.
-3. Reader does not receive search context and cannot navigate or highlight body hits.
+2. Legacy paths still assume `content_text` is the only full-text source, while package-aware helpers already understand `citations[] / attachments[] / artifacts[]`.
+3. Reader-side search historically understood body text only and could not navigate sidecar hits.
 4. Opening Reader unmounts `TimelinePage`, so local search state would be lost unless it is lifted.
 
 This means the current implementation can only answer "did this conversation match somewhere in messages" but cannot drive:
@@ -67,6 +68,19 @@ Boundary rule:
 
 Goal: replace `searchConversationIdsByText` with a lightweight summary interface that can power list excerpts and Reader entry.
 
+#### Query readiness contract
+
+```ts
+export type SearchReadiness = "empty" | "title_snippet_only" | "fulltext";
+```
+
+Rules:
+- empty query => `empty`
+- single CJK character => `fulltext`
+- single Latin/digit/symbol character => `title_snippet_only`
+- query length `>= 2` => `fulltext`
+- title/snippet highlight may still run for `title_snippet_only`; offscreen full-text scan must not
+
 #### Repository / storage / messaging signature
 
 ```ts
@@ -79,6 +93,8 @@ export interface ConversationMatchSummary {
   conversationId: number;
   firstMatchedMessageId: number;
   bestExcerpt: string;
+  firstMatchedSurface: "body" | "source" | "attachment" | "artifact" | "annotation";
+  matchedSurfaces: Array<"body" | "source" | "attachment" | "artifact" | "annotation">;
 }
 
 export async function searchConversationMatchesByText(
@@ -111,9 +127,15 @@ ConversationMatchSummary[]
 
 Semantics:
 - `firstMatchedMessageId` is the earliest matched message within that conversation by `created_at`; if timestamps tie, the lower message id wins.
-- `bestExcerpt` must come from the same message identified by `firstMatchedMessageId`.
+- `bestExcerpt` and `firstMatchedSurface` must come from the same message identified by `firstMatchedMessageId`.
 - `conversationIds` is an optional candidate-set constraint from the currently filtered list and exists to reduce offscreen scan cost.
-- `matchedInMessages` is not a repository field; it is derived in the list layer from the presence of a summary plus local title/snippet matching.
+- `matchedSurfaces` is a conversation-level union used for explanation and QA, not for ranking.
+- message search projection must cover:
+  - `body`
+  - `source`
+  - `attachment`
+  - `artifact`
+  - `annotation`
 
 Explicit exclusions for this phase:
 - no `totalOccurrenceCount`
@@ -131,8 +153,14 @@ Goal: make `ConversationCard` visually distinguish title hits, snippet hits, and
 
 Key changes:
 - introduce `splitWithHighlight(text, query): HighlightedSegment[]` as a reusable pure function
-- use `bestExcerpt` to replace the displayed snippet when the hit exists only in message body
-- keep the existing `Matched in messages` badge as the explanatory hint
+- use `bestExcerpt` to replace the displayed snippet when the hit exists only in search projection
+- surface-specific hint copy is fixed:
+  - `Matched in messages`
+  - `Matched in sources`
+  - `Matched in attachments`
+  - `Matched in artifacts`
+  - `Matched in notes`
+- do not show the hint when title or snippet already matched locally
 
 Completion criteria:
 - title-hit, snippet-hit, and message-only-hit cards are visually distinguishable
@@ -170,6 +198,7 @@ Key changes:
 - `AstMessageRenderer` uses the shared highlight splitter on text-capable nodes
 - `MessageBubble` uses the same utility in plain-text fallback mode
 - Reader navigation scrolls and focuses the active rendered occurrence target
+- sidecar hits must auto-expand the owning `Sources / Attachments / Artifacts` disclosure and focus the concrete item
 
 Allowed highlight targets:
 - paragraph text
@@ -178,6 +207,9 @@ Allowed highlight targets:
 - blockquote text
 - `strong`
 - `em`
+- source label / host
+- attachment `indexAlt / label / mime`
+- artifact `title / descriptor / excerpt`
 - `code_inline`
 
 Out of scope for this phase:

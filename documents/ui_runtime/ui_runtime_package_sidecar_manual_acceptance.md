@@ -81,6 +81,10 @@ For each relevant case, confirm:
 - annotation export anchor text is not blank when the anchor turn only has sidecars
 - prompt/compression transcript includes sidecar summaries when body text is absent
 - search/retrieval can still surface attachment-only messages via summary text
+- single CJK character query enters full-text search across body + sidecars
+- single non-CJK character query remains title/snippet-only and does not trigger body-sidecar full-text scan
+- Threads search can distinguish `Matched in messages / sources / attachments / artifacts / notes`
+- Reader search auto-expands the owning `Sources / Attachments / Artifacts` section when the active hit lands in a sidecar item
 
 6. Metadata
 - title still follows app-shell title truth, not the largest body heading
@@ -95,3 +99,5 @@ Before sign-off, answer all of these:
 - Did any attachment imply raw replay support?
 - Did any dynamic artifact render as a live embedded surface?
 - Did any attachment-only message disappear from preview, export, or prompt flow?
+- Did any single CJK character query fail to reach full-text body + sidecar search?
+- Did any Reader sidecar hit fail to auto-expand and focus the correct item?

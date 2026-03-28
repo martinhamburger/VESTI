@@ -1,4 +1,9 @@
-import type { ConversationMatchSummary, Message, Platform } from "~lib/types";
+import type {
+  ConversationMatchSummary,
+  Message,
+  Platform,
+  SearchMatchSurface,
+} from "~lib/types";
 import type { DatePreset, HeaderMode } from "./timelineFilters";
 
 export interface SearchSession {
@@ -19,6 +24,7 @@ export type FrozenSearchSession = Readonly<SearchSession>;
 export interface ReaderOccurrence {
   occurrenceKey: string;
   messageId: number;
+  surface: SearchMatchSurface;
   nodeKey: string;
   charOffset: number;
   length: number;
