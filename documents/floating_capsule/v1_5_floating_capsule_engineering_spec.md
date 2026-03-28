@@ -140,11 +140,13 @@ Rules:
 - z-index: `2147483646`.
 
 ## 6.2 Collapsed state
-- Circular icon only.
+- Circular liquid-glass sphere with contrast-safe owl mark.
 - Single click expands capsule (does not immediately archive).
 - Keyboard accessible (`Enter`/`Space`).
+- Capsule owl uses explicit light/dark variants selected by capsule theme; do not rely on one neutral mark across all backgrounds.
 
 ## 6.3 Expanded state
+- Expanded state remains a single expanded panel shell. Rounded badges and controls may be used inside the panel, but the shell itself must not dissolve into a stack of independent floating pills.
 - Displays:
   - platform badge
   - status label (e.g. `Mirroring`, `Held`, `Ready to archive`, `Saved`)
@@ -153,6 +155,9 @@ Rules:
   - `Archive now` (enabled only when `smart/manual` and `available=true`)
   - `Open Dock`
   - `Pause/Resume`
+- Expanded-state copy may use softer, rounder internal controls, but metrics/status/actions must still read as content inside the same panel rather than detached utility chips.
+- Status row and top-right collapse control are panel-native controls, not standalone pill badges/buttons.
+- `messages` / `turns` metrics and primary action row must stay compact; avoid tall empty cards or oversized full-pill buttons inside the panel.
 
 ## 6.4 Auto-collapse
 - On `saved` state, show success state for `autoCollapseMs`, then collapse.

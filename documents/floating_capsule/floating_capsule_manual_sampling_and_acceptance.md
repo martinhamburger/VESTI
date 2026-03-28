@@ -42,6 +42,11 @@ For each `platform x mode`, validate:
 6. Refresh resets to quiet default (collapsed + right edge).
 7. Composer overlap avoidance on small viewport.
 8. Host CSS stress (zoom/font override) with Shadow DOM stability.
+9. Expanded-state panel baseline: the capsule expanded view still reads as one complete panel shell and does not fragment into separate floating pills.
+10. Expanded-state internal control baseline: platform badge, status badge, and action controls may be more rounded, but metrics and controls still feel clearly contained by the panel.
+11. Expanded-state density baseline: `Messages` / `Turns` and the primary action row remain compact, with no large empty cards or oversized full-pill action buttons.
+12. Expanded-state control boundary baseline: `mirroring` / `held` / `ready` status and the top-right collapse affordance read as panel-native controls rather than separate pill chips.
+13. Collapsed-state contrast baseline: the glass sphere remains legible on both light and dark host backgrounds, and the owl mark switches to the correct light/dark variant without obvious contrast loss.
 
 ---
 

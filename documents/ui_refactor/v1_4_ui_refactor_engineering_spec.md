@@ -113,6 +113,11 @@ Each level must map to explicit design tokens (background, border, shadow, text 
 - `Attachments` is the lightest sidecar tier. Attachment items render as compact index rows only and must not use preview-card styling or image-heavy emphasis.
 - Attachment-only messages still keep a minimal body anchor, but the attachment disclosure must not become the dominant headline block for the turn.
 
+## 4.5.2 Floating capsule boundary
+- Low-density pill language may be used inside floating capsule utility surfaces, but `expanded` remains a single macro panel shell rather than a loose stack of floating pills.
+- Floating capsule `status` and top-right `collapse` controls are panel-native affordances, not pill badges/buttons.
+- Floating capsule `collapsed` may adopt stronger glass treatment, but the owl mark must retain contrast through explicit light/dark variants rather than one neutral asset.
+
 ## 4.6 Settings density and grouping
 - Settings is grouped into `Personalisation`, `System`, and `Support`.
 - `Appearance` and system controls remain disclosure-based.

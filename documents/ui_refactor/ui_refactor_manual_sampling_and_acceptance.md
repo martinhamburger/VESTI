@@ -90,6 +90,8 @@ Threads child flow (mandatory):
 44. Gemini upload dedupe baseline: a single uploaded user turn with attachments renders exactly one `YOU` message row; attachment presence must not create a duplicate user turn.
 45. Reader sidecar capsule baseline: collapsed `Attachment` / `Source` / `Artifact` renders as a single-line utility capsule aligned with the `Expand` / `Collapse` tool language; no second-line summary copy is shown in collapsed state.
 46. Reader sidecar tray baseline: expanded sidecar content drops into a separate inset tray below the capsule, and the last visible tray edge remains visually separated from the Reader turn divider.
+47. Floating capsule expanded boundary baseline: the expanded capsule still reads as one complete panel, even when internal badges/buttons become rounder.
+48. Floating capsule contrast baseline: the collapsed glass sphere uses contrast-safe owl variants so the brand mark stays legible on both dark and light host backgrounds.
 
 ---
 

@@ -10,7 +10,7 @@ import {
   type CapsuleViewMode,
 } from "../lib/services/capsuleSettingsService";
 import type { ActiveCaptureStatus, Platform, UiThemeMode } from "../lib/types";
-import { LOGO_BASE64 } from "../lib/ui/logo";
+import { resolveCapsuleLogoSrc } from "../lib/ui/capsuleLogo";
 import { logger } from "../lib/utils/logger";
 
 export const config: PlasmoCSConfig = {
@@ -342,6 +342,10 @@ const SHADOW_STYLE = `
   --capsule-text3: hsl(224 7% 56%);
   --capsule-shadow: 0 8px 22px rgba(28, 20, 15, 0.1), 0 2px 6px rgba(28, 20, 15, 0.08);
   --capsule-shadow-hover: 0 10px 28px rgba(28, 20, 15, 0.12), 0 3px 9px rgba(28, 20, 15, 0.1);
+  --capsule-ball-border: hsl(0 0% 100% / 0.6);
+  --capsule-ball-bg-start: hsl(0 0% 100% / 0.84);
+  --capsule-ball-bg-end: hsl(220 30% 92% / 0.62);
+  --capsule-ball-shadow: 0 16px 28px rgba(28, 20, 15, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.66), inset 0 -10px 18px rgba(182, 190, 207, 0.3);
   --status-held-bg: hsl(36 90% 43% / 0.12);
   --status-held-text: hsl(36 90% 43%);
   --status-held-border: hsl(36 90% 43% / 0.28);
@@ -362,6 +366,11 @@ const SHADOW_STYLE = `
   --btn-secondary-bg: hsl(220 23% 94%);
   --btn-secondary-text: hsl(224 9% 36%);
   --btn-secondary-border: hsl(220 17% 84%);
+  --capsule-pill-bg: hsl(0 0% 100% / 0.82);
+  --capsule-pill-bg-strong: hsl(0 0% 100% / 0.92);
+  --capsule-pill-border: hsl(220 18% 80% / 0.92);
+  --capsule-pill-shadow: 0 12px 28px rgba(28, 20, 15, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  --capsule-pill-shadow-subtle: 0 8px 18px rgba(28, 20, 15, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.34);
   position: fixed;
   pointer-events: auto;
   touch-action: none;
@@ -384,6 +393,10 @@ const SHADOW_STYLE = `
   --capsule-text3: hsl(0 0% 62%);
   --capsule-shadow: 0 12px 30px rgba(0, 0, 0, 0.4), 0 4px 10px rgba(0, 0, 0, 0.3);
   --capsule-shadow-hover: 0 10px 28px rgba(0, 0, 0, 0.35), 0 3px 9px rgba(0, 0, 0, 0.25);
+  --capsule-ball-border: hsl(0 0% 100% / 0.14);
+  --capsule-ball-bg-start: hsl(0 0% 26% / 0.72);
+  --capsule-ball-bg-end: hsl(0 0% 10% / 0.48);
+  --capsule-ball-shadow: 0 18px 32px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -12px 20px rgba(0, 0, 0, 0.26);
   --status-held-bg: hsl(40 85% 58% / 0.2);
   --status-held-text: hsl(40 85% 58%);
   --status-held-border: hsl(40 85% 58% / 0.34);
@@ -404,6 +417,11 @@ const SHADOW_STYLE = `
   --btn-secondary-bg: hsl(0 0% 16%);
   --btn-secondary-text: hsl(0 0% 78%);
   --btn-secondary-border: hsl(0 0% 25%);
+  --capsule-pill-bg: hsl(0 0% 16% / 0.8);
+  --capsule-pill-bg-strong: hsl(0 0% 19% / 0.88);
+  --capsule-pill-border: hsl(0 0% 26% / 0.95);
+  --capsule-pill-shadow: 0 14px 30px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --capsule-pill-shadow-subtle: 0 10px 22px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   color-scheme: dark;
 }
 
@@ -416,10 +434,16 @@ const SHADOW_STYLE = `
 .capsule-collapsed {
   width: ${COLLAPSED_SIZE}px;
   height: ${COLLAPSED_SIZE}px;
-  border: 1px solid hsl(220 17% 84%);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid var(--capsule-ball-border);
   border-radius: 9999px;
-  background: hsl(220 24% 95%);
-  box-shadow: 0 3px 9px rgba(28, 20, 15, 0.16), 0 1px 2px rgba(28, 20, 15, 0.1);
+  background:
+    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.08) 34%, transparent 58%),
+    linear-gradient(145deg, var(--capsule-ball-bg-start), var(--capsule-ball-bg-end));
+  box-shadow: var(--capsule-ball-shadow);
+  backdrop-filter: blur(18px) saturate(1.22);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -430,9 +454,37 @@ const SHADOW_STYLE = `
   touch-action: none;
 }
 
+.capsule-collapsed::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 31% 21%, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.26) 28%, transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 68%);
+  opacity: 0.9;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.capsule-collapsed::after {
+  content: "";
+  position: absolute;
+  inset: 17% 18% auto 22%;
+  height: 26%;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0));
+  opacity: 0.72;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .capsule-collapsed:hover {
   transform: translateY(-1px) scale(1.02);
-  box-shadow: 0 6px 14px rgba(28, 20, 15, 0.2), 0 2px 5px rgba(28, 20, 15, 0.12);
+  box-shadow:
+    0 18px 32px rgba(28, 20, 15, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -12px 22px rgba(182, 190, 207, 0.32);
 }
 
 .capsule-collapsed:active {
@@ -445,16 +497,19 @@ const SHADOW_STYLE = `
   object-fit: contain;
   -webkit-user-drag: none;
   user-select: none;
+  position: relative;
+  z-index: 1;
 }
 
 .capsule-panel {
   width: min(320px, calc(100vw - 16px));
   box-sizing: border-box;
   border: 1px solid var(--capsule-border);
-  border-radius: 16px;
-  background: var(--capsule-bg);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--capsule-bg) 88%, white 12%);
   box-shadow: var(--capsule-shadow);
   overflow: hidden;
+  backdrop-filter: blur(18px) saturate(1.02);
 }
 
 .capsule-shell[data-view="collapsed"] .capsule-panel {
@@ -468,8 +523,9 @@ const SHADOW_STYLE = `
 .capsule-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding: 13px 14px 11px;
+  padding: 11px 13px 8px;
   border-bottom: 1px solid var(--capsule-divider);
 }
 
@@ -499,8 +555,8 @@ const SHADOW_STYLE = `
   line-height: 1.2;
   font-weight: 700;
   letter-spacing: 0.2px;
-  padding: 2px 7px;
-  border-radius: 5px;
+  padding: 3px 9px;
+  border-radius: 9999px;
   border: 1px solid transparent;
 }
 
@@ -508,9 +564,10 @@ const SHADOW_STYLE = `
   width: 24px;
   height: 24px;
   font-family: inherit;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: none;
+  border-radius: 9999px;
   background: transparent;
+  box-shadow: none;
   color: var(--capsule-text2);
   font-size: 11px;
   line-height: 1;
@@ -519,11 +576,11 @@ const SHADOW_STYLE = `
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
 }
 
 .capsule-collapse-btn:hover {
-  background: var(--capsule-bg3);
+  background: color-mix(in srgb, var(--capsule-text1) 8%, transparent 92%);
   color: var(--capsule-text1);
 }
 
@@ -531,9 +588,10 @@ const SHADOW_STYLE = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 11px 14px 0;
-  margin-bottom: 10px;
+  gap: 10px;
+  min-height: 0;
+  margin: 8px 13px 0;
+  padding: 0;
 }
 
 .capsule-status-badge {
@@ -543,11 +601,12 @@ const SHADOW_STYLE = `
   font-size: 10.5px;
   line-height: 1.1;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 3px 8px;
-  border-radius: 20px;
-  border: 1px solid transparent;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
 }
 
 .capsule-status-dot {
@@ -559,113 +618,128 @@ const SHADOW_STYLE = `
 
 .capsule-status-badge[data-state="idle"] {
   color: var(--status-neutral-text);
-  background: var(--status-neutral-bg);
-  border-color: var(--status-neutral-border);
 }
 
 .capsule-status-badge[data-state="holding"] {
   color: var(--status-held-text);
-  background: var(--status-held-bg);
-  border-color: var(--status-held-border);
 }
 
 .capsule-status-badge[data-state="ready_to_archive"] {
   color: var(--status-ready-text);
-  background: var(--status-ready-bg);
-  border-color: var(--status-ready-border);
 }
 
 .capsule-status-badge[data-state="mirroring"],
 .capsule-status-badge[data-state="archiving"] {
   color: var(--status-live-text);
-  background: var(--status-live-bg);
-  border-color: var(--status-live-border);
 }
 
 .capsule-status-badge[data-state="saved"] {
   color: var(--status-live-text);
-  background: var(--status-live-bg);
-  border-color: var(--status-live-border);
 }
 
 .capsule-status-badge[data-state="error"] {
   color: var(--status-error-text);
-  background: var(--status-error-bg);
-  border-color: var(--status-error-border);
 }
 
 .capsule-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
-  padding: 0 14px;
-  margin-bottom: 10px;
+  padding: 0 13px;
+  margin-top: 8px;
 }
 
 .capsule-metric {
-  border: 1px solid var(--capsule-divider);
-  border-radius: 9px;
-  background: var(--capsule-bg2);
-  padding: 8px 10px;
-  display: grid;
-  gap: 4px;
+  min-height: 0;
+  border: 1px solid color-mix(in srgb, var(--capsule-border) 86%, transparent 14%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--capsule-bg2) 76%, white 24%);
+  padding: 7px 10px 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .capsule-metric-label {
-  font-size: 10px;
+  font-size: 10.5px;
   line-height: 1;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--capsule-text2);
+  white-space: nowrap;
 }
 
 .capsule-domain-label {
-  font-size: 11px;
+  font-size: 10.5px;
   line-height: 1;
   letter-spacing: 0.01em;
   color: var(--capsule-text2);
+  position: relative;
+  max-width: 148px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 10px;
+  margin-left: 2px;
+}
+
+.capsule-domain-label::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 9px;
+  transform: translateY(-50%);
+  background: var(--capsule-divider);
 }
 
 .capsule-metric-value {
   font-family: "Vesti Title Serif", "Tiempos Headline", "Tiempos Text", "Tiempos", ui-serif, "Apple-System-UI-Serif", "BlinkMacSystemFont", serif;
-  font-size: 20px;
+  font-size: 15px;
   line-height: 1;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   color: var(--capsule-text1);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
 
 .capsule-metric-value.is-empty {
-  font-size: 16px;
+  font-size: 12.5px;
   color: var(--capsule-text3);
 }
 
 .capsule-reason {
-  min-height: 17px;
-  font-size: 11.5px;
-  line-height: 1.5;
+  min-height: 0;
+  font-size: 10.5px;
+  line-height: 1.3;
   color: var(--capsule-text2);
-  margin-bottom: 12px;
-  padding: 0 14px;
+  margin: 8px 0 0;
+  padding: 0 13px;
+  text-align: center;
+}
+
+.capsule-reason:empty {
+  display: none;
 }
 
 .capsule-actions {
-  display: flex;
-  gap: 7px;
-  padding: 0 14px 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 13px 12px;
 }
 
 .capsule-action-btn {
-  flex: 1;
   min-height: 34px;
   font-family: inherit;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  padding: 8px 10px;
-  font-size: 12.5px;
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: 12px;
+  padding: 0 12px;
+  font-size: 11.5px;
   line-height: 1;
   font-weight: 600;
   letter-spacing: 0.005em;
@@ -673,13 +747,19 @@ const SHADOW_STYLE = `
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--btn-secondary-bg);
+  background: color-mix(in srgb, var(--capsule-bg2) 86%, white 14%);
   color: var(--btn-secondary-text);
-  transition: opacity 120ms ease;
+  box-shadow: none;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease;
 }
 
 .capsule-action-btn:hover:enabled {
   opacity: 0.82;
+  background: color-mix(in srgb, var(--capsule-bg3) 90%, white 10%);
 }
 
 .capsule-action-btn:disabled {
@@ -688,10 +768,10 @@ const SHADOW_STYLE = `
 }
 
 .capsule-action-btn.is-primary {
-  flex: 1.4;
   background: var(--btn-primary-bg);
   border-color: transparent;
   color: var(--btn-primary-text);
+  box-shadow: none;
 }
 
 .capsule-action-btn:not(.is-primary) {
@@ -728,10 +808,6 @@ const SHADOW_STYLE = `
 
 .capsule-shell[data-theme="dark"] .capsule-panel {
   box-shadow: var(--capsule-shadow);
-}
-
-.capsule-shell[data-theme="dark"] .capsule-collapse-btn:hover {
-  background: var(--capsule-bg3);
 }
 
 .capsule-shell[data-theme="dark"] .capsule-action-btn:hover:enabled {
@@ -780,26 +856,6 @@ const SHADOW_STYLE = `
 .capsule-shell[data-theme="dark"] .capsule-status-badge[data-state="archiving"],
 .capsule-shell[data-theme="dark"] .capsule-status-badge[data-state="saved"] {
   color: var(--status-live-text);
-}
-
-.capsule-shell[data-theme="dark"] .capsule-status-badge[data-state="idle"],
-.capsule-shell[data-theme="dark"] .capsule-status-badge[data-state="error"],
-.capsule-shell[data-theme="dark"] .capsule-status-badge[data-state="holding"],
-.capsule-shell[data-theme="dark"] .capsule-status-badge[data-state="ready_to_archive"],
-.capsule-shell[data-theme="dark"] .capsule-status-badge[data-state="mirroring"],
-.capsule-shell[data-theme="dark"] .capsule-status-badge[data-state="archiving"],
-.capsule-shell[data-theme="dark"] .capsule-status-badge[data-state="saved"] {
-  border-style: solid;
-}
-
-.capsule-shell[data-theme="light"] .capsule-status-badge[data-state="idle"],
-.capsule-shell[data-theme="light"] .capsule-status-badge[data-state="error"],
-.capsule-shell[data-theme="light"] .capsule-status-badge[data-state="holding"],
-.capsule-shell[data-theme="light"] .capsule-status-badge[data-state="ready_to_archive"],
-.capsule-shell[data-theme="light"] .capsule-status-badge[data-state="mirroring"],
-.capsule-shell[data-theme="light"] .capsule-status-badge[data-state="archiving"],
-.capsule-shell[data-theme="light"] .capsule-status-badge[data-state="saved"] {
-  border-style: solid;
 }
 
 .capsule-shell[data-view="expanded"] {
@@ -955,10 +1011,6 @@ const SHADOW_STYLE = `
 
 .capsule-shell[data-view="expanded"] .capsule-panel {
   border-color: var(--capsule-border);
-}
-
-.capsule-shell[data-view="expanded"] .capsule-metric {
-  border-color: var(--capsule-divider);
 }
 
 .capsule-shell[data-view="expanded"] .capsule-header {
@@ -1139,7 +1191,7 @@ const mount = async () => {
     : "Open Vesti Dock";
   const logo = document.createElement("img");
   logo.className = "capsule-logo";
-  logo.src = LOGO_BASE64;
+  logo.src = resolveCapsuleLogoSrc(themeMode);
   logo.alt = "Vesti";
   logo.draggable = false;
   collapsedButton.appendChild(logo);
@@ -1175,7 +1227,7 @@ const mount = async () => {
   const collapseBtn = document.createElement("button");
   collapseBtn.type = "button";
   collapseBtn.className = "capsule-collapse-btn";
-  collapseBtn.textContent = "^";
+  collapseBtn.textContent = "⌃";
   collapseBtn.setAttribute("aria-label", "Collapse capsule");
   collapseBtn.title = "Collapse";
 
@@ -1472,6 +1524,7 @@ const mount = async () => {
     shell.dataset.view = viewMode;
     shell.dataset.state = uiState;
     shell.dataset.theme = themeMode;
+    logo.src = resolveCapsuleLogoSrc(themeMode);
 
     if (!isPrimaryRolloutHost) {
       shell.classList.add("fallback-shell");
