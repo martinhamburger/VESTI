@@ -54,7 +54,7 @@ const SELECTORS = {
     "div[class*='message-content']",
     "div[class*='response-content']",
   ],
-  title: ["[role='heading']", "main h1", "header h1", "title"],
+  title: [".conversation.selected", ".conversation-title-container", "header h1", "nav h1", "title"],
   generating: [
     "[data-is-streaming='true']",
     "[data-testid*='streaming']",

@@ -41,13 +41,9 @@ const SELECTORS = {
   ],
   copyActionAnchors: ["[data-testid='action-bar-copy']"],
   messageContainers: [
+    "main div.group.relative",
     "main [data-testid*='message']",
-    "main [data-testid*='conversation']",
-    "main article",
     "main [role='listitem']",
-    "main [class*='message']",
-    "main [class*='claude-message']",
-    "main [class*='font-user-message']",
   ],
   roleAncestorHints: ["[data-author]", "[data-message-author-role]", "[data-testid]"],
   messageContent: [
@@ -578,20 +574,7 @@ export class ClaudeParser implements IParser {
       }
     }
 
-    const nodesBySignature = new Map<string, Element>();
-    for (const node of uniqueNodesInDocumentOrder(resolvedNodes)) {
-      const text = this.extractMessageText(node, "ai");
-      if (!text) {
-        continue;
-      }
-
-      const signature = `${text.slice(0, 220)}::${text.length}`;
-      if (!nodesBySignature.has(signature)) {
-        nodesBySignature.set(signature, node);
-      }
-    }
-
-    return uniqueNodesInDocumentOrder(nodesBySignature.values());
+    return uniqueNodesInDocumentOrder(resolvedNodes);
   }
 
   private resolveActionAnchorMessageNode(anchor: Element): Element | null {
