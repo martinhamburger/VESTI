@@ -5,7 +5,9 @@
   "description": "AI Chat Memory - Capture and review your conversations",
   "author": "Vesti",
   "scripts": {
+    "predev": "pnpm -C ../packages/vesti-content-package build",
     "dev": "plasmo dev",
+    "dev:verbose": "pnpm exec plasmo dev --verbose",
     "prebuild": "pnpm -C ../packages/vesti-content-package build && pnpm -C ../packages/vesti-ui build && pnpm -C .. install --frozen-lockfile",
     "build": "plasmo build",
     "package": "node -e \"console.error('Local packaging is disabled. Use CI workflow extension-package or run pnpm -C frontend package:safe.'); process.exit(1)\"",
