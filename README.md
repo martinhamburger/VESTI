@@ -1,12 +1,12 @@
 <div align="center">
 
   <!-- 🏆 荣誉徽章 -->
-  <p align="center">
-    <img src=".github/assets/goldcup.gif" width="45" alt="金奖奖杯" valign="middle">
+  <p align="center" style="opacity: 0.85;">
+    <img src=".github/assets/goldcup.gif" width="40" alt="金奖奖杯" valign="middle">
     &nbsp;&nbsp;
-    <img src="https://img.shields.io/badge/2026%20AI%20Hackathon%20Tour-全国总决赛%20金奖-9E9E9E?style=flat-square&logo=trophy&logoColor=FFD700&labelColor=424242" alt="2026 AI Hackathon Tour 金奖" valign="middle">
+    <img src="https://img.shields.io/badge/2026%20AI%20Hackathon%20Tour-全国总决赛%20金奖-FFD700?style=flat-square&logo=trophy&logoColor=FFD700&labelColor=1a1a2e" alt="2026 AI Hackathon Tour 金奖" valign="middle">
     &nbsp;
-    <img src="https://img.shields.io/badge/数字生活与情感赛道-最佳项目-81C784?style=flat-square&logo=leaf&logoColor=white&labelColor=558B2F" alt="数字生活与情感赛道最佳" valign="middle">
+    <img src="https://img.shields.io/badge/数字生活与情感赛道-最佳项目-4CAF50?style=flat-square&logo=leaf&logoColor=white&labelColor=2E7D32" alt="数字生活与情感赛道最佳" valign="middle">
   </p>
 
   <br>
