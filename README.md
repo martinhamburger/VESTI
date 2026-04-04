@@ -1,7 +1,6 @@
 <div align="center">
 
-  <h1><img src=".github/assets/icon.png" width="36" alt="Vesti Icon" valign="middle">&nbsp;心迹 Vesti</h1>
-  <p>本地优先的 AI 对话记忆与知识管理中台 | Local-First AI Conversation Memory & Knowledge Hub</p>
+  <h1><img src=".github/assets/icon.png" width="42" alt="Vesti Icon" valign="middle">&nbsp;心迹 Vesti</h1>
 
   <!-- 🏆 荣誉徽章 -->
   <p align="center" style="opacity: 0.5;">
@@ -9,8 +8,10 @@
     &nbsp;&nbsp;
     <img src="https://img.shields.io/badge/2026%20AI%20Hackathon%20Tour-全国总决赛%20金奖-FFD700?style=flat&logo=trophy&logoColor=FFD700&labelColor=1a1a2e" alt="2026 AI Hackathon Tour 金奖" valign="middle">
     &nbsp;
-    <img src="https://img.shields.io/badge/数字生活与情感赛道-最佳项目-4CAF50?style=flat&logo=leaf&logoColor=white&labelColor=2E7D32" alt="数字生活与情感赛道最佳" valign="middle">
+    <img src="https://img.shields.io/badge/数字生活与情感赛道-最佳项目-81C784?style=flat&logo=leaf&logoColor=white&labelColor=558B2F" alt="数字生活与情感赛道最佳" valign="middle">
   </p>
+
+  <p>本地优先的 AI 对话记忆与知识管理中台 | Local-First AI Conversation Memory & Knowledge Hub</p>
 
   <h3>📷 Vesti 界面概览与核心功能演示</h3>
 
