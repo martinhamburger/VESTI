@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronDown,
   Database,
   Loader2,
   Moon,
   RefreshCw,
+  Sparkles,
   Settings,
   Sun,
   X,
 } from "lucide-react";
 import { DataManagementPanel } from "./components/DataManagementPanel";
+import { GuidancePanel } from "./components/GuidancePanel";
 import { LibraryDataProvider } from "./contexts/library-data";
 import { ExploreTab } from "./tabs/explore-tab";
 import { LibraryTab } from "./tabs/library-tab";
@@ -71,6 +74,7 @@ export function VestiDashboard({
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [guidanceOpen, setGuidanceOpen] = useState(false);
   const [drawerView, setDrawerView] = useState<DrawerView>("settings");
   const [modelscopeKey, setModelscopeKey] = useState("");
   const [notionSettings, setNotionSettingsState] = useState<NotionSettings>({
@@ -103,7 +107,12 @@ export function VestiDashboard({
     explore: activeTab === "explore",
     network: activeTab === "network",
   }));
-  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const userMenuAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const userMenuPanelRef = useRef<HTMLDivElement | null>(null);
+  const [userMenuPosition, setUserMenuPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const notionAvailable =
     typeof chrome !== "undefined" &&
     Boolean(chrome.storage?.local) &&
@@ -197,16 +206,53 @@ export function VestiDashboard({
 
   useEffect(() => {
     if (!settingsOpen) return;
+    const updateMenuPosition = () => {
+      const rect = userMenuAnchorRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const menuWidth = 208;
+      const padding = 12;
+      const left = Math.max(
+        padding,
+        Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - padding),
+      );
+      setUserMenuPosition({
+        top: rect.bottom + 8,
+        left,
+      });
+    };
+
     const handlePointerDown = (event: MouseEvent) => {
-      if (!userMenuRef.current) return;
-      if (userMenuRef.current.contains(event.target as Node)) return;
+      const target = event.target;
+      if (target instanceof Node) {
+        if (userMenuAnchorRef.current?.contains(target)) return;
+        if (userMenuPanelRef.current?.contains(target)) return;
+      }
       setSettingsOpen(false);
     };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
     document.addEventListener("mousedown", handlePointerDown);
     return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
       document.removeEventListener("mousedown", handlePointerDown);
     };
   }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!guidanceOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setGuidanceOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [guidanceOpen]);
 
   const handleSaveModelscopeKey = () => {
     if (typeof chrome === "undefined" || !chrome.storage?.local) {
@@ -343,6 +389,16 @@ export function VestiDashboard({
     setSettingsOpen(false);
   };
 
+  const handleOpenGuidancePath = (tab: Tab) => {
+    handleSelectTab(tab);
+    setGuidanceOpen(false);
+  };
+
+  const handleToggleUserMenu = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    userMenuAnchorRef.current = event.currentTarget;
+    setSettingsOpen((open) => !open);
+  };
+
   const isDarkMode = themeMode === "dark";
   const isThemeSwitchDisabled = !onToggleTheme || themeSyncStatus === "syncing";
   const themeDescription = isDarkMode
@@ -410,10 +466,10 @@ export function VestiDashboard({
   );
 
   const userMenu = (
-    <div ref={userMenuRef} className="relative">
+    <div className="relative z-[90]">
       <button
         type="button"
-        onClick={() => setSettingsOpen((open) => !open)}
+        onClick={handleToggleUserMenu}
         className="inline-flex items-center gap-1 rounded-lg p-1.5 transition-colors hover:bg-bg-surface-card"
       >
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-primary text-sm font-sans text-white">
@@ -421,26 +477,6 @@ export function VestiDashboard({
         </div>
         <ChevronDown strokeWidth={1.75} className="h-4 w-4 text-text-secondary" />
       </button>
-      {settingsOpen && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-lg border border-border-subtle bg-bg-primary py-1 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
-          <button
-            type="button"
-            onClick={() => openDrawer("settings")}
-            className="inline-flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-sans text-text-primary transition-colors hover:bg-bg-surface-card"
-          >
-            <Settings strokeWidth={1.6} className="h-4 w-4" />
-            <span>Settings</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => openDrawer("data")}
-            className="inline-flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-sans text-text-primary transition-colors hover:bg-bg-surface-card"
-          >
-            <Database strokeWidth={1.6} className="h-4 w-4" />
-            <span>Data Operations</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 
@@ -449,7 +485,7 @@ export function VestiDashboard({
       <div
         className={`${rootClassName ?? ""} relative flex h-screen flex-col bg-bg-primary text-text-primary`}
       >
-        <header className="bg-bg-tertiary">
+        <header className="relative z-[80] bg-bg-tertiary">
           <div className="hidden h-14 border-b border-border-subtle px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
             <div className="justify-self-start">{brand}</div>
             <div className="justify-self-center self-center">{tabNav}</div>
@@ -463,6 +499,55 @@ export function VestiDashboard({
             <div className="border-b border-border-subtle px-4 sm:px-6">{tabNav}</div>
           </div>
         </header>
+
+        {settingsOpen && userMenuPosition && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                ref={userMenuPanelRef}
+                style={{
+                  top: userMenuPosition.top,
+                  left: userMenuPosition.left,
+                }}
+                className="fixed z-[220] w-52 rounded-lg border border-border-subtle bg-bg-primary py-1 shadow-[0_16px_40px_rgba(0,0,0,0.16)]"
+              >
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    setGuidanceOpen(true);
+                    setSettingsOpen(false);
+                  }}
+                  className="inline-flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-sans text-text-primary transition-colors hover:bg-bg-surface-card"
+                >
+                  <Sparkles strokeWidth={1.6} className="h-4 w-4" />
+                  <span>Guidance</span>
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    openDrawer("settings");
+                  }}
+                  className="inline-flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-sans text-text-primary transition-colors hover:bg-bg-surface-card"
+                >
+                  <Settings strokeWidth={1.6} className="h-4 w-4" />
+                  <span>Settings</span>
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    openDrawer("data");
+                  }}
+                  className="inline-flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-sans text-text-primary transition-colors hover:bg-bg-surface-card"
+                >
+                  <Database strokeWidth={1.6} className="h-4 w-4" />
+                  <span>Data Operations</span>
+                </button>
+              </div>,
+              document.body,
+            )
+          : null}
 
         <div className="flex-1 overflow-hidden">
           {mountedTabs.library && (
@@ -498,6 +583,25 @@ export function VestiDashboard({
           )}
         </div>
 
+        {guidanceOpen && (
+          <>
+            <button
+              type="button"
+              aria-label="Close guidance backdrop"
+              onClick={() => setGuidanceOpen(false)}
+              className="absolute inset-0 z-[120] bg-black/35 backdrop-blur-[2px]"
+            />
+            <section className="absolute inset-0 z-[130] p-3 sm:p-5 lg:p-8">
+              <div className="h-full overflow-hidden rounded-[30px] border border-border-subtle bg-bg-primary shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+                <GuidancePanel
+                  onClose={() => setGuidanceOpen(false)}
+                  onOpenPath={handleOpenGuidancePath}
+                />
+              </div>
+            </section>
+          </>
+        )}
+
         {drawerOpen && (
           <>
             <button
@@ -514,7 +618,9 @@ export function VestiDashboard({
                   ) : (
                     <Database strokeWidth={1.6} className="h-4 w-4" />
                   )}
-                  <span>{drawerView === "settings" ? "Settings" : "Data Operations"}</span>
+                  <span>
+                    {drawerView === "settings" ? "Settings" : "Data Operations"}
+                  </span>
                 </div>
                 <button
                   type="button"
