@@ -16,7 +16,8 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  unicode-range: U+0000-00FF, U+0100-024F, U+0259, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range: U+0000-00FF, U+0100-024F, U+0259, U+1E00-1EFF, U+2000-206F,
+    U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
@@ -25,7 +26,8 @@
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  unicode-range: U+0000-00FF, U+0100-024F, U+0259, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range: U+0000-00FF, U+0100-024F, U+0259, U+1E00-1EFF, U+2000-206F,
+    U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
@@ -34,7 +36,8 @@
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  unicode-range: U+0000-00FF, U+0100-024F, U+0259, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range: U+0000-00FF, U+0100-024F, U+0259, U+1E00-1EFF, U+2000-206F,
+    U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
@@ -43,7 +46,8 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF, U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF;
+  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF,
+    U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF;
 }
 
 @font-face {
@@ -52,7 +56,8 @@
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF, U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF;
+  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF,
+    U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF;
 }
 
 @font-face {
@@ -61,7 +66,8 @@
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF, U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF;
+  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF,
+    U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF;
 }
 
 @font-face {
@@ -87,7 +93,8 @@
   font-weight: 400;
   font-display: swap;
   font-synthesis: weight;
-  unicode-range: U+0000-00FF, U+0100-024F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F;
+  unicode-range: U+0000-00FF, U+0100-024F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF,
+    U+2100-214F;
 }
 
 @tailwind base;
@@ -202,15 +209,23 @@
     --radius: 0.5rem;
 
     --shadow-color: 28, 20, 15;
-    --shadow-paper: 0 2px 6px rgba(var(--shadow-color), 0.04), 0 6px 16px rgba(var(--shadow-color), 0.03);
-    --shadow-card-hover: 0 2px 6px rgba(var(--shadow-color), 0.04), 0 6px 16px rgba(var(--shadow-color), 0.03);
-    --shadow-popover: 0 8px 22px rgba(var(--shadow-color), 0.1), 0 2px 6px rgba(var(--shadow-color), 0.08);
-    --shadow-capsule: 0 3px 9px rgba(var(--shadow-color), 0.16), 0 1px 2px rgba(var(--shadow-color), 0.1);
+    --shadow-paper: 0 2px 6px rgba(var(--shadow-color), 0.04),
+      0 6px 16px rgba(var(--shadow-color), 0.03);
+    --shadow-card-hover: 0 2px 6px rgba(var(--shadow-color), 0.04),
+      0 6px 16px rgba(var(--shadow-color), 0.03);
+    --shadow-popover: 0 8px 22px rgba(var(--shadow-color), 0.1),
+      0 2px 6px rgba(var(--shadow-color), 0.08);
+    --shadow-capsule: 0 3px 9px rgba(var(--shadow-color), 0.16),
+      0 1px 2px rgba(var(--shadow-color), 0.1);
 
-    --font-serif: "Newsreader", "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
-    --font-vesti-serif: "Vesti Title Serif", "Tiempos Headline", "Tiempos Text", "Tiempos", ui-serif, "Apple-System-UI-Serif", "BlinkMacSystemFont", serif;
-    --font-ui: "Vesti Sans UI", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    --font-mono: "Cascadia Mono", "Consolas", "SF Mono", "Menlo", "Liberation Mono", monospace;
+    --font-serif: "Newsreader", "Noto Serif SC", "Source Han Serif SC",
+      "Songti SC", "SimSun", serif;
+    --font-vesti-serif: "Vesti Title Serif", "Tiempos Headline", "Tiempos Text",
+      "Tiempos", ui-serif, "Apple-System-UI-Serif", "BlinkMacSystemFont", serif;
+    --font-ui: "Vesti Sans UI", -apple-system, "Segoe UI", "PingFang SC",
+      "Microsoft YaHei", sans-serif;
+    --font-mono: "Cascadia Mono", "Consolas", "SF Mono", "Menlo",
+      "Liberation Mono", monospace;
   }
 }
 
@@ -296,10 +311,14 @@
     --reader-bq-attribution: 22 7% 21%;
 
     --shadow-color: 0, 0, 0;
-    --shadow-paper: 0 8px 24px rgba(var(--shadow-color), 0.33), 0 3px 8px rgba(var(--shadow-color), 0.24);
-    --shadow-card-hover: 0 10px 28px rgba(var(--shadow-color), 0.35), 0 3px 9px rgba(var(--shadow-color), 0.25);
-    --shadow-popover: 0 12px 30px rgba(var(--shadow-color), 0.4), 0 4px 10px rgba(var(--shadow-color), 0.3);
-    --shadow-capsule: 0 8px 20px rgba(var(--shadow-color), 0.45), 0 3px 8px rgba(var(--shadow-color), 0.3);
+    --shadow-paper: 0 8px 24px rgba(var(--shadow-color), 0.33),
+      0 3px 8px rgba(var(--shadow-color), 0.24);
+    --shadow-card-hover: 0 10px 28px rgba(var(--shadow-color), 0.35),
+      0 3px 9px rgba(var(--shadow-color), 0.25);
+    --shadow-popover: 0 12px 30px rgba(var(--shadow-color), 0.4),
+      0 4px 10px rgba(var(--shadow-color), 0.3);
+    --shadow-capsule: 0 8px 20px rgba(var(--shadow-color), 0.45),
+      0 3px 8px rgba(var(--shadow-color), 0.3);
   }
 }
 
@@ -382,7 +401,10 @@
     flex-shrink: 0;
     border-radius: 999px;
     color: hsl(var(--text-tertiary));
-    transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease;
   }
 
   .threads-header-icon-btn:hover {
@@ -494,7 +516,9 @@
     background-color: hsl(var(--bg-primary));
     padding-left: 2.25rem;
     padding-right: 0.75rem;
-    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+    transition:
+      border-color 0.12s ease,
+      box-shadow 0.12s ease;
   }
 
   .vesti-search-input-default:focus-within .vesti-search-input-field {
@@ -505,8 +529,11 @@
   .vesti-search-input-glass {
     border: 1px solid rgb(255 255 255 / 0.28);
     border-radius: 999px;
-    background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.7), rgb(255 255 255 / 0.58)),
+    background: linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.7),
+        rgb(255 255 255 / 0.58)
+      ),
       hsl(var(--bg-primary) / 0.52);
     backdrop-filter: blur(14px) saturate(1.04);
     box-shadow:
@@ -543,8 +570,11 @@
 
   .dark .vesti-search-input-glass {
     border-color: rgb(255 255 255 / 0.14);
-    background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.025)),
+    background: linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.06),
+        rgb(255 255 255 / 0.025)
+      ),
       hsl(var(--bg-secondary) / 0.72);
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.1),
@@ -613,14 +643,19 @@
   }
 
   .appearance-shell {
-    border: 1px solid transparent;
+    border: 1px solid hsl(var(--border-subtle));
     border-radius: 12px;
+    background-color: hsl(var(--bg-surface));
+    box-shadow: var(--shadow-paper);
     overflow: hidden;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
   }
 
   .appearance-shell[data-open="false"]:hover {
     background-color: hsl(var(--bg-surface-hover));
+    border-color: hsl(var(--border-default));
   }
 
   .appearance-shell[data-open="true"] {
@@ -749,14 +784,45 @@
   }
 
   .model-access-shell {
-    border: 1px solid transparent;
+    border: 1px solid hsl(var(--border-subtle));
     border-radius: 12px;
+    background-color: hsl(var(--bg-surface));
+    box-shadow: var(--shadow-paper);
     overflow: hidden;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
   }
 
   .model-access-shell[data-open="false"]:hover {
     background-color: hsl(var(--bg-surface-hover));
+    border-color: hsl(var(--border-default));
+  }
+
+  .settings-support-shell {
+    border: 1px solid hsl(var(--border-subtle));
+    border-radius: 12px;
+    background-color: hsl(var(--bg-surface));
+    box-shadow: var(--shadow-paper);
+    overflow: hidden;
+  }
+
+  .settings-support-item + .settings-support-item {
+    border-top: 1px solid hsl(var(--border-subtle));
+  }
+
+  .settings-support-row {
+    background-color: transparent;
+  }
+
+  .settings-support-reveal {
+    border-top: 1px solid hsl(var(--border-subtle));
+    padding: 12px 16px 14px;
+    background: linear-gradient(
+      180deg,
+      hsl(var(--bg-surface)) 0%,
+      hsl(var(--bg-secondary) / 0.42) 100%
+    );
   }
 
   .model-access-shell[data-open="true"] {
@@ -885,7 +951,9 @@
     border-radius: 9999px;
     background-color: hsl(var(--text-tertiary));
     transform: translateX(var(--model-access-switch-x));
-    transition: transform 0.15s ease, background-color 0.15s ease;
+    transition:
+      transform 0.15s ease,
+      background-color 0.15s ease;
   }
 
   .model-access-switch[data-state="checked"] .model-access-switch-thumb {
@@ -1185,7 +1253,9 @@
     font-family: var(--font-ui);
     font-size: 14px;
     color: hsl(var(--text-primary));
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
   }
 
   .settings-input:focus-visible {
@@ -1244,9 +1314,13 @@
 
   .ins-acc-item {
     border-radius: 12px;
-    border: 1px solid transparent;
+    border: 1px solid hsl(var(--border-subtle));
+    background-color: hsl(var(--bg-surface));
+    box-shadow: var(--shadow-paper);
     overflow: hidden;
-    transition: border-color 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
   }
 
   .ins-acc-item + .ins-acc-item {
@@ -1259,8 +1333,12 @@
   }
 
   .ins-acc-item-closed {
-    border-color: transparent;
-    background-color: transparent;
+    border-color: hsl(var(--border-subtle));
+    background-color: hsl(var(--bg-surface));
+  }
+
+  .ins-acc-item-closed:hover {
+    border-color: hsl(var(--border-default));
   }
 
   .ins-acc-trigger {
@@ -1428,7 +1506,9 @@
     padding: 9px 16px;
     font-size: 12.5px;
     font-weight: 600;
-    transition: background-color 0.12s ease, border-color 0.12s ease;
+    transition:
+      background-color 0.12s ease,
+      border-color 0.12s ease;
   }
 
   .ins-generate-btn:hover {
@@ -1517,13 +1597,12 @@
     position: absolute;
     inset: 0;
     border-radius: 9999px;
-    background:
-      radial-gradient(
-        circle,
-        hsl(var(--pipeline-active-glow)) 0%,
-        hsl(var(--pipeline-done-soft)) 68%,
-        transparent 100%
-      );
+    background: radial-gradient(
+      circle,
+      hsl(var(--pipeline-active-glow)) 0%,
+      hsl(var(--pipeline-done-soft)) 68%,
+      transparent 100%
+    );
     animation:
       ins-pipeline-pulse-ring 2.1s ease-in-out infinite,
       ins-pipeline-ring-shift 5.2s linear infinite;
@@ -1571,7 +1650,9 @@
     gap: 9px;
     border-radius: 8px;
     padding: 6px 8px;
-    transition: background-color 0.2s ease, opacity 0.2s ease;
+    transition:
+      background-color 0.2s ease,
+      opacity 0.2s ease;
   }
 
   .ins-thread-phase-idle {
@@ -2088,7 +2169,9 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     color: hsl(var(--text-tertiary));
-    transition: color 0.15s ease, background-color 0.15s ease;
+    transition:
+      color 0.15s ease,
+      background-color 0.15s ease;
   }
 
   .ins-week-range-btn:hover:not(:disabled) {
@@ -2256,7 +2339,9 @@
     border-radius: 9px;
     border: 1px dashed hsl(var(--border-default));
     padding: 9px 12px;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
   }
 
   .ins-week-generate-trigger:hover {
@@ -2317,13 +2402,12 @@
     position: absolute;
     inset: 0;
     border-radius: 9999px;
-    background:
-      radial-gradient(
-        circle,
-        hsl(var(--pipeline-active-glow)) 0%,
-        hsl(var(--pipeline-done-soft)) 68%,
-        transparent 100%
-      );
+    background: radial-gradient(
+      circle,
+      hsl(var(--pipeline-active-glow)) 0%,
+      hsl(var(--pipeline-done-soft)) 68%,
+      transparent 100%
+    );
     animation:
       ins-pipeline-pulse-ring 2.1s ease-in-out infinite,
       ins-pipeline-ring-shift 5.2s linear infinite;
@@ -2385,7 +2469,10 @@
     font-weight: 600;
     letter-spacing: 0.03em;
     color: hsl(var(--text-secondary));
-    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      color 0.15s ease,
+      background-color 0.15s ease;
   }
 
   .ins-week-gen-control-btn:hover {
@@ -2411,7 +2498,9 @@
     gap: 9px;
     border-radius: 8px;
     padding: 6px 8px;
-    transition: background-color 0.2s ease, opacity 0.2s ease;
+    transition:
+      background-color 0.2s ease,
+      opacity 0.2s ease;
   }
 
   .ins-week-phase-idle {
@@ -2877,7 +2966,9 @@
   justify-content: center;
   border-radius: 4px;
   color: hsl(var(--text-secondary));
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .reader-view-back-btn:hover {
@@ -2935,7 +3026,9 @@
   justify-content: center;
   border-radius: 4px;
   color: hsl(var(--text-secondary));
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .reader-view-nav-btn:hover {
@@ -3003,7 +3096,9 @@
   align-items: center;
   justify-content: center;
   color: hsl(var(--text-tertiary));
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .reader-turn-copy-btn:hover {
@@ -3088,7 +3183,9 @@
   padding: 3px 8px;
   background-color: hsl(var(--reader-expand-bg));
   color: hsl(var(--reader-expand-text));
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
   marker: none;
 }
 
@@ -3204,7 +3301,9 @@
 .reader-sidecar-row-link {
   color: inherit;
   text-decoration: none;
-  transition: opacity 0.12s ease, color 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease;
 }
 
 .reader-sidecar-row-link:hover {
@@ -3292,7 +3391,9 @@
   letter-spacing: 0.018em;
   color: hsl(var(--reader-expand-text));
   background-color: hsl(var(--reader-expand-bg));
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .reader-expand-btn:hover {
@@ -3491,7 +3592,9 @@
   font-weight: 500;
   color: hsl(var(--text-tertiary));
   cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .reader-ast-code-copy:hover {
@@ -3605,8 +3708,12 @@
   font-size: 10px;
   font-weight: 600;
   line-height: 1;
-  transition: opacity 160ms ease, color 160ms ease, border-color 160ms ease,
-    background-color 160ms ease, transform 160ms ease;
+  transition:
+    opacity 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
 }
 
 .reader-ast-math-copy.is-inline {
@@ -4029,7 +4136,9 @@
     font-size: 12px;
     font-weight: 600;
     color: hsl(var(--text-primary));
-    transition: opacity 0.15s ease, background-color 0.15s ease;
+    transition:
+      opacity 0.15s ease,
+      background-color 0.15s ease;
   }
 
   .data-export-btn:hover:not(:disabled) {
@@ -4181,7 +4290,9 @@
     gap: 5px;
     font-size: 11.5px;
     font-weight: 600;
-    transition: opacity 0.15s ease, filter 0.15s ease;
+    transition:
+      opacity 0.15s ease,
+      filter 0.15s ease;
   }
 
   .data-secondary-btn:hover:not(:disabled) {
@@ -4239,7 +4350,9 @@
     gap: 6px;
     font-size: 12px;
     font-weight: 600;
-    transition: opacity 0.15s ease, background-color 0.15s ease;
+    transition:
+      opacity 0.15s ease,
+      background-color 0.15s ease;
   }
 
   .data-danger-btn:hover:not(:disabled) {
@@ -4340,12 +4453,7 @@
     font-size: 10px;
     line-height: 1.4;
     color: hsl(var(--text-tertiary));
-    font-family:
-      "SFMono-Regular",
-      Consolas,
-      "Liberation Mono",
-      Menlo,
-      monospace;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     overflow-wrap: anywhere;
     word-break: break-word;
   }
@@ -4362,4 +4470,3 @@
     color: hsl(var(--danger));
   }
 }
-
